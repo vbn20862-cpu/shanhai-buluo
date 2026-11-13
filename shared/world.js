@@ -51,7 +51,12 @@
   var RATE = { food: 0.35, mat: 0.35, special: 0.03 };   // 每位族人每秒
   var FOREIGN_SP = false;   // 階段 4 加入交易後改成 true：部落中心升級要用別族的特產
   var OFFLINE_MAX = 8 * 3600000;
-  var BUILDERS = 2, SHIELD_MS = 180000, NEWBIE_MS = 300000, OFFER_MS = 600000;
+  var BUILDERS = 2, SHIELD_MS = 300000, NEWBIE_MS = 600000, OFFER_MS = 600000;
+  // 對戰：正門、山徑、溪谷三路，共三個階段；每階段雙方各下一個指令
+  var LANES = ['正門', '山徑', '溪谷'], LANE_KEYS = ['even', 'gate', 'path', 'valley'];
+  var CMDS = { charge: '衝鋒', volley: '掩護射擊', hold: '重整' };
+  var PREP_MS = 6000, PICK_MS = 12000, SHOW_MS = 4000, PHASES = 3;
+  var LOOT_FRAC = [0, 0.10, 0.25, 0.40];   // 攻破 0、1、2、3 路時，帶走對方可被拿走物資的比例
   var BOT_NAMES = {
     atayal: ['霧林部落', '溪谷部落'], bunun: ['雲海部落', '楓林部落'],
     amis: ['浪花部落', '月桃部落'], paiwan: ['晨曦部落', '山風部落']
@@ -136,32 +141,62 @@
   function clean(s, max) { return String(s == null ? '' : s).replace(/[<>&"'`\\\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().slice(0, max); }
   function int(n) { n = Math.floor(Number(n)); return isFinite(n) ? n : 0; }
 
-  // ---------- 戰鬥 ----------
-  // 不呈現傷亡細節：失去戰力的單位視為「負傷撤退」。
-  function battle(att, def, rng) {
-    var A = { w: att.w, a: att.a }, D = { w: def.w, a: def.a };
-    var wall = def.wallHp, towers = def.towers.map(function (L) { return { L: L, hp: 60 * L }; });
-    var rounds = [], aPool = 0, dPool = 0;
-    function towersUp() { return towers.filter(function (t) { return t.hp > 0; }); }
-    function done() { return wall <= 0 && D.w + D.a === 0 && towersUp().length === 0; }
-    rounds.push({ r: 0, aw: A.w, aa: A.a, dw: D.w, da: D.a, wall: Math.round(wall), towers: towers.length });
-    for (var r = 1; r <= 10 && !done(); r++) {
-      var wallUp = wall > 0, f1 = 0.88 + rng() * 0.24, f2 = 0.88 + rng() * 0.24;
-      var dmgDef = (towersUp().reduce(function (s, t) { return s + 9 * t.L; }, 0) + (wallUp ? 0 : D.w * UNIT.w.atk) + D.a * UNIT.a.atk * (wallUp ? 1.5 : 1)) * f2;
-      if (wallUp) wall = Math.max(0, wall - (A.w * UNIT.w.atk + A.a * UNIT.a.atk * 0.5) * f1);
-      else {
-        dPool += (A.w * UNIT.w.atk + A.a * UNIT.a.atk) * f1;
-        while (D.w > 0 && dPool >= UNIT.w.hp) { D.w--; dPool -= UNIT.w.hp; }
-        if (D.w === 0) while (D.a > 0 && dPool >= UNIT.a.hp) { D.a--; dPool -= UNIT.a.hp; }
-        if (D.w + D.a === 0) { towers.forEach(function (t) { if (t.hp > 0 && dPool > 0) { var x = Math.min(t.hp, dPool); t.hp -= x; dPool -= x; } }); dPool = 0; }
+  // ---------- 對戰規則 ----------
+  // 不呈現傷亡細節：失去戰力的單位一律視為「負傷撤退」。
+  /* 把 n 個人分到三路。even：平均；gate / path / valley：一半守（攻）那一路，其餘平分 */
+  function split(n, key) {
+    var main = LANE_KEYS.indexOf(key) - 1, out = [0, 0, 0], i;
+    if (main < 0) { for (i = 0; i < n; i++) out[i % 3]++; return out; }
+    out[main] = Math.ceil(n / 2);
+    for (i = 0; i < n - out[main]; i++) out[(main + 1 + i % 2) % 3]++;
+    return out;
+  }
+  /* 我方下 mine、對方下 theirs 時，我方承受傷害的倍率。衝鋒怕掩護射擊；重整能躲掉掩護射擊，但擋不住衝鋒 */
+  function taken(mine, theirs) {
+    if (mine === 'charge') return theirs === 'volley' ? 1.5 : 1;
+    if (mine === 'hold') return theirs === 'volley' ? 0.4 : theirs === 'charge' ? 0.9 : 0.6;
+    return 1;
+  }
+  function output(w, a, cmd) {
+    var o = w * UNIT.w.atk * (cmd === 'charge' ? 1.5 : 1) + a * UNIT.a.atk * (cmd === 'volley' ? 1.5 : 1);
+    return cmd === 'hold' ? o * 0.6 : o;
+  }
+  function hit(side, dmg) {   // side: {w, a, pool, lostW, lostA}；勇士在前面先承受
+    side.pool += dmg;
+    while (side.w > 0 && side.pool >= UNIT.w.hp) { side.w--; side.lostW++; side.pool -= UNIT.w.hp; }
+    if (side.w === 0) while (side.a > 0 && side.pool >= UNIT.a.hp) { side.a--; side.lostA++; side.pool -= UNIT.a.hp; }
+    if (side.w + side.a === 0) side.pool = 0;
+  }
+  function rally(side) {      // 重整：這一路負傷的人有四分之一歸隊
+    var bw = Math.floor(side.lostW / 4), ba = Math.floor(side.lostA / 4);
+    side.w += bw; side.lostW -= bw; side.a += ba; side.lostA -= ba;
+    return bw + ba;
+  }
+  /* 打一個階段。b.lanes[i] = {a: 攻方, d: 守方, broken}；回傳這個階段的紀錄 */
+  function fightPhase(b, ca, cd, rng) {
+    var open = b.lanes.filter(function (l) { return !l.broken && l.a.w + l.a.a > 0; }).length || 1;
+    var rec = { phase: b.phase, a: ca, d: cd, lanes: [] };
+    b.lanes.forEach(function (l, i) {
+      var before = { aw: l.a.w, aa: l.a.a, dw: l.d.w, da: l.d.a }, r = { i: i, broken: false, backA: 0, backD: 0 };
+      if (!l.broken && l.a.w + l.a.a > 0) {
+        if (ca === 'hold') r.backA = rally(l.a);
+        if (cd === 'hold') r.backD = rally(l.d);
+        var outA = output(l.a.w, l.a.a, ca) * (0.92 + rng() * 0.16);
+        var outD = (output(l.d.w, l.d.a, cd) * (1 + b.wall * 0.08) + b.towers / open) * (0.92 + rng() * 0.16);
+        hit(l.a, outD * taken(ca, cd)); hit(l.d, outA * taken(cd, ca));
+        if (l.d.w + l.d.a === 0 && l.a.w + l.a.a > 0) { l.broken = true; r.broken = true; }
       }
-      aPool += dmgDef;
-      while (A.w > 0 && aPool >= UNIT.w.hp) { A.w--; aPool -= UNIT.w.hp; }
-      if (A.w === 0) while (A.a > 0 && aPool >= UNIT.a.hp) { A.a--; aPool -= UNIT.a.hp; }
-      rounds.push({ r: r, aw: A.w, aa: A.a, dw: D.w, da: D.a, wall: Math.round(wall), towers: towersUp().length });
-      if (A.w + A.a === 0) break;
-    }
-    return { win: A.w + A.a > 0 && done(), rounds: rounds, A: A, D: D };
+      r.aLost = before.aw + before.aa + r.backA - l.a.w - l.a.a; r.dLost = before.dw + before.da + r.backD - l.d.w - l.d.a;
+      rec.lanes.push(r);
+    });
+    // 攻破一路後，那一路的人下個階段轉去支援還在打的路
+    b.lanes.forEach(function (l) {
+      if (!l.broken || l.moved || l.a.w + l.a.a === 0) return;
+      var target = b.lanes.filter(function (o) { return !o.broken; }).sort(function (x, y) { return (x.d.w + x.d.a) - (y.d.w + y.d.a); })[0];   // 去守軍最少的那一路
+      if (target) { target.a.w += l.a.w; target.a.a += l.a.a; l.a.w = 0; l.a.a = 0; }
+      l.moved = true;
+    });
+    return rec;
   }
 
   // ---------- 世界 ----------
@@ -169,9 +204,11 @@
     opts = opts || {};
     this.speed = opts.speed || 1;
     this.reportAfter = opts.reportAfter == null ? 60000 : opts.reportAfter;   // 離開多久以上才顯示離線報告
+    this.newbieMs = opts.newbieMs == null ? NEWBIE_MS : opts.newbieMs;         // 新部落受保護多久
     this.rng = opts.rng || Math.random;
     this.map = Geo.build();
     this.villages = {}; this.tokens = {}; this.marches = []; this.market = []; this.feed = []; this.alliances = {};
+    this.battles = {}; this.stats = {};
     this.seq = 1; this.lastBot = 0;
   }
   World.prototype.id = function (p) { return p + (this.seq++).toString(36); };
@@ -214,8 +251,9 @@
       createdAt: now, last: now, res: { food: 120, mat: 120 }, sp: {}, pop: 4, popAcc: 0,
       jobs: { food: 2, mat: 2, special: 0 }, auto: true, tiles: tiles, land: land, wall: 0, queue: [],
       units: { w: 0, a: 0 }, away: { w: 0, a: 0 }, train: [], glory: 0, wins: 0, losses: 0, gifts: 0,
-      shieldUntil: 0, newbieUntil: o.bot ? 0 : now + NEWBIE_MS, ally: null, reports: [], cool: {},
-      lastSay: 0, lastGift: 0, online: !!o.bot, idle: { focus: 'even', upgrade: false }, offAt: 0
+      shieldUntil: 0, newbieUntil: o.bot ? 0 : now + this.newbieMs, ally: null, reports: [], cool: {},
+      lastSay: 0, lastGift: 0, online: !!o.bot, idle: { focus: 'even', upgrade: false, train: false }, offAt: 0,
+      def: { lanes: 'even', plan: ['volley', 'hold', 'charge'] }, battle: null
     };
     this.villages[v.id] = v;
     return v;
@@ -271,6 +309,10 @@
   };
   // 掛機時自動升級：挑等級最低、最便宜的建築
   World.prototype.idleStep = function (v, t) {
+    if (v.idle && v.idle.train && !v.battle && armyTotal(v) < armyCap(v)) {
+      var u = v.units.a < v.units.w ? 'a' : 'w';
+      if (v.res.food >= UNIT[u].cost.food + 60 && v.res.mat >= UNIT[u].cost.mat) ACTIONS.train.call(this, v, { u: u }, t);
+    }
     if (!v.idle || !v.idle.upgrade || v.queue.length >= BUILDERS) return;
     var C = centerLevel(v), best = null;
     for (var i = 0; i < TILE_N; i++) {
@@ -351,6 +393,7 @@
     idle: function (v, a) {   // 掛機設定
       if (['even', 'food', 'mat', 'special'].indexOf(a.focus) >= 0) v.idle.focus = a.focus;
       if (a.upgrade != null) v.idle.upgrade = !!a.upgrade;
+      if (a.train != null) v.idle.train = !!a.train;
       if (v.auto) this.autoJobs(v);
     },
     ack: function (v) { delete v.report; },
@@ -421,30 +464,45 @@
       var u = UNIT[a.u];
       if (!u) return { ok: false, msg: '沒有這種單位' };
       if (armyCap(v) === 0) return { ok: false, msg: '要先蓋好訓練場' };
+      if (v.battle) return { ok: false, msg: '交戰中不能訓練' };
       if (armyTotal(v) >= armyCap(v)) return { ok: false, msg: '人數已滿，升級訓練場可以增加名額' };
       if (!can(v, u.cost)) return { ok: false, msg: '糧食或建材不足' };
       pay(v, u.cost);
       var start = v.train.length ? v.train[v.train.length - 1].doneAt : now;
       v.train.push({ u: a.u, doneAt: Math.max(start, now) + u.time * 1000 / this.speed });
     },
+    defense: function (v, a) {   // 佈防：重點守哪一路、不在線上時每個階段下什麼指令
+      if (LANE_KEYS.indexOf(a.lanes) >= 0) v.def.lanes = a.lanes;
+      if (Array.isArray(a.plan) && a.plan.length === PHASES && a.plan.every(function (c) { return CMDS[c]; })) v.def.plan = a.plan.slice();
+    },
     attack: function (v, a, now) {
       var t = this.villages[a.to], w = int(a.w), ar = int(a.a);
       if (!t || t.id === v.id) return { ok: false, msg: '找不到目標' };
-      if (w < 0 || ar < 0 || w + ar < 1) return { ok: false, msg: '至少要派出一位勇士' };
+      if (w < 0 || ar < 0 || w + ar < 1) return { ok: false, msg: '至少要派出一個人' };
       if (w > v.units.w || ar > v.units.a) return { ok: false, msg: '留在部落的人數不夠' };
+      if (v.battle) return { ok: false, msg: '部落正在交戰，現在不能出征' };
       if (v.ally && v.ally === t.ally) return { ok: false, msg: '不能出征同一個聯盟的部落' };
       if (now < t.shieldUntil || now < t.newbieUntil) return { ok: false, msg: '對方正受到保護' };
       if (!t.bot && centerLevel(v) - centerLevel(t) > 1) return { ok: false, msg: '對方規模比你小太多，不能出征' };
       if ((v.cool[t.id] || 0) > now) return { ok: false, msg: '才剛交手過，晚一點再來' };
-      if (this.marches.filter(function (m) { return m.from === v.id; }).length >= 2) return { ok: false, msg: '最多同時派出兩支隊伍' };
+      if (this.marches.some(function (m) { return m.from === v.id; })) return { ok: false, msg: '已經有一支隊伍在外面了' };
       v.units.w -= w; v.units.a -= ar; v.away.w += w; v.away.a += ar;
-      v.newbieUntil = 0; v.shieldUntil = 0;
+      v.newbieUntil = 0; v.shieldUntil = 0;   // 主動出征就放棄保護
       var d = Geo.hexDist(this.map.byId[v.hex], this.map.byId[t.hex]);
       var travel = Math.min(60, 6 + 2.5 * d) * 1000 / this.speed;
-      this.marches.push({ id: this.id('m'), from: v.id, to: t.id, w: w, a: ar, departAt: now, arriveAt: now + travel, travel: travel, phase: 'out', loot: null });
-      v.cool[t.id] = now + 120000;
+      this.marches.push({ id: this.id('m'), from: v.id, to: t.id, w: w, a: ar, lanes: LANE_KEYS.indexOf(a.lanes) >= 0 ? a.lanes : 'even',
+        departAt: now, arriveAt: now + travel, travel: travel, phase: 'out', loot: null });
+      v.cool[t.id] = now + 120000 / this.speed;
       return { ok: true, msg: '隊伍出發了' };
     },
+    cmd: function (v, a, now) {   // 對戰中下指令
+      var b = this.battles[v.battle];
+      if (!b || b.state !== 'pick') return { ok: false, msg: '現在不能下指令' };
+      if (!CMDS[a.c]) return { ok: false, msg: '沒有這個指令' };
+      b.cmd[b.a === v.id ? 'a' : 'd'] = a.c;
+      this.stepBattle(b, now);
+    },
+    seen: function (v, a) { v.reports.forEach(function (r) { if (!a.id || r.id === a.id) r.seen = true; }); },
     gift: function (v, a, now) {
       var t = this.villages[a.to], k = a.key, n = int(a.n);
       if (!t || t.id === v.id) return { ok: false, msg: '找不到對象' };
@@ -522,56 +580,89 @@
     }
   };
 
-  // ---------- 出征隊伍 ----------
+  // ---------- 出征隊伍與對戰流程 ----------
   World.prototype.resolveMarch = function (m, now) {
     var v = this.villages[m.from], t = this.villages[m.to];
     if (!v) return false;
     if (m.phase === 'back') {
-      v.units.w += m.w; v.units.a += m.a; v.away.w = Math.max(0, v.away.w - m.w0); v.away.a = Math.max(0, v.away.a - m.a0);
+      v.units.w += m.w; v.units.a += m.a; v.away.w = Math.max(0, v.away.w - m.w); v.away.a = Math.max(0, v.away.a - m.a);
       if (m.loot) for (var k in m.loot) addRes(v, k, m.loot[k]);
       return false;
     }
-    m.w0 = m.w; m.a0 = m.a;
-    var back = function () { m.phase = 'back'; m.departAt = now; m.arriveAt = now + m.travel; return true; };
-    if (!t || now < t.shieldUntil || (v.ally && v.ally === t.ally)) {
-      this.pushReport(v, { t: now, role: 'atk', other: t ? t.name : '', win: false, note: '對方正受到保護，隊伍折返。', rounds: [] });
-      return back();
+    if (m.phase === 'fight') return true;   // 對戰中，等對戰結束
+    var why = !t ? '找不到對方的部落' : now < t.shieldUntil ? '對方正受到保護' : (v.ally && v.ally === t.ally) ? '對方現在是同盟' : t.battle ? '對方正在和別人交戰' : '';
+    if (why) {
+      this.pushReport(v, { t: now, role: 'atk', other: t ? t.name : '', otherTribe: t ? t.tribe : v.tribe, win: false, broken: 0, note: why + '，隊伍折返。', log: [] });
+      m.phase = 'back'; m.departAt = now; m.arriveAt = now + m.travel; return true;
     }
     this.tickVillage(v, now); this.tickVillage(t, now);
-    var res = battle({ w: m.w, a: m.a }, { w: t.units.w, a: t.units.a, wallHp: t.wall * 80, towers: levelsOf(t, 'tower') }, this.rng);
-    var lostA = { w: m.w - res.A.w, a: m.a - res.A.a }, lostD = { w: t.units.w - res.D.w, a: t.units.a - res.D.a };
-    t.units.w = res.D.w; t.units.a = res.D.a;
-    v.away.w -= lostA.w; v.away.a -= lostA.a; m.w0 = res.A.w; m.a0 = res.A.a;
-    m.w = res.A.w; m.a = res.A.a;
-    var loot = {}, lootTxt = [];
-    if (res.win) {
-      // 每位回程的勇士能背 30 份：先帶特產，剩下的空間平均分給糧食與建材
-      var prot = caps(t).protect, carry = 30 * (m.w + m.a), want = {}, take = function (k2, n) {
-        n = Math.min(n, carry); if (n <= 0) return;
-        carry -= n; loot[k2] = n; addRes(t, k2, -n); lootTxt.push(n + ' ' + resName(k2));
-      };
-      for (var sk in t.sp) take('sp:' + sk, Math.floor(t.sp[sk] * 0.3));
-      ['food', 'mat'].forEach(function (k) { want[k] = Math.floor(Math.max(0, t.res[k] - prot) * 0.35); });
-      var total = want.food + want.mat, f = total > carry ? carry / total : 1;
-      var nf = Math.floor(want.food * f), nm = Math.floor(want.mat * f);
-      take('food', nf); take('mat', nm);
-      m.loot = loot;
-      v.wins++; t.losses++; v.glory += 10 + 2 * centerLevel(t); t.glory = Math.max(0, t.glory - 3);
-      t.shieldUntil = now + SHIELD_MS;
-      this.log('「' + v.name + '」出征「' + t.name + '」獲勝' + (lootTxt.length ? '，帶回 ' + lootTxt.join('、') : '') + '。', now, 'battle');
-    } else {
-      v.losses++; t.wins++; t.glory += 5; v.glory = Math.max(0, v.glory - 2);
-      this.log('「' + t.name + '」守住了「' + v.name + '」的出征。', now, 'battle');
+    var aw = split(m.w, m.lanes), aa = split(m.a, m.lanes), dw = split(t.units.w, t.def.lanes), da = split(t.units.a, t.def.lanes);
+    var b = { id: this.id('b'), a: v.id, d: t.id, aName: v.name, dName: t.name, aTribe: v.tribe, dTribe: t.tribe, march: m.id,
+      wall: t.wall, towers: levelsOf(t, 'tower').reduce(function (s, L) { return s + 9 * L; }, 0), towerN: levelsOf(t, 'tower').length,
+      lanes: [0, 1, 2].map(function (i) { return { a: { w: aw[i], a: aa[i], pool: 0, lostW: 0, lostA: 0 }, d: { w: dw[i], a: da[i], pool: 0, lostW: 0, lostA: 0 }, broken: false }; }),
+      start: { a: { w: m.w, a: m.a }, d: { w: t.units.w, a: t.units.a } }, phase: 1, state: 'prep', deadline: now + PREP_MS / this.speed, cmd: { a: null, d: null }, log: [] };
+    t.units.w = 0; t.units.a = 0;   // 守軍都上場了，打完再回來
+    this.battles[b.id] = b; v.battle = b.id; t.battle = b.id; m.phase = 'fight';
+    return true;
+  };
+  /* 對戰往前推一步：時間到，或雙方都下好指令時呼叫 */
+  World.prototype.stepBattle = function (b, now) {
+    var A = this.villages[b.a], D = this.villages[b.d];
+    if (b.state === 'prep') { if (now >= b.deadline) { b.state = 'pick'; b.deadline = now + PICK_MS / this.speed; } else return; }
+    if (b.state === 'pick') {
+      var live = D && D.online && !D.bot;
+      if (!live && !b.cmd.d) b.cmd.d = (D && D.def.plan[b.phase - 1]) || 'hold';   // 守方不在線上：照預設的守備方針
+      if (!(b.cmd.a && b.cmd.d) && now < b.deadline) return;
+      if (!b.cmd.a) b.cmd.a = 'charge';                                             // 時間到還沒下令：攻方衝鋒，守方照預設
+      if (!b.cmd.d) b.cmd.d = (D && D.def.plan[b.phase - 1]) || 'hold';
+      b.log.push(fightPhase(b, b.cmd.a, b.cmd.d, this.rng));
+      b.state = 'show'; b.deadline = now + SHOW_MS / this.speed;
+      return;
     }
-    var rid = this.id('r');
-    this.pushReport(v, { id: rid, t: now, role: 'atk', other: t.name, otherTribe: t.tribe, win: res.win, rounds: res.rounds, loot: loot, lost: lostA });
-    this.pushReport(t, { id: rid, t: now, role: 'def', other: v.name, otherTribe: v.tribe, win: !res.win, rounds: res.rounds, loot: loot, lost: lostD });
-    if (m.w + m.a === 0) return false;
-    return back();
+    if (b.state === 'show' && now >= b.deadline) {
+      var fighting = b.lanes.some(function (l) { return !l.broken && l.a.w + l.a.a > 0 && l.d.w + l.d.a > 0; });
+      var unopposed = b.lanes.some(function (l) { return !l.broken && l.a.w + l.a.a > 0 && l.d.w + l.d.a === 0; });
+      if (b.phase >= PHASES || !(fighting || unopposed)) return this.endBattle(b, now);
+      b.phase++; b.cmd = { a: null, d: null }; b.state = 'pick'; b.deadline = now + PICK_MS / this.speed;
+    }
+  };
+  World.prototype.endBattle = function (b, now) {
+    var A = this.villages[b.a], D = this.villages[b.d], m = this.marches.filter(function (x) { return x.id === b.march; })[0];
+    var broken = b.lanes.filter(function (l) { return l.broken; }).length, win = broken >= 2;
+    var left = { w: 0, a: 0 }, home = { w: 0, a: 0 };
+    b.lanes.forEach(function (l) { left.w += l.a.w; left.a += l.a.a; home.w += l.d.w; home.a += l.d.a; });
+    var lostA = b.start.a.w + b.start.a.a - left.w - left.a, lostD = b.start.d.w + b.start.d.a - home.w - home.a, loot = {}, txt = [];
+    if (D) {
+      D.units.w += home.w; D.units.a += home.a; D.battle = null;
+      if (broken > 0 && left.w + left.a > 0) {   // 每位回程的人能背 30 份：先帶特產，剩下的空間分給糧食與建材
+        var frac = LOOT_FRAC[broken], carry = 30 * (left.w + left.a), prot = caps(D).protect, want = {};
+        var take = function (k, n) { n = Math.min(n, carry); if (n <= 0) return; carry -= n; loot[k] = n; addRes(D, k, -n); txt.push(n + ' ' + resName(k)); };
+        for (var sk in D.sp) take('sp:' + sk, Math.floor(D.sp[sk] * frac));
+        ['food', 'mat'].forEach(function (k) { want[k] = Math.floor(Math.max(0, D.res[k] - prot) * frac); });
+        var total = want.food + want.mat, f = total > carry ? carry / total : 1;
+        var nf = Math.floor(want.food * f), nm = Math.floor(want.mat * f); take('food', nf); take('mat', nm);
+      }
+      if (win) { D.losses++; D.glory = Math.max(0, D.glory - 3); D.shieldUntil = now + SHIELD_MS / this.speed; } else { D.wins++; D.glory += 5; }
+      this.pushReport(D, { id: b.id, t: now, role: 'def', other: b.aName, otherTribe: b.aTribe, win: !win, broken: broken, loot: loot, lost: lostD, log: b.log });
+    }
+    if (A) {
+      A.battle = null; A.away.w = Math.max(0, A.away.w - (b.start.a.w - left.w)); A.away.a = Math.max(0, A.away.a - (b.start.a.a - left.a));
+      if (win) { A.wins++; A.glory += (broken === 3 ? 15 : 10) + 2 * (D ? centerLevel(D) : 1); } else { A.losses++; A.glory = Math.max(0, A.glory - 2); }
+      this.pushReport(A, { id: b.id, t: now, role: 'atk', other: b.dName, otherTribe: b.dTribe, win: win, broken: broken, loot: loot, lost: lostA, log: b.log });
+    }
+    var key = b.aTribe + '>' + b.dTribe, st = this.stats[key] = this.stats[key] || { n: 0, win: 0 };   // 後台用：各族對戰的場數與攻方勝場
+    st.n++; if (win) st.win++;
+    this.log(win ? '「' + b.aName + '」出征「' + b.dName + '」，攻破 ' + broken + ' 路獲勝' + (txt.length ? '，帶回 ' + txt.join('、') : '') + '。'
+      : '「' + b.dName + '」守住了「' + b.aName + '」的出征。', now, 'battle');
+    b.state = 'done'; b.result = { broken: broken, win: win, loot: loot, lostA: lostA, lostD: lostD }; b.doneAt = now;
+    if (m) {
+      if (left.w + left.a === 0) this.marches = this.marches.filter(function (x) { return x.id !== m.id; });
+      else { m.w = left.w; m.a = left.a; m.loot = loot; m.phase = 'back'; m.departAt = now; m.arriveAt = now + m.travel; }
+    }
   };
   World.prototype.pushReport = function (v, rep) {
     rep.id = rep.id || this.id('r'); rep.seen = false;
-    v.reports.unshift(rep); if (v.reports.length > 8) v.reports.length = 8;
+    v.reports.unshift(rep); if (v.reports.length > 6) v.reports.length = 6;
   };
 
   // ---------- 示範部落（電腦） ----------
@@ -615,6 +706,10 @@
     var self = this, id;
     for (id in this.villages) { var v = this.villages[id]; if (v.online || v.bot) this.tickVillage(v, now); }
     this.marches = this.marches.filter(function (m) { return m.arriveAt > now ? true : self.resolveMarch(m, now); });
+    for (id in this.battles) {
+      var b = this.battles[id];
+      if (b.state === 'done') { if (now - b.doneAt > 20000) delete this.battles[id]; } else this.stepBattle(b, now);
+    }
     this.market = this.market.filter(function (o) {
       if (now - o.t < OFFER_MS) return true;
       var s = self.villages[o.from]; if (s) addRes(s, o.give, o.giveN);
@@ -633,6 +728,11 @@
       c: centerLevel(v), wall: v.wall, towers: levelsOf(v, 'tower').length, guard: guard === 0 ? 0 : guard <= 4 ? 1 : guard <= 10 ? 2 : 3,
       pros: prosperity(v), glory: v.glory, ally: v.ally, safe: Math.max(v.shieldUntil, v.newbieUntil) };
   };
+  function battleView(b, id) {
+    return { id: b.id, role: b.a === id ? 'atk' : 'def', aName: b.aName, dName: b.dName, aTribe: b.aTribe, dTribe: b.dTribe, wall: b.wall, towerN: b.towerN,
+      phase: b.phase, state: b.state, deadline: b.deadline, mine: b.cmd[b.a === id ? 'a' : 'd'], log: b.log, result: b.result || null,
+      lanes: b.lanes.map(function (l) { return { aw: l.a.w, aa: l.a.a, dw: l.d.w, da: l.d.a, broken: l.broken }; }) };
+  }
   World.prototype.pubs = function (now) { var self = this; return Object.keys(this.villages).map(function (k) { return self.pub(self.villages[k], now); }); };
   World.prototype.detail = function (id, now) {
     var v = this.villages[id]; if (!v) return null;
@@ -648,6 +748,10 @@
     if (!v) return null;
     var me = JSON.parse(JSON.stringify(v));
     delete me.offSnap; delete me.offLog; delete me.cool;
+    var bt = v.battle && this.battles[v.battle];
+    if (!bt) for (var bk in this.battles) {   // 剛打完的對戰再多傳一小段時間，讓雙方看到結果
+      var x = this.battles[bk]; if (x.state === 'done' && (x.a === id || x.d === id)) bt = x;
+    }
     me.d = derived(v, this.speed);
     var al = {};
     for (var k in this.alliances) al[k] = { id: k, name: this.alliances[k].name, leader: this.alliances[k].leader, n: this.alliances[k].members.length };
@@ -655,8 +759,9 @@
       now: now, speed: this.speed, me: me,
       villages: Object.keys(this.villages).map(function (k) { return self.pub(self.villages[k], now); }),
       marches: this.marches.map(function (m) { return { id: m.id, from: m.from, to: m.to, departAt: m.departAt, arriveAt: m.arriveAt, phase: m.phase, n: m.w + m.a }; }),
+      shieldMs: SHIELD_MS / this.speed,
       market: this.market.map(function (o) { return { id: o.id, from: o.from, fromName: (self.villages[o.from] || {}).name || '', give: o.give, giveN: o.giveN, want: o.want, wantN: o.wantN }; }),
-      feed: this.feed.slice(-30), alliances: al
+      feed: this.feed.slice(-30), alliances: al, battle: bt ? battleView(bt, id) : null
     };
   };
   World.prototype.adminState = function (now) {
@@ -671,19 +776,24 @@
       return row;
     });
     for (var k in tribes) tribes[k].avg = tribes[k].players ? Math.round(tribes[k].prosperity / tribes[k].players) : 0;
-    return { now: now, speed: this.speed, villages: list, tribes: tribes, marches: this.marches.length, offers: this.market.length };
+    return { now: now, speed: this.speed, villages: list, tribes: tribes, marches: this.marches.length, offers: this.market.length,
+      battles: Object.keys(this.battles).filter(function (k) { return self.battles[k].state !== 'done'; }).length, stats: this.stats };
   };
   World.prototype.toJSON = function () {
-    return { villages: this.villages, tokens: this.tokens, marches: this.marches, market: this.market, feed: this.feed, alliances: this.alliances, seq: this.seq };
+    return { villages: this.villages, tokens: this.tokens, marches: this.marches, market: this.market, feed: this.feed, alliances: this.alliances,
+      battles: this.battles, stats: this.stats, seq: this.seq };
   };
   World.prototype.load = function (d) {
     if (!d || !d.villages) return this;
     this.villages = d.villages; this.tokens = d.tokens || {}; this.marches = d.marches || []; this.market = d.market || [];
     this.feed = d.feed || []; this.alliances = d.alliances || {}; this.seq = d.seq || 1;
+    this.battles = d.battles || {}; this.stats = d.stats || {};
     for (var id in this.villages) {
       var v = this.villages[id]; v.online = !!v.bot;
       if (!v.land || v.tiles.length !== TILE_N) { delete this.villages[id]; continue; }   // 舊版的方格部落無法沿用
       if (!v.idle) v.idle = { focus: 'even', upgrade: false };
+      if (!v.def) v.def = { lanes: 'even', plan: ['volley', 'hold', 'charge'] };
+      if (v.battle && !(this.battles || {})[v.battle]) v.battle = null;
     }
     for (var tk in this.tokens) if (!this.villages[this.tokens[tk]]) delete this.tokens[tk];
     return this;
@@ -692,7 +802,8 @@
   World.rules = {
     SITES: SITES, CLEAR: CLEAR, clearInfo: clearInfo, TILE_N: TILE_N, CENTER_TILE: CENTER_TILE, TYPES: TYPES, MAX_LEVEL: MAX_LEVEL, UNIT: UNIT,
     CENTER_UP: CENTER_UP, BUILDERS: BUILDERS, FOREIGN_SP: FOREIGN_SP, cost: cost, buildTime: buildTime, limit: limit, count: count,
-    resName: resName, battle: battle, derived: derived, popCap: popCap
+    resName: resName, derived: derived, popCap: popCap, LANES: LANES, LANE_KEYS: LANE_KEYS, CMDS: CMDS, PHASES: PHASES, LOOT_FRAC: LOOT_FRAC,
+    split: split, taken: taken, fightPhase: fightPhase, armyCap: armyCap
   };
   return World;
 });

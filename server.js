@@ -23,7 +23,8 @@ const DATA = process.env.DATA_FILE ||
   (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'world.json') : path.join(__dirname, 'data', 'world.json'));
 const world = new World({
   speed: Number(process.env.SPEED) || 1,
-  reportAfter: process.env.REPORT_AFTER_MS ? Number(process.env.REPORT_AFTER_MS) : undefined
+  reportAfter: process.env.REPORT_AFTER_MS ? Number(process.env.REPORT_AFTER_MS) : undefined,
+  newbieMs: process.env.NEWBIE_MS ? Number(process.env.NEWBIE_MS) : undefined
 });
 
 // ---------- 存檔 ----------

@@ -69,7 +69,9 @@ tbody tr:hover { background: var(--raise); }
       <div>
         <div class="tiles" id="tiles"></div>
         <section class="card"><h2>各族統計</h2><div class="scroll"><table><thead><tr><th>族群</th><th>玩家部落</th><th>在線上</th><th>示範部落</th><th>平均繁榮</th></tr></thead><tbody id="tribes"></tbody></table></div>
-          <p class="muted">平均繁榮只計算玩家的部落。對戰勝率會在對戰階段加入。</p></section>
+          <p class="muted">平均繁榮只計算玩家的部落。</p></section>
+        <section class="card" style="margin-top:16px"><h2>各族對戰</h2><div class="scroll"><table><thead><tr><th>進攻方</th><th class="l">防守方</th><th>場數</th><th>進攻方勝場</th><th>進攻方勝率</th></tr></thead><tbody id="fights"></tbody></table></div>
+          <p class="muted">攻破兩路以上算進攻方勝。場數夠多時，各族之間的勝率應該接近，差太多就要調整數值。</p></section>
       </div>
       <section class="card"><h2>全島總覽</h2><svg id="map" role="img" aria-label="全島地圖與所有部落的位置"></svg><p class="muted">金色外框是目前在線上的玩家。</p></section>
     </div>
@@ -112,12 +114,17 @@ tbody tr:hover { background: var(--raise); }
   function render() {
     var v = data.villages, players = v.filter(function (x) { return !x.bot; }), live = players.filter(function (x) { return x.online; });
     $('stamp').textContent = '每 3 秒更新 · ' + new Date(data.now).toLocaleTimeString('zh-TW') + (data.speed !== 1 ? ' · 遊戲速度 ' + data.speed + ' 倍' : '');
-    $('tiles').innerHTML = [['玩家部落', players.length], ['在線上', live.length], ['示範部落', v.length - players.length], ['出征中的隊伍', data.marches], ['市集掛單', data.offers]]
+    $('tiles').innerHTML = [['玩家部落', players.length], ['在線上', live.length], ['示範部落', v.length - players.length], ['出征中的隊伍', data.marches], ['進行中的對戰', data.battles], ['市集掛單', data.offers]]
       .map(function (t) { return '<div class="tile"><b>' + t[1] + '</b><span>' + t[0] + '</span></div>'; }).join('');
     $('tribes').innerHTML = Tribes.playable().map(function (t) {
       var s = data.tribes[t.id] || { players: 0, online: 0, bots: 0, avg: 0 };
       return '<tr><td><span class="dot" style="background:' + t.color + '"></span>' + t.zh + '</td><td>' + s.players + '</td><td>' + s.online + '</td><td>' + s.bots + '</td><td>' + (s.players ? s.avg : '—') + '</td></tr>';
     }).join('');
+    var keys = Object.keys(data.stats || {}).sort();
+    $('fights').innerHTML = keys.length ? keys.map(function (k) {
+      var p = k.split('>'), s = data.stats[k], a = Tribes.get(p[0]), d = Tribes.get(p[1]);
+      return '<tr><td><span class="dot" style="background:' + a.color + '"></span>' + a.zh + '</td><td class="l"><span class="dot" style="background:' + d.color + '"></span>' + d.zh + '</td><td>' + s.n + '</td><td>' + s.win + '</td><td>' + Math.round(s.win / s.n * 100) + '%</td></tr>';
+    }).join('') : '<tr><td class="l muted" colspan="5">還沒有對戰紀錄。</td></tr>';
     $('heads').innerHTML = COLS.map(function (c) { return '<th class="' + (c[2] || '') + '"><button data-k="' + c[0] + '" aria-pressed="' + (sort.k === c[0]) + '">' + c[1] + (sort.k === c[0] ? (sort.dir < 0 ? ' ▼' : ' ▲') : '') + '</button></th>'; }).join('');
     var rows = v.filter(function (x) { return $('bots').checked || !x.bot; }).sort(function (a, b) {
       var x = a[sort.k], y = b[sort.k]; if (sort.k === 'idle') { x = a.idle.focus; y = b.idle.focus; }

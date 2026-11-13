@@ -183,6 +183,11 @@ window.Art = (function () {
     var t = Tribes.get(v.tribe), k = t.look, S = R.SITES, low = '', top = '', items = [], busy = {}, i;
     v.queue.forEach(function (w) { if (w.tile >= 0) busy[w.tile] = w; });
     function dist(j) { return Math.hypot(S[j].x - CX, S[j].y - CY); }
+    if (v.wall) {   // 圍籬：繞著整個開墾地的一圈，等級越高越粗
+      var c0 = P(CX, CY), rx = 14.5 * U * 1.414, wd = 5 + v.wall * 2, stone = k.fence === 'stone';
+      var ring = function (col, wdt, dash) { return '<ellipse cx="' + f1(c0[0]) + '" cy="' + f1(c0[1]) + '" rx="' + f1(rx) + '" ry="' + f1(rx / 2) + '" fill="none" stroke="' + col + '" stroke-width="' + wdt + '"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '/>'; };
+      low += ring('rgba(0,0,0,.28)', wd + 8) + ring(stone ? '#5F6166' : '#5E7B3C', wd + 4) + ring(stone ? '#A5A8AC' : '#A9C46A', wd, stone ? '26 6' : '6 7');
+    }
     for (i = 1; i < S.length; i++) {   // 小路：每塊開墾好的地連到比較靠近中央的鄰地
       if (!v.land[i]) continue;
       var parent = 0, best = dist(i);
