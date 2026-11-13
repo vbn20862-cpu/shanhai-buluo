@@ -104,7 +104,11 @@
     Net.on('hello', function (h) { S.pubs = h.villages || S.pubs; if (h.needCode != null) S.needCode = !!h.needCode; if (h.reset) { S.me = null; S.zone = null; S.selTile = null; S.visit = null; S.tab = 'build'; el.vobjs._sig = null; } render(); });
     Net.on('state', function (st) {
       S.me = st.me; S.pubs = st.villages; S.marches = st.marches || [];
-      if (st.battle) S.battle = st.battle;                                   // 對戰結束後伺服器不再傳，畫面保留結果到玩家關掉為止
+      if (st.battle) {                                                       // 對戰結束後伺服器不再傳，畫面保留結果到玩家關掉為止
+        var old = S.battle && S.battle.id === st.battle.id ? S.battle : null;
+        if (old && st.battle.log.length > old.log.length) S.bprev = { id: old.id, n: st.battle.log.length, lanes: old.lanes };   // 記住開打前的人數，用來演出誰退場
+        S.battle = st.battle;
+      }
       else if (S.battle && !S.battle.result) S.battle = null;
       render();
     });
@@ -451,15 +455,16 @@
     var title = role === 'atk' ? (res.broken === 3 ? '大獲全勝' : win ? '出征成功' : '沒能攻下') : (win ? '守住了部落' : '部落被攻破');
     var h = '<div class="bres ' + (win ? 'win' : 'lose') + '"><h3>' + title + '</h3><p>攻破 ' + res.broken + ' 路（攻破兩路算勝）。' +
       (role === 'atk' ? (loot ? '帶回 ' + loot + '。' : '沒有帶回物資。') + '我方 ' + res.lostA + ' 人負傷撤退。' : (loot ? '被帶走 ' + loot + '。' : '物資都保住了。') + '我方 ' + res.lostD + ' 人負傷撤退。' + (res.win ? '接下來一段時間受到保護，不會再被出征。' : '')) + '</p></div>';
-    return h + '<ul class="blog">' + (log || []).map(function (p) { return '<li>' + phaseText(p, role) + '</li>'; }).join('') + '</ul>';
+    return log ? h + '<ul class="blog">' + log.map(function (p) { return '<li>' + phaseText(p, role) + '</li>'; }).join('') + '</ul>' : h;
   }
   function battleModal(me, b) {
     var role = b.role, ta = Tribes.get(b.aTribe), td = Tribes.get(b.dTribe), last = b.log[b.log.length - 1];
-    var h = '<div class="veil"><div class="sheet battle" role="dialog" aria-label="對戰"><header class="bhead"><div class="side"><b>' + esc(b.aName) + '</b><span><i class="dot" style="background:' + ta.color + '"></i>' + ta.zh + ' · 進攻' + (role === 'atk' ? '（你）' : '') + '</span></div>' +
+    var h = '<div class="veil"><div class="sheet battle' + (b.result ? ' done' : '') + '" role="dialog" aria-label="對戰"><header class="bhead"><div class="side"><b>' + esc(b.aName) + '</b><span><i class="dot" style="background:' + ta.color + '"></i>' + ta.zh + ' · 進攻' + (role === 'atk' ? '（你）' : '') + '</span></div>' +
       '<div class="bmid">' + (b.result ? '<b>結束</b>' : '<span>第 ' + b.phase + ' 階段 / 共 ' + R.PHASES + '</span><b data-until="' + b.deadline + '"></b>') + '</div>' +
       '<div class="side r"><b>' + esc(b.dName) + '</b><span>' + td.zh + ' · 防守' + (role === 'def' ? '（你）' : '') + ' · ' + esc(td.b.wall.zh) + ' ' + b.wall + ' · ' + esc(td.b.tower.zh) + ' ' + b.towerN + '<i class="dot" style="background:' + td.color + '"></i></span></div></header>' +
-      '<div class="lanes">' + b.lanes.map(function (l, i) { return laneRow(l, i, b); }).join('') + '</div>';
-    if (b.result) return h + resultBlock(role, b.result, b.log) + '<button class="btn big" data-act="battle-close">關閉</button></div></div>';
+      '<svg class="bscene" viewBox="0 0 ' + Art.BW + ' ' + Art.BH + '" role="img" aria-label="' + b.lanes.map(function (l, i) { return R.LANES[i] + '：攻方 ' + (l.aw + l.aa) + ' 人，守方 ' + (l.dw + l.da) + ' 人' + (l.broken ? '，已攻破' : ''); }).join('；') + '">' +
+      Art.battle(b, S.bprev && S.bprev.id === b.id && S.bprev.n === b.log.length ? S.bprev.lanes : null) + '</svg>';
+    if (b.result) return h + resultBlock(role, b.result) + '<button class="btn big" data-act="battle-close">關閉</button></div></div>';   // 每個階段的經過可以在戰報裡看
     if (b.state === 'prep') h += '<p class="bnote">' + (role === 'atk' ? '隊伍抵達了，馬上開打。' : '你的部落遭到出征！守軍已經就位，馬上開打。') + '</p>';
     else if (b.state === 'show' && last) h += '<p class="bnote">' + phaseText(last, role) + '</p>';
     else h += '<p class="bnote">' + (b.mine ? '已下令「' + R.CMDS[b.mine] + '」，等對方下令。' : '選一個指令。時間到沒選，會' + (role === 'atk' ? '自動衝鋒' : '照你預設的守備方針') + '。') + (last ? ' 上一階段對方下的是「' + R.CMDS[role === 'atk' ? last.d : last.a] + '」。' : '') + '</p>';
