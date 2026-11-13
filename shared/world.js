@@ -49,7 +49,15 @@
     a: { zh: '弓手', atk: 12, hp: 18, cost: { food: 20, mat: 20 }, time: 5 }
   };
   var RATE = { food: 0.35, mat: 0.35, special: 0.03 };   // 每位族人每秒
-  var FOREIGN_SP = false;   // 階段 4 加入交易後改成 true：部落中心升級要用別族的特產
+  var FOREIGN_SP = true;    // 部落中心升到 3 級以上要用別族的特產（靠市集、中立聚落、送禮或出征取得）
+  // 族群關係：每兩族之間一個數值，-100 到 100，起始 0。交易、送禮、結盟會上升，出征會下降，會慢慢回到 0
+  var REL = { friend: 20, hostile: -20, trade: 2, gift: 1, ally: 3, attack: -4, win: -2, point: -3, decayMs: 300000 };
+  // 野地資源點：每位駐守的人每秒的產量（最多算 6 人）
+  var POINT = { fish: { key: 'food', rate: 0.07, zh: '漁場' }, hunt: { key: 'food', rate: 0.06, zh: '獵場' }, wood: { key: 'mat', rate: 0.07, zh: '林地' } };
+  var POINT_MAX = 2, POINT_UNITS = 6;
+  // 中立聚落：3 份自己的特產換 2 份別族特產，或 120 糧食／建材換 1 份；每種特產有存量，會慢慢補回來
+  var SETTLE = { stock: 20, refillMs: 30000, give: 3, get: 2, resCost: 120 };
+  var POP_BONUS = 0.15;     // 人數最少的族群產量加成
   var OFFLINE_MAX = 8 * 3600000;
   var BUILDERS = 2, SHIELD_MS = 300000, NEWBIE_MS = 600000, OFFER_MS = 600000;
   // 對戰：正門、山徑、溪谷三路，共三個階段；每階段雙方各下一個指令
@@ -97,7 +105,7 @@
   function rates(v, speed) {
     var s = slots(v), t = Tribes.get(v.tribe), b = t && t.bonus, out = {};
     ['food', 'mat', 'special'].forEach(function (k) {
-      var m = b && b.key === k ? b.mult : 1;
+      var m = (b && b.key === k ? b.mult : 1) * (1 + (v.pb || 0));   // 族群特長，加上人數少的族群的加成
       out[k] = Math.min(v.jobs[k], s[k]) * RATE[k] * m * speed;
     });
     return out;
@@ -208,7 +216,8 @@
     this.rng = opts.rng || Math.random;
     this.map = Geo.build();
     this.villages = {}; this.tokens = {}; this.marches = []; this.market = []; this.feed = []; this.alliances = {};
-    this.battles = {}; this.stats = {};
+    this.battles = {}; this.stats = {}; this.rel = {}; this.points = {}; this.stock = {};
+    this.lastRel = 0; this.lastStock = 0; this.lastPop = 0;
     this.seq = 1; this.lastBot = 0;
   }
   World.prototype.id = function (p) { return p + (this.seq++).toString(36); };
@@ -354,7 +363,28 @@
     ['food', 'mat'].forEach(function (k) { if (v.res[k] < c.res) v.res[k] = Math.min(c.res, v.res[k] + rt[k] * dt); });
     var own = v.sp[v.tribe] || 0;
     if (rt.special > 0 && own < c.sp) v.sp[v.tribe] = Math.min(c.sp, own + rt.special * dt);
+    for (var hx in this.points) {   // 佔領的野地資源點持續產出
+      var pt = this.points[hx];
+      if (pt.owner !== v.id) continue;
+      var kind = POINT[this.map.byId[hx].wild], gain = kind.rate * Math.min(POINT_UNITS, pt.w + pt.a) * dt * this.speed;
+      if (v.res[kind.key] < c.res) v.res[kind.key] = Math.min(c.res, v.res[kind.key] + gain);
+    }
   };
+
+  // ---------- 族群關係 ----------
+  function relKey(a, b) { return a < b ? a + '|' + b : b + '|' + a; }
+  World.prototype.relOf = function (a, b) { return a === b ? 0 : (this.rel[relKey(a, b)] || 0); };
+  World.prototype.relAdd = function (a, b, n) {
+    if (a === b) return;
+    var k = relKey(a, b); this.rel[k] = Math.max(-100, Math.min(100, (this.rel[k] || 0) + n));
+  };
+  World.prototype.relState = function (a, b) { var r = this.relOf(a, b); return r >= REL.friend ? 'friend' : r <= REL.hostile ? 'hostile' : 'neutral'; };
+  World.prototype.stockOf = function (sid) {
+    var s = this.stock[sid] = this.stock[sid] || {};
+    Tribes.playable().forEach(function (t) { if (s[t.id] == null) s[t.id] = SETTLE.stock; });
+    return s;
+  };
+  World.prototype.pointsOf = function (id) { var out = []; for (var h in this.points) if (this.points[h].owner === id) out.push(h); return out; };
 
   // ---------- 上線、離線與離線報告 ----------
   function snap(v) { return { food: v.res.food, mat: v.res.mat, sp: v.sp[v.tribe] || 0, pop: v.pop, land: v.land.filter(Boolean).length }; }
@@ -493,7 +523,44 @@
       this.marches.push({ id: this.id('m'), from: v.id, to: t.id, w: w, a: ar, lanes: LANE_KEYS.indexOf(a.lanes) >= 0 ? a.lanes : 'even',
         departAt: now, arriveAt: now + travel, travel: travel, phase: 'out', loot: null });
       v.cool[t.id] = now + 120000 / this.speed;
+      this.marches[this.marches.length - 1].hostile = this.relState(v.tribe, t.tribe) === 'hostile';
+      this.relAdd(v.tribe, t.tribe, REL.attack);
       return { ok: true, msg: '隊伍出發了' };
+    },
+    occupy: function (v, a, now) {   // 派人去野地的資源點：沒人就佔領，別人佔著就較量，自己的就增援
+      var h = this.map.byId[a.hex], w = int(a.w), ar = int(a.a), p = h && this.points[h.id];
+      if (!h || !h.wild) return { ok: false, msg: '這裡不是野地的資源點' };
+      if (w < 0 || ar < 0 || w + ar < 1) return { ok: false, msg: '至少要派出一個人' };
+      if (w > v.units.w || ar > v.units.a) return { ok: false, msg: '留在部落的人數不夠' };
+      if (v.battle) return { ok: false, msg: '部落正在交戰，現在不能派人出去' };
+      if (this.marches.some(function (m) { return m.from === v.id; })) return { ok: false, msg: '已經有一支隊伍在外面了' };
+      var own = p && p.owner === v.id, holder = p && this.villages[p.owner];
+      if (!own && this.pointsOf(v.id).length >= POINT_MAX) return { ok: false, msg: '最多同時佔領 ' + POINT_MAX + ' 處資源點' };
+      if (own && p.w + p.a >= POINT_UNITS) return { ok: false, msg: '這裡已經有 ' + POINT_UNITS + ' 個人駐守，夠了' };
+      if (!own && holder && v.ally && v.ally === holder.ally) return { ok: false, msg: '這是盟友佔領的地方' };
+      v.units.w -= w; v.units.a -= ar; v.away.w += w; v.away.a += ar;
+      var travel = Math.min(60, 6 + 2.5 * Geo.hexDist(this.map.byId[v.hex], h)) * 1000 / this.speed;
+      this.marches.push({ id: this.id('m'), kind: 'point', from: v.id, to: null, hex: h.id, w: w, a: ar, departAt: now, arriveAt: now + travel, travel: travel, phase: 'out', loot: null });
+      return { ok: true, msg: '隊伍出發了' };
+    },
+    recall: function (v, a, now) {   // 把駐守資源點的人叫回來
+      var p = this.points[a.hex];
+      if (!p || p.owner !== v.id) return { ok: false, msg: '這裡不是你佔領的地方' };
+      var travel = Math.min(60, 6 + 2.5 * Geo.hexDist(this.map.byId[v.hex], this.map.byId[a.hex])) * 1000 / this.speed;
+      this.marches.push({ id: this.id('m'), kind: 'point', from: v.id, to: null, hex: a.hex, w: p.w, a: p.a, departAt: now, arriveAt: now + travel, travel: travel, phase: 'back', loot: null });
+      delete this.points[a.hex];
+      return { ok: true, msg: '駐守的人回來了' };
+    },
+    barter: function (v, a, now) {   // 在中立聚落換別族的特產
+      var st = this.map.settlements.filter(function (s) { return s.id === a.at; })[0], t = Tribes.get(a.want), pay = a.pay;
+      if (!st) return { ok: false, msg: '找不到這個聚落' };
+      if (!t || !t.playable || t.id === v.tribe) return { ok: false, msg: '請選一種別族的特產' };
+      var stock = this.stockOf(st.id), bySp = pay === 'sp', cost = bySp ? SETTLE.give : SETTLE.resCost, gain = bySp ? SETTLE.get : 1, key = bySp ? 'sp:' + v.tribe : pay;
+      if (!bySp && pay !== 'food' && pay !== 'mat') return { ok: false, msg: '請選要拿什麼來換' };
+      if (stock[t.id] < gain) return { ok: false, msg: '聚落裡的' + t.sp.zh + '換完了，過一陣子再來' };
+      if (getRes(v, key) < cost) return { ok: false, msg: resName(key) + '不夠' };
+      addRes(v, key, -cost); addRes(v, 'sp:' + t.id, gain); stock[t.id] -= gain;
+      return { ok: true, msg: '換到 ' + gain + ' 份' + t.sp.zh };
     },
     cmd: function (v, a, now) {   // 對戰中下指令
       var b = this.battles[v.battle];
@@ -510,7 +577,7 @@
       if (now - v.lastGift < 5000) return { ok: false, msg: '稍等一下再送' };
       if (getRes(v, k) < n) return { ok: false, msg: '數量不夠' };
       this.tickVillage(t, now);
-      addRes(v, k, -n); addRes(t, k, n); v.lastGift = now; v.gifts++;
+      addRes(v, k, -n); addRes(t, k, n); v.lastGift = now; v.gifts++; this.relAdd(v.tribe, t.tribe, REL.gift);
       this.log('「' + v.name + '」送給「' + t.name + '」' + n + ' 份' + resName(k) + '。', now, 'gift');
       return { ok: true, msg: '禮物送到了' };
     },
@@ -536,9 +603,11 @@
       var o = this.market[i], s = this.villages[o.from];
       if (o.from === v.id) return { ok: false, msg: '這是你自己掛的交易' };
       if (getRes(v, o.want) < o.wantN) return { ok: false, msg: resName(o.want) + '不夠' };
+      var st = s ? this.relState(v.tribe, s.tribe) : 'neutral', bonus = st === 'friend' ? 1.1 : 1;
+      if (st === 'hostile') return { ok: false, msg: '兩族的關係緊張，暫時不能直接交易' };
       this.market.splice(i, 1);
-      addRes(v, o.want, -o.wantN); addRes(v, o.give, o.giveN);
-      if (s) { this.tickVillage(s, now); addRes(s, o.want, o.wantN); }
+      addRes(v, o.want, -o.wantN); addRes(v, o.give, Math.floor(o.giveN * bonus));   // 兩族友好時，雙方各多拿一成
+      if (s) { this.tickVillage(s, now); addRes(s, o.want, Math.floor(o.wantN * bonus)); this.relAdd(v.tribe, s.tribe, REL.trade); }
       this.log('「' + v.name + '」和「' + (s ? s.name : '遠方部落') + '」完成交易：' + o.giveN + ' ' + resName(o.give) + ' 換 ' + o.wantN + ' ' + resName(o.want) + '。', now, 'trade');
       return { ok: true, msg: '交易完成' };
     },
@@ -557,6 +626,8 @@
       if (v.ally) return { ok: false, msg: '你已經在聯盟裡了' };
       if (!al) return { ok: false, msg: '找不到這個聯盟' };
       if (al.members.length >= 20) return { ok: false, msg: '這個聯盟滿了' };
+      var self = this, seen = {};
+      al.members.forEach(function (m) { var o = self.villages[m]; if (o && !seen[o.tribe]) { seen[o.tribe] = 1; self.relAdd(v.tribe, o.tribe, REL.ally); } });   // 和不同族的部落結盟，兩族關係變好
       al.members.push(v.id); v.ally = al.id;
       this.log('「' + v.name + '」加入了聯盟「' + al.name + '」。', now, 'ally');
       return { ok: true, msg: '加入了' + al.name };
@@ -590,6 +661,7 @@
       return false;
     }
     if (m.phase === 'fight') return true;   // 對戰中，等對戰結束
+    if (m.kind === 'point') return this.resolvePoint(m, v, now);
     var why = !t ? '找不到對方的部落' : now < t.shieldUntil ? '對方正受到保護' : (v.ally && v.ally === t.ally) ? '對方現在是同盟' : t.battle ? '對方正在和別人交戰' : '';
     if (why) {
       this.pushReport(v, { t: now, role: 'atk', other: t ? t.name : '', otherTribe: t ? t.tribe : v.tribe, win: false, broken: 0, note: why + '，隊伍折返。', log: [] });
@@ -604,6 +676,51 @@
     t.units.w = 0; t.units.a = 0;   // 守軍都上場了，打完再回來
     this.battles[b.id] = b; v.battle = b.id; t.battle = b.id; m.phase = 'fight';
     return true;
+  };
+  /* 隊伍抵達野地的資源點。資源點的較量是自動的（一條路、三個階段），不進對戰畫面 */
+  World.prototype.resolvePoint = function (m, v, now) {
+    var h = this.map.byId[m.hex], p = this.points[m.hex], name = POINT[h.wild].zh, self = this;
+    function home(note, win) {
+      self.pushReport(v, { t: now, role: 'atk', point: name, other: note.other || '', otherTribe: note.tribe || v.tribe, win: !!win, broken: 0, note: note.text, log: [] });
+      if (m.w + m.a === 0) return false;
+      m.phase = 'back'; m.departAt = now; m.arriveAt = now + m.travel; return true;
+    }
+    if (!p) {   // 沒有人：趕走野獸就佔領。只派一個人會被野獸趕回來
+      if (m.w + m.a < 2) return home({ text: name + '有野獸出沒，一個人應付不來，折返了。至少要派兩個人。' });
+      if (this.pointsOf(v.id).length >= POINT_MAX) return home({ text: '已經佔了 ' + POINT_MAX + ' 處資源點，隊伍折返。' });
+      this.points[m.hex] = { owner: v.id, w: m.w, a: m.a, since: now };
+      this.pushReport(v, { t: now, role: 'atk', point: name, other: '', otherTribe: v.tribe, win: true, broken: 0, note: '趕走了野獸，佔領了' + name + '，開始有收穫。', log: [] });
+      return false;
+    }
+    if (p.owner === v.id) {   // 增援自己的地方，超過上限的人回家
+      var room = Math.max(0, POINT_UNITS - p.w - p.a), jw = Math.min(m.w, room), ja = Math.min(m.a, room - jw);
+      p.w += jw; p.a += ja; m.w -= jw; m.a -= ja;
+      if (m.w + m.a === 0) return false;
+      m.phase = 'back'; m.departAt = now; m.arriveAt = now + m.travel; return true;
+    }
+    var D = this.villages[p.owner];
+    if (D && v.ally && v.ally === D.ally) return home({ text: '這裡現在是盟友佔領的，隊伍折返。', other: D.name, tribe: D.tribe });
+    if (this.pointsOf(v.id).length >= POINT_MAX) return home({ text: '已經佔了 ' + POINT_MAX + ' 處資源點，隊伍折返。' });
+    var side = function (w, a) { return { w: w, a: a, pool: 0, lostW: 0, lostA: 0 }; }, none = side(0, 0);
+    var b = { phase: 1, wall: 0, towers: 0, lanes: [{ a: side(m.w, m.a), d: side(p.w, p.a), broken: false }, { a: side(0, 0), d: none, broken: true }, { a: side(0, 0), d: none, broken: true }] };
+    var plan = D ? D.def.plan : ['volley', 'hold', 'charge'], ac = ['charge', 'volley', 'charge'];
+    for (var i = 0; i < PHASES && !b.lanes[0].broken && b.lanes[0].a.w + b.lanes[0].a.a > 0; i++) { b.phase = i + 1; fightPhase(b, ac[i], plan[i], this.rng); }
+    var L = b.lanes[0], took = L.broken, lostA = m.w + m.a - L.a.w - L.a.a, lostD = p.w + p.a - L.d.w - L.d.a;
+    v.away.w -= m.w - L.a.w; v.away.a -= m.a - L.a.a; m.w = L.a.w; m.a = L.a.a;
+    if (D) {
+      D.away.w = Math.max(0, D.away.w - (p.w - L.d.w)); D.away.a = Math.max(0, D.away.a - (p.a - L.d.a));
+      this.relAdd(v.tribe, D.tribe, REL.point);
+      this.pushReport(D, { t: now, role: 'def', point: name, other: v.name, otherTribe: v.tribe, win: !took, broken: 0, lost: lostD, log: [],
+        note: took ? '「' + v.name + '」搶走了你佔領的' + name + '，駐守的 ' + lostD + ' 人負傷撤退。' : '守住了' + name + '，擊退「' + v.name + '」。我方 ' + lostD + ' 人負傷撤退。' });
+    }
+    if (took) {
+      this.points[m.hex] = { owner: v.id, w: m.w, a: m.a, since: now };
+      this.pushReport(v, { t: now, role: 'atk', point: name, other: D ? D.name : '', otherTribe: D ? D.tribe : v.tribe, win: true, broken: 0, lost: lostA, log: [], note: '搶下了' + name + '。我方 ' + lostA + ' 人負傷撤退。' });
+      this.log('「' + v.name + '」從「' + (D ? D.name : '別人') + '」手上搶下一處' + name + '。', now, 'battle');
+      return false;
+    }
+    p.w = L.d.w; p.a = L.d.a;
+    return home({ text: '沒能搶下' + name + '。我方 ' + lostA + ' 人負傷撤退。', other: D ? D.name : '', tribe: D ? D.tribe : v.tribe });
   };
   /* 對戰往前推一步：時間到，或雙方都下好指令時呼叫 */
   World.prototype.stepBattle = function (b, now) {
@@ -647,7 +764,8 @@
     }
     if (A) {
       A.battle = null; A.away.w = Math.max(0, A.away.w - (b.start.a.w - left.w)); A.away.a = Math.max(0, A.away.a - (b.start.a.a - left.a));
-      if (win) { A.wins++; A.glory += (broken === 3 ? 15 : 10) + 2 * (D ? centerLevel(D) : 1); } else { A.losses++; A.glory = Math.max(0, A.glory - 2); }
+      if (win) { A.wins++; A.glory += Math.round(((broken === 3 ? 15 : 10) + 2 * (D ? centerLevel(D) : 1)) * (m && m.hostile ? 1.5 : 1)); this.relAdd(b.aTribe, b.dTribe, REL.win); }
+      else { A.losses++; A.glory = Math.max(0, A.glory - 2); }
       this.pushReport(A, { id: b.id, t: now, role: 'atk', other: b.dName, otherTribe: b.dTribe, win: win, broken: broken, loot: loot, lost: lostA, log: b.log });
     }
     var key = b.aTribe + '>' + b.dTribe, st = this.stats[key] = this.stats[key] || { n: 0, win: 0 };   // 後台用：各族對戰的場數與攻方勝場
@@ -706,6 +824,15 @@
     var self = this, id;
     for (id in this.villages) { var v = this.villages[id]; if (v.online || v.bot) this.tickVillage(v, now); }
     this.marches = this.marches.filter(function (m) { return m.arriveAt > now ? true : self.resolveMarch(m, now); });
+    if (now - this.lastRel >= REL.decayMs / this.speed) {   // 族群關係慢慢回到中立
+      this.lastRel = now;
+      for (var rk in this.rel) { this.rel[rk] -= Math.sign(this.rel[rk]); if (!this.rel[rk]) delete this.rel[rk]; }
+    }
+    if (now - this.lastStock >= SETTLE.refillMs / this.speed) {   // 中立聚落補貨
+      this.lastStock = now;
+      for (var sk in this.stock) for (var tk in this.stock[sk]) if (this.stock[sk][tk] < SETTLE.stock) this.stock[sk][tk]++;
+    }
+    if (now - this.lastPop >= 60000) { this.lastPop = now; this.popBonus(); }
     for (id in this.battles) {
       var b = this.battles[id];
       if (b.state === 'done') { if (now - b.doneAt > 20000) delete this.battles[id]; } else this.stepBattle(b, now);
@@ -719,6 +846,16 @@
       this.lastBot = now;
       for (id in this.villages) if (this.villages[id].bot) this.botStep(this.villages[id], now);
     }
+  };
+
+  /* 人數加成：玩家最少的族群產量 +15%，依人數差距遞減，人最多的族群沒有加成 */
+  World.prototype.popBonus = function () {
+    var n = {}, max = 0, id;
+    Tribes.playable().forEach(function (t) { n[t.id] = 0; });
+    for (id in this.villages) if (!this.villages[id].bot) n[this.villages[id].tribe]++;
+    for (id in n) max = Math.max(max, n[id]);
+    for (id in this.villages) { var v = this.villages[id]; v.pb = v.bot || !max ? 0 : +(POP_BONUS * (max - n[v.tribe]) / max).toFixed(3); }
+    return n;
   };
 
   // ---------- 給客戶端的資料 ----------
@@ -758,8 +895,12 @@
     return {
       now: now, speed: this.speed, me: me,
       villages: Object.keys(this.villages).map(function (k) { return self.pub(self.villages[k], now); }),
-      marches: this.marches.map(function (m) { return { id: m.id, from: m.from, to: m.to, departAt: m.departAt, arriveAt: m.arriveAt, phase: m.phase, n: m.w + m.a }; }),
+      marches: this.marches.map(function (m) { return { id: m.id, from: m.from, to: m.to, hex: m.hex || null, departAt: m.departAt, arriveAt: m.arriveAt, phase: m.phase, n: m.w + m.a }; }),
       shieldMs: SHIELD_MS / this.speed,
+      rel: Tribes.playable().filter(function (t) { return t.id !== v.tribe; }).map(function (t) { return { tribe: t.id, value: self.relOf(v.tribe, t.id), state: self.relState(v.tribe, t.id) }; }),
+      points: Object.keys(this.points).map(function (h) { var p = self.points[h], o = self.villages[p.owner], mine = p.owner === id;
+        return { hex: h, owner: p.owner, name: o ? o.name : '', tribe: o ? o.tribe : v.tribe, ally: !!(o && v.ally && o.ally === v.ally), n: mine ? p.w + p.a : (p.w + p.a <= 2 ? 1 : p.w + p.a <= 4 ? 2 : 3), w: mine ? p.w : null, a: mine ? p.a : null }; }),
+      stock: (function () { var o = {}; self.map.settlements.forEach(function (s) { o[s.id] = self.stockOf(s.id); }); return o; })(),
       market: this.market.map(function (o) { return { id: o.id, from: o.from, fromName: (self.villages[o.from] || {}).name || '', give: o.give, giveN: o.giveN, want: o.want, wantN: o.wantN }; }),
       feed: this.feed.slice(-30), alliances: al, battle: bt ? battleView(bt, id) : null
     };
@@ -777,17 +918,18 @@
     });
     for (var k in tribes) tribes[k].avg = tribes[k].players ? Math.round(tribes[k].prosperity / tribes[k].players) : 0;
     return { now: now, speed: this.speed, villages: list, tribes: tribes, marches: this.marches.length, offers: this.market.length,
-      battles: Object.keys(this.battles).filter(function (k) { return self.battles[k].state !== 'done'; }).length, stats: this.stats };
+      battles: Object.keys(this.battles).filter(function (k) { return self.battles[k].state !== 'done'; }).length, stats: this.stats,
+      rel: this.rel, points: Object.keys(this.points).length, alliances: Object.keys(this.alliances).map(function (k) { return { name: self.alliances[k].name, n: self.alliances[k].members.length }; }) };
   };
   World.prototype.toJSON = function () {
     return { villages: this.villages, tokens: this.tokens, marches: this.marches, market: this.market, feed: this.feed, alliances: this.alliances,
-      battles: this.battles, stats: this.stats, seq: this.seq };
+      battles: this.battles, stats: this.stats, rel: this.rel, points: this.points, stock: this.stock, seq: this.seq };
   };
   World.prototype.load = function (d) {
     if (!d || !d.villages) return this;
     this.villages = d.villages; this.tokens = d.tokens || {}; this.marches = d.marches || []; this.market = d.market || [];
     this.feed = d.feed || []; this.alliances = d.alliances || {}; this.seq = d.seq || 1;
-    this.battles = d.battles || {}; this.stats = d.stats || {};
+    this.battles = d.battles || {}; this.stats = d.stats || {}; this.rel = d.rel || {}; this.points = d.points || {}; this.stock = d.stock || {};
     for (var id in this.villages) {
       var v = this.villages[id]; v.online = !!v.bot;
       if (!v.land || v.tiles.length !== TILE_N) { delete this.villages[id]; continue; }   // 舊版的方格部落無法沿用
@@ -803,7 +945,7 @@
     SITES: SITES, CLEAR: CLEAR, clearInfo: clearInfo, TILE_N: TILE_N, CENTER_TILE: CENTER_TILE, TYPES: TYPES, MAX_LEVEL: MAX_LEVEL, UNIT: UNIT,
     CENTER_UP: CENTER_UP, BUILDERS: BUILDERS, FOREIGN_SP: FOREIGN_SP, cost: cost, buildTime: buildTime, limit: limit, count: count,
     resName: resName, derived: derived, popCap: popCap, LANES: LANES, LANE_KEYS: LANE_KEYS, CMDS: CMDS, PHASES: PHASES, LOOT_FRAC: LOOT_FRAC,
-    split: split, taken: taken, fightPhase: fightPhase, armyCap: armyCap
+    split: split, taken: taken, fightPhase: fightPhase, armyCap: armyCap, REL: REL, POINT: POINT, POINT_MAX: POINT_MAX, POINT_UNITS: POINT_UNITS, SETTLE: SETTLE, POP_BONUS: POP_BONUS
   };
   return World;
 });

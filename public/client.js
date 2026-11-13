@@ -6,7 +6,7 @@
   var LANE_NAMES = { even: '平均', gate: '正門', path: '山徑', valley: '溪谷' }, GUARD = ['沒有', '少', '中等', '多'];
   var CMD_TIP = { charge: '勇士攻擊大增。剋重整，怕掩護射擊', volley: '弓手攻擊大增。剋衝鋒，對重整效果差', hold: '減少損失、讓負傷的人歸隊。剋掩護射擊，怕衝鋒' };
   var JOBS = ['food', 'mat', 'special'], WILD = { fish: '漁場', hunt: '獵場', wood: '林地' };
-  var S = { me: null, pubs: [], tab: 'build', zone: null, selTile: null, visit: null, needCode: false, battle: null, marches: [], attack: null, report: null, closed: null, form: { owner: '', name: '', code: '' }, mode: '', online: false, resetAt: 0, joining: false };
+  var S = { me: null, pubs: [], tab: 'build', zone: null, selTile: null, visit: null, needCode: false, battle: null, marches: [], attack: null, report: null, closed: null, gift: null, rel: [], points: [], stock: {}, market: [], feed: [], alliances: {}, form: { owner: '', name: '', code: '', ally: '', give: 'food', giveN: '10', want: 'mat', wantN: '10' }, mode: '', online: false, resetAt: 0, joining: false };
   var el = {}, MV = null, VV = null;
 
   // ---------- 小工具 ----------
@@ -104,6 +104,7 @@
     Net.on('hello', function (h) { S.pubs = h.villages || S.pubs; if (h.needCode != null) S.needCode = !!h.needCode; if (h.reset) { S.me = null; S.zone = null; S.selTile = null; S.visit = null; S.tab = 'build'; el.vobjs._sig = null; } render(); });
     Net.on('state', function (st) {
       S.me = st.me; S.pubs = st.villages; S.marches = st.marches || [];
+      S.rel = st.rel || []; S.points = st.points || []; S.stock = st.stock || {}; S.market = st.market || []; S.feed = st.feed || []; S.alliances = st.alliances || {};
       if (st.battle) {                                                       // 對戰結束後伺服器不再傳，畫面保留結果到玩家關掉為止
         var old = S.battle && S.battle.id === st.battle.id ? S.battle : null;
         if (old && st.battle.log.length > old.log.length) S.bprev = { id: old.id, n: st.battle.log.length, lanes: old.lanes };   // 記住開打前的人數，用來演出誰退場
@@ -118,7 +119,7 @@
 
   // ---------- 世界地圖 ----------
   function mapTap(x, y, u) {
-    var best = null, bd = 16 * u;
+    var best = null, bd = 9 * u;   // 點得很靠近部落的記號才算點到部落，不然附近的野地會點不到
     S.pubs.forEach(function (v) { var d = Math.hypot(v.pos[0] - x, v.pos[1] - y); if (d < bd) { bd = d; best = v; } });
     var h = best ? G.byId[best.hex] : Geo.nearestHex(x, y, Geo.HEX_SIZE * 1.15);
     S.zone = h ? h.id : null;
@@ -134,8 +135,12 @@
       s += '<path class="sett" d="M' + st.x + ' ' + (st.y - r) + 'L' + (st.x + r) + ' ' + st.y + 'L' + st.x + ' ' + (st.y + r) + 'L' + (st.x - r) + ' ' + st.y + 'Z" style="stroke-width:' + (1.4 * u).toFixed(3) + '"/>';
     });
     var byId = {}; S.pubs.forEach(function (v) { byId[v.id] = v; });
+    S.points.forEach(function (p) {   // 被佔領的資源點：插一面佔領者族群顏色的小旗
+      var h = G.byId[p.hex], mine = S.me && p.owner === S.me.id, c = Tribes.get(p.tribe).color;
+      s += '<g class="pflag' + (mine ? ' me' : '') + '"><path d="M' + h.x + ' ' + (h.y + 3 * u) + 'v' + (-11 * u).toFixed(3) + '" style="stroke-width:' + (1.4 * u).toFixed(3) + '"/><path d="M' + h.x + ' ' + (h.y - 8 * u).toFixed(3) + 'l' + (7 * u).toFixed(3) + ' ' + (2.5 * u).toFixed(3) + 'l' + (-7 * u).toFixed(3) + ' ' + (2.5 * u).toFixed(3) + 'z" fill="' + c + '" style="stroke-width:' + (0.8 * u).toFixed(3) + '"/></g>';
+    });
     S.marches.forEach(function (m) {   // 出征中的隊伍：一條線加一個移動的點
-      var a = byId[m.from], b = byId[m.to]; if (!a || !b) return;
+      var a = byId[m.from], b = m.hex ? { pos: [G.byId[m.hex].x, G.byId[m.hex].y] } : byId[m.to]; if (!a || !b) return;
       var f = m.phase === 'fight' ? 1 : Math.max(0, Math.min(1, (Date.now() - m.departAt) / Math.max(1, m.arriveAt - m.departAt)));
       if (m.phase === 'back') f = 1 - f;
       var x = a.pos[0] + (b.pos[0] - a.pos[0]) * f, y = a.pos[1] + (b.pos[1] - a.pos[1]) * f;
@@ -144,7 +149,7 @@
     });
     S.pubs.forEach(function (v) {
       var mine = S.me && v.id === S.me.id, t = Tribes.get(v.tribe), r = (mine ? 6.5 : MV.k < 1.9 ? 3 : 4.2) * u;
-      s += '<g class="vm' + (mine ? ' me' : '') + '"><circle cx="' + v.pos[0] + '" cy="' + v.pos[1] + '" r="' + r.toFixed(3) + '" fill="' + t.color + '" style="stroke-width:' + ((mine ? 2.4 : 1.4) * u).toFixed(3) + '"/>' +
+      s += '<g class="vm' + (mine ? ' me' : S.me && S.me.ally && v.ally === S.me.ally ? ' ally' : '') + '"><circle cx="' + v.pos[0] + '" cy="' + v.pos[1] + '" r="' + r.toFixed(3) + '" fill="' + t.color + '" style="stroke-width:' + ((mine ? 2.4 : 1.4) * u).toFixed(3) + '"/>' +
         '<text x="' + v.pos[0] + '" y="' + (v.pos[1] + r + 10 * u).toFixed(2) + '" style="font-size:' + (10 * u).toFixed(3) + 'px;stroke-width:' + (2.6 * u).toFixed(3) + '">' + esc(v.name) + '</text></g>';
     });
     setHTML(el.mmarks, s);
@@ -244,12 +249,14 @@
     } else if (b.level >= R.MAX_LEVEL) h += '<p class="muted">已經是最高等級。</p>';
     else {
       var to = b.level + 1, c = R.cost(b.type, to), sp = 0, why = '';
-      if (b.type === 'center') sp = R.CENTER_UP[to].each * R.CENTER_UP[to].kinds;
-      else if (to > me.d.center) why = '要先把' + t.b.center.zh + '升到等級 ' + to;
+      var need = b.type === 'center' ? R.CENTER_UP[to] : null, kinds = need && need.kinds ? Object.keys(me.sp).filter(function (k2) { return k2 !== me.tribe && me.sp[k2] >= need.each; }).length : 0;
+      if (b.type !== 'center' && to > me.d.center) why = '要先把' + t.b.center.zh + '升到等級 ' + to;
       if (!why && full) why = '同時只能進行 ' + R.BUILDERS + ' 項工程';
-      if (!why && !affordable(me, c, sp)) why = '物資還不夠';
+      if (!why && !affordable(me, c, 0)) why = '物資還不夠';
+      if (!why && need && kinds < need.kinds) why = '還缺別族的特產（目前有 ' + kinds + ' 種夠數）';
       h += '<p class="eff next">升級後：' + effect(b.type, to, t) + '</p>' +
-        '<div class="act"><button class="btn" data-act="upgrade" data-tile="' + i + '"' + (why ? ' disabled' : '') + '>升到等級 ' + to + '</button>' + costHTML(me, c, sp) + '<span class="time">' + dur(R.buildTime(b.type, to)) + '</span></div>' +
+        '<div class="act"><button class="btn" data-act="upgrade" data-tile="' + i + '"' + (why ? ' disabled' : '') + '>升到等級 ' + to + '</button>' + costHTML(me, c, 0) + '<span class="time">' + dur(R.buildTime(b.type, to)) + '</span></div>' +
+        (need && need.kinds ? '<p class="spneed">另外要 <b>' + need.kinds + ' 種別族的特產</b>，每種 ' + need.each + ' 份。可以從市集、中立聚落、送禮或出征取得。</p>' : '') +
         (why ? '<p class="why">' + why + '</p>' : '');
     }
     return h + '<p class="note">' + esc(t.b[b.type].note) + '</p></section>';
@@ -330,15 +337,15 @@
     if (!S.zone) return '<p class="hint">拖曳可以移動地圖，用兩指或右下角的按鈕縮放。點地圖上的任何地方，看看那裡是誰的區域。</p>';
     var z = G.byId[S.zone], h = '';
     if (z.tribe) h += tribeCard(Tribes.get(z.tribe), (G.regions[z.tribe] || []).length);
-    else if (z.settlement) h += '<section class="card"><h3>' + G.settlements.filter(function (s) { return s.id === z.settlement; })[0].name + '<span class="chipst">中立</span></h3><p>平原上的中立聚落。之後可以在這裡交換各族的特產。這裡不能落腳，也不會有衝突。</p></section>';
-    else h += '<section class="card"><h3>野地 · ' + WILD[z.wild] + '<span class="chipst">之後開放</span></h3><p>沒有人居住的野地。之後各部落可以派人佔領這裡的資源點。</p></section>';
+    else if (z.settlement) h += settlementCard(z);
+    else h += pointCard(z);
     var here = S.pubs.filter(function (v) { return v.hex === z.id; });
     if (here.length) {
       h += '<section class="card"><h3>這裡的部落<span class="lv">' + here.length + '/' + Geo.SLOTS + '</span></h3>';
       here.forEach(function (v) {
         var mine = S.me && v.id === S.me.id;
         h += '<div class="vrow"><div><b>' + esc(v.name) + '</b>' + (mine ? '（你）' : v.bot ? '（示範）' : v.online ? '（在線上）' : '') + '<span class="muted">等級 ' + v.c + ' · 繁榮 ' + v.pros + '</span></div>' +
-          (S.me ? '<span class="vbtns">' + (mine ? '' : '<button class="btn sm" data-act="atk-open" data-id="' + v.id + '">出征</button>') +
+          (S.me ? '<span class="vbtns">' + (mine ? '' : (S.me.ally && v.ally === S.me.ally ? '<span class="allytag">盟友</span>' : '<button class="btn sm" data-act="atk-open" data-id="' + v.id + '">出征</button>') + '<button class="btn sm ghost" data-act="gift-open" data-id="' + v.id + '">送禮</button>') +
             '<button class="btn sm ghost" data-act="' + (mine ? 'tab" data-tab="build' : 'visit" data-id="' + v.id) + '">' + (mine ? '回部落' : '拜訪') + '</button></span>' : '') + '</div>';
       });
       h += '</section>';
@@ -416,13 +423,15 @@
     h += '<section class="card"><h3>戰報<span class="lv">戰功 ' + me.glory + '</span></h3>';
     if (!me.reports.length) h += '<p class="muted">還沒有交戰紀錄。到「地圖」分頁點別人的部落，就可以出征。</p>';
     me.reports.forEach(function (r) {
-      h += '<button class="rrow" data-act="rep-open" data-id="' + r.id + '"><span class="tag ' + (r.win ? 'win' : 'lose') + '">' + (r.win ? '勝' : '敗') + '</span><span>' + (r.role === 'atk' ? '出征' : '防守') + '「' + esc(r.other) + '」</span><b>' + (r.note ? '折返' : '攻破 ' + r.broken + ' 路') + '</b></button>';
+      h += '<button class="rrow" data-act="rep-open" data-id="' + r.id + '"><span class="tag ' + (r.win ? 'win' : 'lose') + '">' + (r.win ? '勝' : '敗') + '</span><span>' + (r.point ? r.point + (r.other ? '・' + esc(r.other) : '') : (r.role === 'atk' ? '出征' : '防守') + '「' + esc(r.other) + '」') + '</span><b>' + (r.point ? '資源點' : r.note ? '折返' : '攻破 ' + r.broken + ' 路') + '</b></button>';
     });
     return h + '</section>';
   }
   function lootText(loot) { var a = []; for (var k in loot || {}) a.push(R.resName(k) + ' ' + loot[k]); return a.join('、'); }
   function attackModal(me) {
-    var A = S.attack, v = S.pubs.filter(function (x) { return x.id === A.id; })[0];
+    var A = S.attack;
+    if (A.hex) return pointModal(me, A);
+    var v = S.pubs.filter(function (x) { return x.id === A.id; })[0];
     if (!v) { S.attack = null; return ''; }
     var t = Tribes.get(v.tribe), safe = v.safe > Date.now(), d = Geo.hexDist(G.byId[me.hex], G.byId[v.hex]), secs = Math.min(60, 6 + 2.5 * d);
     var why = safe ? '對方正受到保護' : me.battle ? '你的部落正在交戰' : S.marches.some(function (m) { return m.from === me.id; }) ? '已經有一支隊伍在外面了' : A.w + A.a < 1 ? '至少要派出一個人' : (!v.bot && me.d.center - v.c > 1) ? '對方規模比你小太多，不能出征' : '';
@@ -490,6 +499,7 @@
     else if (a === 'atk-n') { var u = b.getAttribute('data-u'); A[u] = Math.max(0, Math.min(me.units[u], A[u] + +b.getAttribute('data-d'))); render(); }
     else if (a === 'atk-all') { var u2 = b.getAttribute('data-u'); A[u2] = me.units[u2]; render(); }
     else if (a === 'atk-lanes') { A.lanes = b.getAttribute('data-v'); render(); }
+    else if (a === 'atk-go' && A.hex) Net.act({ type: 'occupy', hex: A.hex, w: Math.min(A.w, me.units.w), a: Math.min(A.a, me.units.a) }, function (r) { if (!r.ok) return toast(r.msg, true); S.attack = null; toast('隊伍出發了'); render(); });
     else if (a === 'atk-go') Net.act({ type: 'attack', to: A.id, w: Math.min(A.w, me.units.w), a: Math.min(A.a, me.units.a), lanes: A.lanes }, function (r) { if (!r.ok) return toast(r.msg, true); S.attack = null; S.tab = 'army'; toast('隊伍出發了'); render(); });
     else if (a === 'cmd') act({ type: 'cmd', c: b.getAttribute('data-c') });
     else if (a === 'battle-close') { S.closed = S.battle.id; S.battle = null; S.tab = 'army'; render(); }
@@ -508,16 +518,141 @@
       '<button class="btn sm" data-act="t-bots">讓示範部落有守軍和物資（各加 6 人）</button></div></section>' +
       '<section class="card"><h3>重新開始</h3><p class="muted">清除單機存檔，回到選區域的畫面。</p><button class="btn ghost" data-act="reset">' + (Date.now() < S.resetAt ? '再按一次，確定重新開始' : '重新開始') + '</button></section>';
   }
+  // ---------- 交流：聯盟、市集、族群關係、資源點、中立聚落、送禮 ----------
+  function spList(me) {   // 手上所有的特產
+    var a = []; Tribes.playable().forEach(function (t) { var n = n0(me.sp[t.id]); if (n > 0 || t.id === me.tribe) a.push('<span class="spi"><i class="dot" style="background:' + t.color + '"></i>' + t.sp.zh + ' ' + n + '</span>'); });
+    return a.join('');
+  }
+  function resOptions(me, cur, mineOnly) {
+    var keys = ['food', 'mat'].concat(Tribes.playable().map(function (t) { return 'sp:' + t.id; }));
+    return keys.filter(function (k) { return !mineOnly || k === 'food' || k === 'mat' || n0(me.sp[k.slice(3)]) > 0; })
+      .map(function (k) { return '<option value="' + k + '"' + (k === cur ? ' selected' : '') + '>' + R.resName(k) + '</option>'; }).join('');
+  }
+  function have(me, k) { return n0(k === 'food' || k === 'mat' ? me.res[k] : me.sp[k.slice(3)]); }
+  function socialPanel(me) {
+    var t = myTribe(), h = '', al = me.ally && S.alliances[me.ally], REL = R.REL;
+    // 聯盟
+    h += '<section class="card"><h3>聯盟<span class="lv">' + (al ? al.n + ' 個部落' : '還沒加入') + '</span></h3>';
+    if (al) {
+      h += '<p>你在「<b>' + esc(al.name) + '</b>」。同盟之間不能互相出征。</p>';
+      S.pubs.filter(function (v) { return v.ally === me.ally; }).forEach(function (v) { var vt = Tribes.get(v.tribe); h += '<div class="qrow"><span><i class="dot" style="background:' + vt.color + '"></i> ' + esc(v.name) + (v.id === me.id ? '（你）' : '') + '</span><b>' + vt.zh + '</b></div>'; });
+      h += '<button class="btn sm ghost" data-act="ally-leave">退出聯盟</button>';
+    } else {
+      h += '<p class="muted">加入聯盟後，同盟不能互相出征。和不同族的部落結盟，兩族的關係會變好。</p><div class="inrow"><input id="f-ally" maxlength="8" autocomplete="off" placeholder="聯盟名稱（2 到 8 個字）" aria-label="聯盟名稱"><button class="btn sm" data-act="ally-create">發起</button></div>';
+      Object.keys(S.alliances).forEach(function (k) { var x = S.alliances[k]; h += '<div class="vrow"><div><b>' + esc(x.name) + '</b><span class="muted">' + x.n + ' 個部落</span></div><button class="btn sm ghost" data-act="ally-join" data-id="' + k + '">加入</button></div>'; });
+    }
+    h += '</section>';
+    // 市集
+    h += '<section class="card"><h3>市集<span class="lv">' + S.market.length + ' 筆</span></h3><div class="splist">' + spList(me) + '</div>';
+    if (!S.market.length) h += '<p class="muted">目前沒有人掛單。可以自己掛一筆，或到地圖上的中立聚落換特產。</p>';
+    S.market.forEach(function (o) {
+      var mine = o.from === me.id, seller = S.pubs.filter(function (v) { return v.id === o.from; })[0], st = seller && !mine ? (S.rel.filter(function (r) { return r.tribe === seller.tribe; })[0] || {}).state : '';
+      var why = mine ? '' : st === 'hostile' ? '兩族關係緊張' : have(me, o.want) < o.wantN ? R.resName(o.want) + '不夠' : '';
+      h += '<div class="offer"><div><b>' + o.giveN + ' ' + R.resName(o.give) + '</b> 換你的 <b>' + o.wantN + ' ' + R.resName(o.want) + '</b><span class="muted">' + esc(o.fromName) + (mine ? '（你掛的）' : st === 'friend' ? ' · 友好，雙方多拿一成' : '') + (why ? ' · ' + why : '') + '</span></div>' +
+        (mine ? '<button class="btn sm ghost" data-act="offer-cancel" data-id="' + o.id + '">取消</button>' : '<button class="btn sm" data-act="offer-accept" data-id="' + o.id + '"' + (why ? ' disabled' : '') + '>交換</button>') + '</div>';
+    });
+    h += '<p class="label">掛一筆交易</p><div class="oform"><span>我出</span><input id="o-giveN" type="number" min="1" max="500" inputmode="numeric" aria-label="我出的數量"><select id="o-give" aria-label="我出的物資">' + resOptions(me, S.form.give, true) + '</select>' +
+      '<span>想換</span><input id="o-wantN" type="number" min="1" max="500" inputmode="numeric" aria-label="想換的數量"><select id="o-want" aria-label="想換的物資">' + resOptions(me, S.form.want) + '</select></div>' +
+      '<button class="btn sm" data-act="offer-post">掛到市集</button><p class="muted">掛單時先扣下你出的物資，10 分鐘沒人換就退回來。最多同時掛三筆。</p></section>';
+    // 族群關係
+    h += '<section class="card"><h3>族群關係<span class="lv">' + t.zh + '與各族</span></h3>';
+    S.rel.forEach(function (r) {
+      var o = Tribes.get(r.tribe), pct = 50 + r.value / 2, label = r.state === 'friend' ? '友好' : r.state === 'hostile' ? '敵對' : '中立';
+      h += '<div class="relrow"><span><i class="dot" style="background:' + o.color + '"></i> ' + o.zh + '</span><div class="relbar" role="img" aria-label="關係值 ' + r.value + '"><i style="left:' + pct.toFixed(1) + '%"></i></div><b class="' + r.state + '">' + label + '</b></div>';
+    });
+    h += '<p class="muted">交易、送禮、結盟會讓兩族的關係變好；出征和搶資源點會變差；放著會慢慢回到中立。友好時在市集交換雙方多拿一成；敵對時不能在市集直接交換，但出征對方的戰功多五成。這是所有玩家一起累積的。</p>' +
+      (me.pb > 0 ? '<p class="eff next">' + t.zh + '的玩家比較少，產量加 ' + Math.round(me.pb * 100) + '%。</p>' : '') + '</section>';
+    // 最近的消息
+    h += '<section class="card"><h3>最近的消息</h3>';
+    if (!S.feed.length) h += '<p class="muted">還沒有消息。</p>';
+    S.feed.slice(-8).reverse().forEach(function (f) { h += '<p class="feed">' + esc(f.text) + '</p>'; });
+    return h + '</section>';
+  }
+  function restoreSocial() {
+    [['f-ally', 'ally'], ['o-giveN', 'giveN'], ['o-wantN', 'wantN']].forEach(function (p) { var x = document.getElementById(p[0]); if (x) x.value = S.form[p[1]]; });
+  }
+  function pointCard(z) {
+    var me = S.me, kind = R.POINT[z.wild], p = S.points.filter(function (x) { return x.hex === z.id; })[0], per = Math.round(kind.rate * 60 * 10) / 10;
+    var h = '<section class="card"><h3>野地 · ' + kind.zh + '<span class="chipst' + (p ? '' : ' on') + '">' + (p ? '有人佔領' : '沒有人') + '</span></h3>' +
+      '<p>佔領後持續產出' + (kind.key === 'food' ? '糧食' : '建材') + '：每位駐守的人每分鐘 ' + per + '，最多算 ' + R.POINT_UNITS + ' 人。別的部落可以派人來搶。</p>';
+    if (!me) return h + '</section>';
+    var mineN = S.points.filter(function (x) { return x.owner === me.id; }).length, busy = S.marches.some(function (m) { return m.from === me.id; });
+    if (p && p.owner === me.id) h += '<p class="eff next">你佔領中：' + R.UNIT.w.zh + ' ' + p.w + '、' + R.UNIT.a.zh + ' ' + p.a + '，每分鐘約 +' + Math.round(kind.rate * 60 * Math.min(R.POINT_UNITS, p.n)) + '。</p>' +
+      '<div class="act"><button class="btn sm" data-act="pt-open" data-hex="' + z.id + '"' + (p.n >= R.POINT_UNITS || busy ? ' disabled' : '') + '>增援</button><button class="btn sm ghost" data-act="pt-recall" data-hex="' + z.id + '">把人叫回來</button></div>';
+    else {
+      var why = p && p.ally ? '這是盟友佔領的地方' : mineN >= R.POINT_MAX ? '你已經佔了 ' + R.POINT_MAX + ' 處，要先放掉一處' : busy ? '已經有一支隊伍在外面了' : me.units.w + me.units.a < 1 ? '部落裡沒有戰士可以派' : '';
+      if (p) { var o = Tribes.get(p.tribe); h += '<p><i class="dot" style="background:' + o.color + '"></i> 「' + esc(p.name) + '」佔領中，駐守的人' + GUARD[p.n] + '。</p>'; }
+      else h += '<p class="muted">現在沒有人佔領，有野獸出沒，至少要派兩個人。</p>';
+      h += '<div class="act"><button class="btn sm" data-act="pt-open" data-hex="' + z.id + '"' + (why ? ' disabled' : '') + '>' + (p ? '派人去搶' : '派人佔領') + '</button></div>' + (why ? '<p class="why">' + why + '</p>' : '');
+    }
+    return h + '<p class="muted">一個部落最多同時佔 ' + R.POINT_MAX + ' 處（你現在 ' + mineN + ' 處）。駐守的人算在戰士名額裡。</p></section>';
+  }
+  function pointModal(me, A) {
+    var z = G.byId[A.hex], kind = R.POINT[z.wild], p = S.points.filter(function (x) { return x.hex === z.id; })[0], own = p && p.owner === me.id;
+    var secs = Math.min(60, 6 + 2.5 * Geo.hexDist(G.byId[me.hex], z)), why = A.w + A.a < 1 ? '至少要派出一個人' : !p && A.w + A.a < 2 ? '有野獸出沒，至少要派兩個人' : '';
+    function step(u, label, haveN) {
+      return '<div class="job"><span class="jn">' + label + '</span><div class="stepper"><button data-act="atk-n" data-u="' + u + '" data-d="-1"' + (A[u] <= 0 ? ' disabled' : '') + ' aria-label="少派一位' + label + '">−</button><b>' + A[u] + '/' + haveN + '</b>' +
+        '<button data-act="atk-n" data-u="' + u + '" data-d="1"' + (A[u] >= haveN ? ' disabled' : '') + ' aria-label="多派一位' + label + '">＋</button></div><button class="btn sm ghost" data-act="atk-all" data-u="' + u + '">全部</button></div>';
+    }
+    return '<div class="veil"><div class="sheet wide" role="dialog" aria-label="派人到資源點"><h2>' + (own ? '增援' : p ? '搶奪' : '佔領') + kind.zh + '</h2><p class="muted">路程約 ' + Math.round(secs) + ' 秒。' +
+      (own ? '這裡已有 ' + p.n + ' 人，最多 ' + R.POINT_UNITS + ' 人，多派的會自己回來。' : p ? '「' + esc(p.name) + '」佔領中，駐守的人' + GUARD[p.n] + '。到了會自動較量，不用下指令。' : '沒有人佔領，趕走野獸就是你的。') + '</p>' +
+      '<p class="label">派多少人</p>' + step('w', R.UNIT.w.zh, me.units.w) + step('a', R.UNIT.a.zh, me.units.a) + (why ? '<p class="why">' + why + '</p>' : '') +
+      '<div class="act two"><button class="btn ghost" data-act="atk-cancel">取消</button><button class="btn" data-act="atk-go"' + (why ? ' disabled' : '') + '>出發</button></div></div></div>';
+  }
+  function settlementCard(z) {
+    var me = S.me, st = G.settlements.filter(function (s) { return s.id === z.settlement; })[0], stock = S.stock[st.id] || {}, SE = R.SETTLE;
+    var h = '<section class="card"><h3>' + st.name + '<span class="chipst">中立</span></h3><p>平原上的中立聚落，可以在這裡換到別族的特產。這裡不能落腳，也不會有衝突。</p>';
+    if (!me) return h + '</section>';
+    var t = myTribe(), own = n0(me.sp[me.tribe]);
+    Tribes.playable().forEach(function (o) {
+      if (o.id === me.tribe) return;
+      var left = stock[o.id] == null ? SE.stock : stock[o.id];
+      h += '<div class="barter"><div><b><i class="dot" style="background:' + o.color + '"></i> ' + o.sp.zh + '</b><span class="muted">' + o.zh + ' · 存量 ' + left + ' · 你有 ' + n0(me.sp[o.id]) + '</span></div><div class="bbtns">' +
+        '<button class="btn sm" data-act="barter" data-at="' + st.id + '" data-want="' + o.id + '" data-pay="sp"' + (own < SE.give || left < SE.get ? ' disabled' : '') + '>' + SE.give + ' ' + t.sp.zh + ' 換 ' + SE.get + '</button>' +
+        '<button class="btn sm ghost" data-act="barter" data-at="' + st.id + '" data-want="' + o.id + '" data-pay="food"' + (me.res.food < SE.resCost || left < 1 ? ' disabled' : '') + '>' + SE.resCost + ' 糧食 換 1</button>' +
+        '<button class="btn sm ghost" data-act="barter" data-at="' + st.id + '" data-want="' + o.id + '" data-pay="mat"' + (me.res.mat < SE.resCost || left < 1 ? ' disabled' : '') + '>' + SE.resCost + ' 建材 換 1</button></div></div>';
+    });
+    return h + '<p class="muted">你有 ' + own + ' 份' + t.sp.zh + '。聚落的存量換完會慢慢補回來。跟玩家在市集交換通常比較划算。</p></section>';
+  }
+  function giftModal(me) {
+    var g = S.gift, v = S.pubs.filter(function (x) { return x.id === g.id; })[0];
+    if (!v) { S.gift = null; return ''; }
+    var max = Math.min(100, have(me, g.key)); g.n = Math.max(0, Math.min(max, g.n));
+    return '<div class="veil"><div class="sheet wide" role="dialog" aria-label="送禮"><h2>送禮給「' + esc(v.name) + '」</h2><p class="muted">一次最多送 100 份。送給別族的部落，兩族的關係會變好。</p>' +
+      '<p class="label">送什麼</p><select id="g-key" aria-label="要送的物資">' + resOptions(me, g.key, true) + '</select>' +
+      '<div class="job"><span class="jn">數量（你有 ' + have(me, g.key) + '）</span><div class="stepper"><button data-act="gift-n" data-d="-10"' + (g.n <= 0 ? ' disabled' : '') + ' aria-label="少送 10 份">−</button><b>' + g.n + '</b><button data-act="gift-n" data-d="10"' + (g.n >= max ? ' disabled' : '') + ' aria-label="多送 10 份">＋</button></div></div>' +
+      '<div class="act two"><button class="btn ghost" data-act="gift-cancel">取消</button><button class="btn" data-act="gift-go"' + (g.n < 1 ? ' disabled' : '') + '>送出</button></div></div></div>';
+  }
+  function socialClick(a, b, me) {
+    var id = b.getAttribute('data-id');
+    if (a === 'ally-create') Net.act({ type: 'allyCreate', name: S.form.ally }, function (r) { toast(r.msg, !r.ok); if (r.ok) S.form.ally = ''; render(); });
+    else if (a === 'ally-join') act({ type: 'allyJoin', id: id });
+    else if (a === 'ally-leave') act({ type: 'allyLeave' });
+    else if (a === 'offer-post') Net.act({ type: 'offer', give: S.form.give, giveN: +S.form.giveN, want: S.form.want, wantN: +S.form.wantN }, function (r) { toast(r.msg, !r.ok); render(); });
+    else if (a === 'offer-accept') act({ type: 'accept', id: id });
+    else if (a === 'offer-cancel') act({ type: 'cancel', id: id });
+    else if (a === 'pt-open') { S.attack = { hex: b.getAttribute('data-hex'), w: Math.min(me.units.w, R.POINT_UNITS), a: Math.max(0, Math.min(me.units.a, R.POINT_UNITS - me.units.w)), lanes: 'even' }; render(); }
+    else if (a === 'pt-recall') act({ type: 'recall', hex: b.getAttribute('data-hex') });
+    else if (a === 'barter') act({ type: 'barter', at: b.getAttribute('data-at'), want: b.getAttribute('data-want'), pay: b.getAttribute('data-pay') });
+    else if (a === 'gift-open') { S.gift = { id: id, key: 'food', n: Math.min(20, have(me, 'food')) }; render(); }
+    else if (a === 'gift-cancel') { S.gift = null; render(); }
+    else if (a === 'gift-n') { S.gift.n += +b.getAttribute('data-d'); render(); }
+    else if (a === 'gift-go') Net.act({ type: 'gift', to: S.gift.id, key: S.gift.key, n: S.gift.n }, function (r) { toast(r.msg, !r.ok); if (r.ok) S.gift = null; render(); });
+    else return false;
+    return true;
+  }
   function renderPanel() {
     var me = S.me;
     if (!me) { setHTML(el.tabs, ''); el.tabs.hidden = true; if (setHTML(el.pbody, startPanel())) restoreForm(); return; }
     if (S.visit) { el.tabs.hidden = true; setHTML(el.pbody, visitPanel()); return; }
     el.tabs.hidden = false;
-    setHTML(el.tabs, [['build', '部落'], ['army', '軍事'], ['map', '地圖'], ['codex', '圖鑑']].concat(Net.testing() ? [['test', '測試']] : []).map(function (t) {
+    setHTML(el.tabs, [['build', '部落'], ['army', '軍事'], ['social', '交流'], ['map', '地圖'], ['codex', '圖鑑']].concat(Net.testing() ? [['test', '測試']] : []).map(function (t) {
       return '<button data-act="tab" data-tab="' + t[0] + '" aria-pressed="' + (S.tab === t[0]) + '">' + t[1] + '</button>';
     }).join(''));
+    var act0 = document.activeElement;   // 正在打字或選選單時不要重畫，免得輸入到一半被打斷
+    if (act0 && el.pbody.contains(act0) && /^(INPUT|SELECT)$/.test(act0.tagName) && act0.type !== 'checkbox') return;
     var keep = el.pbody.scrollTop;
-    if (setHTML(el.pbody, S.tab === 'build' ? buildPanel(me) : S.tab === 'army' ? armyPanel(me) : S.tab === 'map' ? zonePanel() : S.tab === 'test' ? testPanel(me) : codexPanel(me))) { el.pbody.scrollTop = keep; tickTimers(); }
+    if (setHTML(el.pbody, S.tab === 'build' ? buildPanel(me) : S.tab === 'army' ? armyPanel(me) : S.tab === 'social' ? socialPanel(me) : S.tab === 'map' ? zonePanel() : S.tab === 'test' ? testPanel(me) : codexPanel(me))) { el.pbody.scrollTop = keep; tickTimers(); restoreSocial(); }
   }
   function restoreForm() {
     var a = document.getElementById('f-owner'), b = document.getElementById('f-name'), c = document.getElementById('f-code');
@@ -533,7 +668,7 @@
     if (el.scene.getAttribute('data-scene') !== sc) { el.scene.setAttribute('data-scene', sc); if (sc === 'map') MV.resize(); else VV.resize(); }
     if (sc === 'map' && !MV.sized) MV.resize();
     renderHud(); renderTools(); renderPanel();
-    if (setHTML(el.modal, !S.me ? '' : S.battle && S.closed !== S.battle.id ? battleModal(S.me, S.battle) : S.attack ? attackModal(S.me) : S.report ? battleReport(S.me) : S.visit ? '' : reportModal(S.me))) tickTimers();
+    if (setHTML(el.modal, !S.me ? '' : S.battle && S.closed !== S.battle.id ? battleModal(S.me, S.battle) : S.attack ? attackModal(S.me) : S.gift ? giftModal(S.me) : S.report ? battleReport(S.me) : S.visit ? '' : reportModal(S.me))) tickTimers();
     if (sc === 'village') renderVillage(); else renderMarks();
   }
 
@@ -543,9 +678,17 @@
     if (e.target.id === 'f-owner') S.form.owner = e.target.value;
     else if (e.target.id === 'f-name') S.form.name = e.target.value;
     else if (e.target.id === 'f-code') S.form.code = e.target.value;
+    else if (e.target.id === 'f-ally') S.form.ally = e.target.value;
+    else if (e.target.id === 'o-give') S.form.give = e.target.value;
+    else if (e.target.id === 'o-giveN') S.form.giveN = e.target.value;
+    else if (e.target.id === 'o-want') S.form.want = e.target.value;
+    else if (e.target.id === 'o-wantN') S.form.wantN = e.target.value;
+    else if (e.target.id === 'g-key' && S.gift) { S.gift.key = e.target.value; render(); }
   }
   function onClick(e) {
     var b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
+    var foc = document.activeElement;   // 按了按鈕就離開輸入框，面板才會照新的狀態重畫（手機上按鈕不一定會搶走焦點）
+    if (foc && foc !== b && /^(INPUT|SELECT)$/.test(foc.tagName) && foc.type !== 'checkbox') foc.blur();
     var a = b.getAttribute('data-act'), me = S.me, tile = +b.getAttribute('data-tile');
     if (a === 'tab') {
       S.visit = null; S.tab = b.getAttribute('data-tab'); render();
@@ -580,7 +723,7 @@
     else if (a === 't-march') Net.test('march');
     else if (a === 't-bots') { Net.test('bots'); toast('示範部落都多了 6 名守軍'); }
     else if (a === 'idletr') act({ type: 'idle', train: b.checked }, b.checked ? '離線時會自動補訓守軍' : '已關閉自動補訓');
-    else if (armyClick(a, b, me)) { /* 軍事與對戰的操作 */ }
+    else if (armyClick(a, b, me) || socialClick(a, b, me)) { /* 軍事、對戰與交流的操作 */ }
     else if (a === 'visit') Net.view(b.getAttribute('data-id'), function (d) { if (!d) return toast('找不到這個部落', true); S.visit = { id: d.id, v: d }; el.vimg._focus = null; render(); });
     else if (a === 'leave') { S.visit = null; el.vimg._focus = null; S.tab = 'map'; render(); }
     else if (a === 'job') {

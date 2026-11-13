@@ -45,7 +45,8 @@ window.Net = (function () {
   // 測試工具（只有單機試玩有）：無限資源就是每次都把倉庫補滿
   function fill() {
     var v = rich && localId && local.villages[localId]; if (!v) return;
-    var d = World.rules.derived(v, 1); v.res.food = d.cap; v.res.mat = d.cap; v.sp[v.tribe] = d.spCap;
+    var d = World.rules.derived(v, 1); v.res.food = d.cap; v.res.mat = d.cap;
+    Tribes.playable().forEach(function (t) { v.sp[t.id] = d.spCap; });   // 連別族的特產也補滿，才能測試部落中心升級
   }
 
   // ----- 連線 -----

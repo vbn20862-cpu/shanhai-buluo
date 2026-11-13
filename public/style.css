@@ -147,6 +147,34 @@ p { margin: 4px 0; }
 .rep b { color: var(--good); font-variant-numeric: tabular-nums; }
 .rep b.neg { color: var(--warn); }
 
+/* 交流：聯盟、市集、族群關係、資源點、中立聚落 */
+#tabs button { letter-spacing: .04em; white-space: nowrap; min-width: 0; }
+#pbody select, #pbody input[type="number"], #pbody input:not([type]), .sheet select { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 7px; color: var(--ink); font-size: 13.5px; min-width: 0; }
+.inrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; margin: 6px 0; }
+.splist { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 2px 0 6px; }
+.spi { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.offer, .barter { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px dashed var(--line); }
+.offer .muted, .barter .muted { display: block; }
+.barter { flex-direction: column; align-items: stretch; gap: 5px; }
+.bbtns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.bbtns .btn { padding: 5px 2px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.oform { display: grid; grid-template-columns: auto 4.2em minmax(0, 1fr); gap: 5px 6px; align-items: center; margin: 4px 0 7px; }
+.oform span { color: var(--mute); font-size: 12.5px; white-space: nowrap; }
+.relrow { display: grid; grid-template-columns: 5.4em minmax(0, 1fr) 2.6em; align-items: center; gap: 8px; padding: 3px 0; }
+.relbar { position: relative; height: 8px; border-radius: 4px; background: linear-gradient(90deg, #7A3B33, var(--raise) 40%, var(--raise) 60%, #3F6B4A); }
+.relbar i { position: absolute; top: -3px; width: 4px; height: 14px; margin-left: -2px; border-radius: 2px; background: var(--ink); }
+.relrow b { font-size: 12.5px; text-align: right; color: var(--mute); }
+.relrow b.friend { color: var(--good); } .relrow b.hostile { color: var(--warn); }
+.feed { margin: 0; padding: 4px 0; border-top: 1px dashed var(--line); color: var(--mute); font-size: 12.5px; }
+.spneed { color: var(--gold); font-size: 12.5px; margin: 4px 0 0; }
+.sheet select { width: 100%; margin: 2px 0 6px; box-sizing: border-box; }
+.pflag path:first-child { stroke: #2A1F05; fill: none; }
+.pflag path:last-child { stroke: var(--ink); }
+.pflag.me path:last-child { stroke: var(--gold); }
+.vm.ally circle { stroke: var(--good); }
+.allytag { font-size: 12px; font-weight: 700; color: var(--good); align-self: center; }
+.vrow { flex-wrap: wrap; }
+
 /* 軍事與對戰 */
 .seg.n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .ic-army { color: #E7B9A0; } .ic-shield { color: var(--good); }

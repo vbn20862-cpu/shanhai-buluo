@@ -79,16 +79,18 @@ test('一格可以住好幾個部落，位置不重疊', () => {
   assert.equal(w.map.byId[overflow.hex].tribe, 'amis');
 });
 
-test('部落中心升到三級要用特產，材料不夠時不會白扣', () => {
+test('部落中心升到三級要用別族的特產，材料不夠時不會白扣', () => {
   const w = new World({ rng: seeded(13) });
   let now = 1e6;
   const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'paiwan' }, now).id];
-  v.tiles[0].level = 2; v.res.food = 1000; v.res.mat = 100; v.sp.paiwan = 5;
+  v.tiles[0].level = 2; v.res.food = 1000; v.res.mat = 1000; v.sp.paiwan = 20;
+  assert.equal(w.act(v.id, { type: 'upgrade', tile: 0 }, now).ok, false, '只有自己的特產不夠');
+  v.sp.amis = 5; v.res.mat = 100;
   assert.equal(w.act(v.id, { type: 'upgrade', tile: 0 }, now).ok, false);
-  assert.equal(v.sp.paiwan, 5, '失敗時特產要還在');
+  assert.equal(v.sp.amis, 5, '失敗時特產要還在');
   v.res.mat = 1000;
   assert.ok(w.act(v.id, { type: 'upgrade', tile: 0 }, now).ok);
-  assert.equal(v.sp.paiwan || 0, 0);
+  assert.equal(v.sp.amis || 0, 0); assert.equal(v.sp.paiwan, 20);
 });
 
 test('地圖：沒有族群的格子是野地或中立聚落', () => {
@@ -274,4 +276,108 @@ test('掛機：離線時自動補訓守軍', () => {
   w.setOnline(v.id, false, now); now += 20 * 60000; w.setOnline(v.id, true, now);
   assert.equal(v.units.w + v.units.a, R.armyCap(v), '補滿到上限');
   check(w);
+});
+
+// ---------- 世界互動 ----------
+test('族群關係：交易、送禮、結盟變好；出征變差；友好有加成、敵對不能交易', () => {
+  const w = new World({ rng: seeded(41) });
+  let now = 1e6;
+  const a = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'bunun' }, now).id];
+  const b = w.villages[w.join('b', { owner: 'B', name: '乙', tribe: 'amis' }, now).id];
+  const c = w.villages[w.join('c', { owner: 'C', name: '丙', tribe: 'bunun' }, now).id];
+  a.sp.bunun = 40; b.res.food = 2000; b.sp.amis = 40;
+  assert.equal(w.relState('bunun', 'amis'), 'neutral');
+  for (let i = 0; i < 10; i++) {
+    assert.ok(w.act(a.id, { type: 'offer', give: 'sp:bunun', giveN: 1, want: 'food', wantN: 10 }, now).ok);
+    assert.ok(w.act(b.id, { type: 'accept', id: w.market[0].id }, now).ok);
+  }
+  assert.equal(w.relOf('bunun', 'amis'), 10 * R.REL.trade); assert.equal(w.relState('amis', 'bunun'), 'friend');
+  const f0 = a.res.food, s0 = b.sp.bunun;
+  assert.ok(w.act(a.id, { type: 'offer', give: 'sp:bunun', giveN: 10, want: 'food', wantN: 100 }, now).ok);
+  assert.ok(w.act(b.id, { type: 'accept', id: w.market[0].id }, now).ok);
+  assert.equal(Math.round(a.res.food - f0), 110, '友好時多拿一成'); assert.equal(b.sp.bunun - s0, 11);
+  now += 6000; assert.ok(w.act(b.id, { type: 'gift', to: a.id, key: 'sp:amis', n: 2 }, now).ok);
+  assert.equal(w.relOf('bunun', 'amis'), 11 * R.REL.trade + R.REL.gift);
+  assert.equal(w.relOf('bunun', 'bunun'), 0, '同族之間沒有關係值');
+  w.rel['amis|bunun'] = R.REL.hostile;      // 兩族變成敵對
+  assert.ok(w.act(a.id, { type: 'offer', give: 'sp:bunun', giveN: 1, want: 'food', wantN: 10 }, now).ok);
+  assert.equal(w.act(b.id, { type: 'accept', id: w.market[0].id }, now).ok, false, '敵對不能直接交易');
+  assert.ok(w.act(c.id, { type: 'offer', give: 'food', giveN: 10, want: 'mat', wantN: 10 }, now).ok);
+  // 出征讓關係變差
+  w.rel = {}; b.newbieUntil = 0; a.units.w = 2;
+  assert.ok(w.act(a.id, { type: 'attack', to: b.id, w: 2, a: 0 }, now).ok);
+  assert.equal(w.relOf('bunun', 'amis'), R.REL.attack);
+  // 會慢慢回到中立
+  w.rel = { 'amis|bunun': 3, 'atayal|paiwan': -2 }; w.lastRel = now;
+  for (let i = 0; i < 4; i++) { now += R.REL.decayMs; w.tick(now); }
+  assert.deepEqual(w.rel, {});
+  check(w);
+});
+
+test('野地資源點：佔領、產出、被搶、召回', () => {
+  const w = new World({ rng: seeded(43) });
+  let now = 1e6;
+  const a = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'bunun' }, now).id];
+  const b = w.villages[w.join('b', { owner: 'B', name: '乙', tribe: 'amis' }, now).id];
+  w.setOnline(a.id, true, now); w.setOnline(b.id, true, now);
+  const wild = w.map.hexes.filter(h => h.wild === 'wood').map(h => h.id);
+  assert.equal(w.act(a.id, { type: 'occupy', hex: a.hex, w: 1, a: 0 }, now).ok, false, '族群的區域不是資源點');
+  a.units.w = 6; a.units.a = 2;
+  assert.ok(w.act(a.id, { type: 'occupy', hex: wild[0], w: 1, a: 0 }, now).ok);
+  assert.equal(w.act(a.id, { type: 'occupy', hex: wild[1], w: 1, a: 0 }, now).ok, false, '一次只能有一支隊伍在外面');
+  now = run(w, now, 130);
+  assert.equal(w.points[wild[0]], undefined, '只派一個人會被野獸趕回來'); assert.equal(a.units.w, 6);
+  assert.ok(w.act(a.id, { type: 'occupy', hex: wild[0], w: 3, a: 1 }, now).ok);
+  now = run(w, now, 70);
+  assert.equal(w.points[wild[0]].owner, a.id); assert.equal(a.away.w, 3);
+  const mat0 = a.res.mat; now = run(w, now, 60);
+  const base = 60 * R.derived(a, 1).rates.mat;
+  assert.ok(a.res.mat - mat0 > base + 60 * R.POINT.wood.rate * 4 * 0.9, '資源點多產出建材');
+  assert.equal(w.snapshot(b.id, now).points[0].w, null, '別人看不到確切的駐守人數');
+  // 乙派更多人來搶
+  b.units.w = 6; b.units.a = 6;
+  assert.ok(w.act(b.id, { type: 'occupy', hex: wild[0], w: 6, a: 6 }, now).ok);
+  now = run(w, now, 70);
+  assert.equal(w.points[wild[0]].owner, b.id, '人多的一方搶下來');
+  assert.equal(a.away.w + a.away.a, 0, '被趕走的人不再算出征中');
+  assert.ok(a.reports[0].note.includes('搶走')); assert.ok(w.relOf('bunun', 'amis') < 0);
+  // 召回
+  const n = w.points[wild[0]].w + w.points[wild[0]].a, home = b.units.w + b.units.a;
+  assert.ok(w.act(b.id, { type: 'recall', hex: wild[0] }, now).ok);
+  assert.equal(w.points[wild[0]], undefined);
+  now = run(w, now, 70);
+  assert.equal(b.units.w + b.units.a, home + n); assert.equal(b.away.w + b.away.a, 0);
+  check(w);
+});
+
+test('中立聚落：用特產或物資換別族特產，存量會用完也會補回來', () => {
+  const w = new World({ rng: seeded(47) });
+  let now = 1e6;
+  const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'atayal' }, now).id];
+  const at = w.map.settlements[0].id;
+  v.sp.atayal = 9; v.res.food = 300;
+  assert.equal(w.act(v.id, { type: 'barter', at, want: 'atayal', pay: 'sp' }, now).ok, false, '不能換自己的特產');
+  assert.ok(w.act(v.id, { type: 'barter', at, want: 'bunun', pay: 'sp' }, now).ok);
+  assert.equal(v.sp.atayal, 9 - R.SETTLE.give); assert.equal(v.sp.bunun, R.SETTLE.get);
+  assert.ok(w.act(v.id, { type: 'barter', at, want: 'amis', pay: 'food' }, now).ok);
+  assert.equal(Math.round(v.res.food), 300 - R.SETTLE.resCost); assert.equal(v.sp.amis, 1);
+  w.stock[at].paiwan = 1;
+  assert.equal(w.act(v.id, { type: 'barter', at, want: 'paiwan', pay: 'sp' }, now).ok, false, '存量不夠');
+  w.lastStock = now; now += R.SETTLE.refillMs; w.tick(now);
+  assert.equal(w.stock[at].paiwan, 2);
+  assert.ok(w.act(v.id, { type: 'barter', at, want: 'paiwan', pay: 'sp' }, now).ok);
+  check(w);
+});
+
+test('人數加成：玩家少的族群產量較高', () => {
+  const w = new World({ rng: seeded(53) });
+  const now = 1e6;
+  const ids = ['bunun', 'bunun', 'bunun', 'bunun', 'amis', 'amis', 'paiwan'].map((t, i) => w.join('p' + i, { owner: 'P' + i, name: '部落' + i, tribe: t }, now).id);
+  w.ensureBots(now); w.popBonus();
+  const pb = id => w.villages[id].pb;
+  assert.equal(pb(ids[0]), 0, '人最多的族群沒有加成');
+  assert.ok(Math.abs(pb(ids[4]) - 0.075) < 0.001); assert.ok(Math.abs(pb(ids[6]) - 0.1125) < 0.001);
+  for (const id in w.villages) if (w.villages[id].bot) assert.equal(w.villages[id].pb, 0);
+  const a = w.villages[ids[0]], c = w.villages[ids[6]];
+  assert.ok(R.derived(c, 1).rates.food > R.derived(a, 1).rates.food * 0.95);
 });
