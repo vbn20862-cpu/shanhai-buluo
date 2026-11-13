@@ -3,7 +3,7 @@
 window.Net = (function () {
   'use strict';
   var handlers = {}, mode = null, socket = null, local = null, localId = null, memToken = null;
-  var SAVE_KEY = 'shanhai_solo_v1', TOKEN_KEY = 'shanhai_token';
+  var SAVE_KEY = 'shanhai_solo_v2', TOKEN_KEY = 'shanhai_token';
 
   function on(ev, fn) { handlers[ev] = fn; }
   function fire(ev, d) { if (handlers[ev]) handlers[ev](d); }

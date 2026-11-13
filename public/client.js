@@ -1,11 +1,11 @@
-/* 山海部落 — 操作介面（階段 1：選區域落腳、部落經營、圖鑑） */
+/* 山海部落 — 操作介面（階段 1：選區域落腳、拓荒與部落經營、圖鑑） */
 (function () {
   'use strict';
   var R = World.rules, G = Geo.build();
   var STAGE_TYPES = ['house', 'farm', 'mat', 'special', 'storage'];   // 這個階段開放的建築；軍事建築在對戰階段加入
   var JOBS = ['food', 'mat', 'special'], WILD = { fish: '漁場', hunt: '獵場', wood: '林地' };
   var S = { me: null, pubs: [], tab: 'build', zone: null, selTile: null, form: { owner: '', name: '' }, mode: '', online: false, resetAt: 0, joining: false };
-  var el = {}, MV = { k: 1, cx: Geo.MAP_W / 2, cy: Geo.MAP_H / 2, s0: 1, vw: Geo.MAP_W, vh: Geo.MAP_H, ready: false };
+  var el = {}, MV = null, VV = null;
 
   // ---------- 小工具 ----------
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -19,101 +19,100 @@
   function scene() { return S.me && S.tab !== 'map' ? 'village' : 'map'; }
   function myTribe() { return Tribes.get(S.me.tribe); }
 
+  /* 可以拖曳、縮放的畫面。cover=true 時畫面一定被場景填滿（部落）；false 時整張圖都看得到（地圖）。 */
+  function PanZoom(svg, cam, W, H, o) {
+    var self = this, ptrs = {}, drag = null;
+    this.k = 1; this.cx = W / 2; this.cy = H / 2; this.s0 = 1; this.vw = W; this.vh = H; this.sized = false;
+    function count() { return Object.keys(ptrs).length; }
+    function two() { var k = Object.keys(ptrs); return Math.hypot(ptrs[k[0]].x - ptrs[k[1]].x, ptrs[k[0]].y - ptrs[k[1]].y); }
+    this.toWorld = function (cx, cy) {
+      var r = svg.getBoundingClientRect();
+      return [((cx - r.left) / self.s0 - (self.vw / 2 - self.cx * self.k)) / self.k, ((cy - r.top) / self.s0 - (self.vh / 2 - self.cy * self.k)) / self.k];
+    };
+    this.apply = function () {
+      self.k = Math.max(1, Math.min(o.maxK, self.k));
+      var hx = o.cover ? self.vw / (2 * self.k) : 0, hy = o.cover ? self.vh / (2 * self.k) : 0;
+      self.cx = Math.max(hx, Math.min(W - hx, self.cx)); self.cy = Math.max(hy, Math.min(H - hy, self.cy));
+      cam.setAttribute('transform', 'translate(' + (self.vw / 2 - self.cx * self.k).toFixed(2) + ' ' + (self.vh / 2 - self.cy * self.k).toFixed(2) + ') scale(' + self.k.toFixed(3) + ')');
+      if (o.onChange) o.onChange(self);
+    };
+    this.resize = function () {
+      var r = svg.getBoundingClientRect(); if (!r.width || !r.height) return false;
+      self.s0 = o.cover ? Math.max(r.width / W, r.height / H) : Math.min(r.width / W, r.height / H);
+      self.vw = r.width / self.s0; self.vh = r.height / self.s0; self.sized = true;
+      svg.setAttribute('viewBox', '0 0 ' + self.vw.toFixed(1) + ' ' + self.vh.toFixed(1));
+      self.apply(); return true;
+    };
+    this.zoomAt = function (f, cx, cy) {
+      var a = self.toWorld(cx, cy); self.k *= f; self.apply();
+      var b = self.toWorld(cx, cy); self.cx += a[0] - b[0]; self.cy += a[1] - b[1]; self.apply();
+    };
+    this.zoomCenter = function (f) { var r = svg.getBoundingClientRect(); self.zoomAt(f, r.left + r.width / 2, r.top + r.height / 2); };
+    this.focus = function (x, y, k) { self.cx = x; self.cy = y; if (k) self.k = k; self.apply(); };
+    svg.addEventListener('pointerdown', function (e) {
+      try { svg.setPointerCapture(e.pointerId); } catch (x) { /* 有些瀏覽器不支援，拖曳仍可用 */ }
+      ptrs[e.pointerId] = { x: e.clientX, y: e.clientY };
+      if (count() === 1) drag = { x: e.clientX, y: e.clientY, cx: self.cx, cy: self.cy, moved: false };
+      else if (count() === 2) drag = { pinch: two(), k: self.k, moved: true };
+    });
+    svg.addEventListener('pointermove', function (e) {
+      if (!ptrs[e.pointerId] || !drag) return;
+      ptrs[e.pointerId] = { x: e.clientX, y: e.clientY };
+      if (drag.pinch) { if (count() === 2) { self.k = drag.k * two() / drag.pinch; self.apply(); } return; }
+      var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (Math.abs(dx) + Math.abs(dy) > 7) drag.moved = true;
+      if (drag.moved) { self.cx = drag.cx - dx / (self.s0 * self.k); self.cy = drag.cy - dy / (self.s0 * self.k); self.apply(); }
+    });
+    function up(e) {
+      if (!ptrs[e.pointerId]) return;
+      var tap = drag && !drag.moved && count() === 1;
+      delete ptrs[e.pointerId];
+      if (tap) { var p = self.toWorld(e.clientX, e.clientY); o.onTap(p[0], p[1], 1 / (self.s0 * self.k)); }
+      if (count() === 0) drag = null;
+      else { var k = Object.keys(ptrs)[0]; drag = { x: ptrs[k].x, y: ptrs[k].y, cx: self.cx, cy: self.cy, moved: true }; }
+    }
+    svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', up);
+    svg.addEventListener('wheel', function (e) { e.preventDefault(); self.zoomAt(e.deltaY < 0 ? 1.2 : 0.83, e.clientX, e.clientY); }, { passive: false });
+  }
+
   // ---------- 骨架 ----------
   function boot() {
     var app = document.getElementById('app');
     app.innerHTML = '<header id="hud"></header><main id="stage"><section id="scene">' +
-      '<svg id="vsvg" viewBox="0 0 ' + Art.VW + ' ' + Art.VH + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="部落畫面"><g id="vbase"></g><g id="folk"></g></svg>' +
+      '<svg id="vsvg" role="img" aria-label="部落畫面">' + Art.DEFS + '<g id="vcam"><image id="vimg" width="' + Art.SW + '" height="' + Art.SH + '" preserveAspectRatio="none"/><g id="vdecor"></g><g id="vobjs"></g><g id="folk"></g></g></svg>' +
       '<svg id="msvg" role="img" aria-label="臺灣全島地圖"></svg><div id="tools"></div></section>' +
       '<aside id="panel"><nav id="tabs"></nav><div id="pbody"></div></aside></main><div id="toast" role="status" aria-live="polite"></div>';
-    ['hud', 'stage', 'scene', 'vsvg', 'vbase', 'folk', 'msvg', 'tools', 'panel', 'tabs', 'pbody', 'toast'].forEach(function (id) { el[id] = document.getElementById(id); });
+    ['hud', 'stage', 'scene', 'vsvg', 'vcam', 'vimg', 'vdecor', 'vobjs', 'folk', 'msvg', 'tools', 'panel', 'tabs', 'pbody', 'toast'].forEach(function (id) { el[id] = document.getElementById(id); });
     document.addEventListener('click', onClick);
     document.addEventListener('input', onInput);
-    el.vsvg.addEventListener('click', function (e) {
-      var g = e.target.closest('[data-tile]'); if (!g || !S.me) return;
-      var i = +g.getAttribute('data-tile'); S.selTile = S.selTile === i ? null : i; S.tab = 'build'; render();
-    });
-    mapInit();
-    window.addEventListener('resize', mapResize);
+    el.msvg.innerHTML = '<g id="cam"><image width="' + Geo.MAP_W + '" height="' + Geo.MAP_H + '" href="' + Art.paintMap(4).toDataURL('image/png') + '" preserveAspectRatio="none"/>' +
+      '<g id="mzone"></g><g id="mmarks"></g><g id="mlabels">' + Art.mapLabels() + '</g></g>';
+    el.mzone = document.getElementById('mzone'); el.mmarks = document.getElementById('mmarks');
+    MV = new PanZoom(el.msvg, document.getElementById('cam'), Geo.MAP_W, Geo.MAP_H, { cover: false, maxK: 7, onTap: mapTap, onChange: function (pz) {
+      el.msvg.style.setProperty('--u', (1 / (pz.s0 * pz.k)).toFixed(4)); el.msvg.classList.toggle('far', pz.k < 1.9); renderMarks();
+    } });
+    VV = new PanZoom(el.vsvg, el.vcam, Art.SW, Art.SH, { cover: true, maxK: 3.2, onTap: siteTap });
+    window.addEventListener('resize', function () { MV.resize(); VV.resize(); });
     setInterval(tickTimers, 250);
     setInterval(moveFolk, 2400);
     Net.on('status', function (s) { S.online = s.online; S.mode = s.mode; render(); });
-    Net.on('hello', function (h) { S.pubs = h.villages || S.pubs; if (h.reset) { S.me = null; S.zone = null; S.selTile = null; S.tab = 'build'; } render(); });
+    Net.on('hello', function (h) { S.pubs = h.villages || S.pubs; if (h.reset) { S.me = null; S.zone = null; S.selTile = null; S.tab = 'build'; el.vobjs._sig = null; } render(); });
     Net.on('state', function (st) { S.me = st.me; S.pubs = st.villages; render(); });
     Net.start();
     render();
   }
 
   // ---------- 世界地圖 ----------
-  function mapInit() {
-    var url = Art.paintMap(4).toDataURL('image/png');
-    el.msvg.innerHTML = '<g id="cam"><image width="' + Geo.MAP_W + '" height="' + Geo.MAP_H + '" href="' + url + '" preserveAspectRatio="none"/>' +
-      '<g id="mzone"></g><g id="mmarks"></g><g id="mlabels">' + Art.mapLabels() + '</g></g>';
-    el.cam = document.getElementById('cam'); el.mzone = document.getElementById('mzone'); el.mmarks = document.getElementById('mmarks');
-    var ptrs = {}, drag = null;
-    function count() { return Object.keys(ptrs).length; }
-    function two() { var k = Object.keys(ptrs); return Math.hypot(ptrs[k[0]].x - ptrs[k[1]].x, ptrs[k[0]].y - ptrs[k[1]].y); }
-    el.msvg.addEventListener('pointerdown', function (e) {
-      try { el.msvg.setPointerCapture(e.pointerId); } catch (x) { /* 有些瀏覽器不支援，拖曳仍可用 */ }
-      ptrs[e.pointerId] = { x: e.clientX, y: e.clientY };
-      if (count() === 1) drag = { x: e.clientX, y: e.clientY, cx: MV.cx, cy: MV.cy, moved: false };
-      else if (count() === 2) drag = { pinch: two(), k: MV.k, moved: true };
-    });
-    el.msvg.addEventListener('pointermove', function (e) {
-      if (!ptrs[e.pointerId] || !drag) return;
-      ptrs[e.pointerId] = { x: e.clientX, y: e.clientY };
-      if (drag.pinch && count() === 2) { MV.k = drag.k * two() / drag.pinch; mapApply(); return; }
-      if (drag.pinch) return;
-      var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-      if (Math.abs(dx) + Math.abs(dy) > 7) drag.moved = true;
-      if (drag.moved) { MV.cx = drag.cx - dx / (MV.s0 * MV.k); MV.cy = drag.cy - dy / (MV.s0 * MV.k); mapApply(); }
-    });
-    function up(e) {
-      if (!ptrs[e.pointerId]) return;
-      var tap = drag && !drag.moved && count() === 1;
-      delete ptrs[e.pointerId];
-      if (tap) mapTap(e.clientX, e.clientY);
-      if (count() === 0) drag = null;
-      else { var k = Object.keys(ptrs)[0]; drag = { x: ptrs[k].x, y: ptrs[k].y, cx: MV.cx, cy: MV.cy, moved: true }; }
-    }
-    el.msvg.addEventListener('pointerup', up); el.msvg.addEventListener('pointercancel', up);
-    el.msvg.addEventListener('wheel', function (e) { e.preventDefault(); zoomAt(e.deltaY < 0 ? 1.25 : 0.8, e.clientX, e.clientY); }, { passive: false });
-    MV.ready = true; mapResize();
-  }
-  function toMap(cx, cy) {
-    var r = el.msvg.getBoundingClientRect();
-    return [((cx - r.left) / MV.s0 - (MV.vw / 2 - MV.cx * MV.k)) / MV.k, ((cy - r.top) / MV.s0 - (MV.vh / 2 - MV.cy * MV.k)) / MV.k];
-  }
-  function zoomAt(f, cx, cy) {
-    var before = toMap(cx, cy); MV.k *= f; mapApply();
-    var after = toMap(cx, cy); MV.cx += before[0] - after[0]; MV.cy += before[1] - after[1]; mapApply();
-  }
-  function mapResize() {
-    if (!MV.ready) return;
-    var r = el.scene.getBoundingClientRect(); if (!r.width || !r.height) return;
-    MV.s0 = Math.min(r.width / Geo.MAP_W, r.height / Geo.MAP_H); MV.vw = r.width / MV.s0; MV.vh = r.height / MV.s0;
-    el.msvg.setAttribute('viewBox', '0 0 ' + MV.vw.toFixed(1) + ' ' + MV.vh.toFixed(1));
-    mapApply();
-  }
-  function mapApply() {
-    MV.k = Math.max(1, Math.min(7, MV.k));
-    MV.cx = Math.max(0, Math.min(Geo.MAP_W, MV.cx)); MV.cy = Math.max(0, Math.min(Geo.MAP_H, MV.cy));
-    el.cam.setAttribute('transform', 'translate(' + (MV.vw / 2 - MV.cx * MV.k).toFixed(2) + ' ' + (MV.vh / 2 - MV.cy * MV.k).toFixed(2) + ') scale(' + MV.k.toFixed(3) + ')');
-    el.msvg.style.setProperty('--u', (1 / (MV.s0 * MV.k)).toFixed(4));
-    el.msvg.classList.toggle('far', MV.k < 1.9);
-    renderMarks();
-  }
-  function focusHex(h, k) { MV.cx = h.x; MV.cy = h.y; if (k) MV.k = Math.max(MV.k, k); mapApply(); }
-  function mapTap(cx, cy) {
-    var p = toMap(cx, cy), u = 1 / (MV.s0 * MV.k), best = null, bd = 16 * u;
-    S.pubs.forEach(function (v) { var d = Math.hypot(v.pos[0] - p[0], v.pos[1] - p[1]); if (d < bd) { bd = d; best = v; } });
-    var h = best ? G.byId[best.hex] : Geo.nearestHex(p[0], p[1], Geo.HEX_SIZE * 1.15);
+  function mapTap(x, y, u) {
+    var best = null, bd = 16 * u;
+    S.pubs.forEach(function (v) { var d = Math.hypot(v.pos[0] - x, v.pos[1] - y); if (d < bd) { bd = d; best = v; } });
+    var h = best ? G.byId[best.hex] : Geo.nearestHex(x, y, Geo.HEX_SIZE * 1.15);
     S.zone = h ? h.id : null;
     if (S.me) S.tab = 'map';
     render();
   }
   function renderMarks() {
-    if (!MV.ready) return;
+    if (!MV || !MV.sized) return;
     var u = 1 / (MV.s0 * MV.k), s = '', z = S.zone && G.byId[S.zone];
     setHTML(el.mzone, z ? '<circle class="zsel" cx="' + z.x + '" cy="' + z.y + '" r="' + (Geo.HEX_SIZE * 1.05) + '" style="stroke-width:' + (2.2 * u).toFixed(3) + '"/>' : '');
     G.settlements.forEach(function (st) {
@@ -129,35 +128,41 @@
   }
 
   // ---------- 部落畫面 ----------
-  var folk = [];
+  var folkN = -1;
+  function siteTap(x, y) {
+    if (!S.me) return;
+    var best = null, bd = 78;
+    for (var i = 0; i < R.TILE_N; i++) {
+      var p = Art.sitePos(i), lift = S.me.tiles[i] || !S.me.land[i] ? 22 : 0, d = Math.hypot(p[0] - x, (p[1] - lift - y) * 1.25);
+      if (d < bd) { bd = d; best = i; }
+    }
+    S.selTile = best === S.selTile ? null : best; S.tab = 'build'; render();
+  }
   function renderVillage() {
     var v = S.me; if (!v) return;
-    var sig = v.tribe + '|' + v.wall + '|' + S.selTile + '|' + JSON.stringify(v.tiles) + JSON.stringify(v.queue);
-    if (el.vbase._sig !== sig) {
-      var look = Tribes.get(v.tribe).look;   // 畫面比例不同時，上下多出來的地方用天空與地面的顏色補滿
-      el.vsvg.style.background = 'linear-gradient(' + (look.backdrop === 'coast' ? '#BFE0EA' : '#BFDDE0') + ' 50%, ' + look.ground + ' 50%)';
-      el.vbase.innerHTML = Art.village(v, S.selTile, v.queue); el.vbase._sig = sig; tickTimers();
+    var t = Tribes.get(v.tribe);
+    if (el.vimg._t !== t.id) { el.vimg.setAttribute('href', Art.groundURL(t)); el.vdecor.innerHTML = Art.decor(t); el.vimg._t = t.id; }
+    if (!VV.sized || el.vimg._focus !== v.id) {
+      if (VV.resize()) { var c = Art.sitePos(R.CENTER_TILE); VV.focus(c[0], c[1] - 10, Math.max(1, Math.min(3.2, VV.vw / 1040))); el.vimg._focus = v.id; }
     }
-    var want = Math.min(v.pop, 12);
-    if (folk.length !== want) {
-      var t = Tribes.get(v.tribe), s = '';
-      folk = [];
-      for (var i = 0; i < want; i++) {
-        var p = spot(v); folk.push(p);
-        s += '<g class="person" style="transform:translate(' + p[0] + 'px,' + p[1] + 'px)"><ellipse cx="0" cy="9" rx="6" ry="2.2" fill="#000" opacity=".22"/><path d="M-5 9c0-8 2-12 5-12s5 4 5 12z" fill="' + (i % 3 ? '#F2EAD6' : t.look.trim) + '"/><circle cx="0" cy="-7" r="4.4" fill="#B98660"/></g>';
-      }
-      el.folk.innerHTML = s;
+    var sig = v.tribe + '|' + S.selTile + '|' + JSON.stringify(v.tiles) + v.land.join('') + JSON.stringify(v.queue);
+    if (el.vobjs._sig !== sig) { el.vobjs.innerHTML = Art.scene(v, S.selTile); el.vobjs._sig = sig; tickTimers(); }
+    var want = Math.min(v.pop, 14);
+    if (folkN !== want || el.folk._t !== v.id) {
+      var s = '';
+      for (var i = 0; i < want; i++) { var p = spot(v); s += '<g class="person" style="transform:translate(' + p[0] + 'px,' + p[1] + 'px)">' + Art.person(i % 3 ? '#F2EAD6' : t.look.trim) + '</g>'; }
+      el.folk.innerHTML = s; folkN = want; el.folk._t = v.id;
     }
   }
-  function spot(v) {
-    var built = []; for (var i = 0; i < R.TILE_N; i++) if (v.tiles[i] && v.tiles[i].level > 0) built.push(i);
-    var p = Art.tileXY(built[Math.floor(Math.random() * built.length)] || R.CENTER_TILE);
-    return [Math.round(p[0] + 14 + Math.random() * 68), Math.round(p[1] + 88 + Math.random() * 10)];
+  function spot(v) {   // 族人走動的位置：開墾好的地附近
+    var open = []; for (var i = 0; i < R.TILE_N; i++) if (v.land[i]) open.push(i);
+    var p = Art.sitePos(open[Math.floor(Math.random() * open.length)]);
+    return [Math.round(p[0] - 44 + Math.random() * 88), Math.round(p[1] + 24 + Math.random() * 16)];
   }
   function moveFolk() {
     if (!S.me || scene() !== 'village' || document.hidden) return;
     var nodes = el.folk.children;
-    for (var i = 0; i < nodes.length; i++) if (Math.random() < 0.6) { var p = spot(S.me); nodes[i].style.transform = 'translate(' + p[0] + 'px,' + p[1] + 'px)'; }
+    for (var i = 0; i < nodes.length; i++) if (Math.random() < 0.55) { var p = spot(S.me); nodes[i].style.transform = 'translate(' + p[0] + 'px,' + p[1] + 'px)'; }
   }
   function tickTimers() {
     var now = Date.now(), list = document.querySelectorAll('[data-until]');
@@ -206,8 +211,8 @@
     var t = myTribe(), full = me.queue.length >= R.BUILDERS, h = '<section class="card sel"><h3>' + bname(t, b.type) + '<span class="lv">' + (b.level ? '等級 ' + b.level : '興建中') + '</span></h3>';
     if (b.level) h += '<p class="eff">' + effect(b.type, b.level, t) + '</p>';
     if (b.busy) {
-      var q = me.queue.filter(function (x) { return x.tile === i; })[0];
-      h += '<p class="busyline">施工中，還要 <b data-until="' + (q ? q.doneAt : 0) + '"></b></p>';
+      var w = me.queue.filter(function (x) { return x.tile === i; })[0];
+      h += '<p class="busyline">施工中，還要 <b data-until="' + (w ? w.doneAt : 0) + '"></b></p>';
     } else if (b.level >= R.MAX_LEVEL) h += '<p class="muted">已經是最高等級。</p>';
     else {
       var to = b.level + 1, c = R.cost(b.type, to), sp = 0, why = '';
@@ -222,7 +227,7 @@
     return h + '<p class="note">' + esc(t.b[b.type].note) + '</p></section>';
   }
   function emptyCard(me, i) {
-    var t = myTribe(), full = me.queue.length >= R.BUILDERS, h = '<section class="card sel"><h3>空地<span class="lv">選一種建築</span></h3><ul class="opts">';
+    var t = myTribe(), full = me.queue.length >= R.BUILDERS, h = '<section class="card sel"><h3>開墾好的空地<span class="lv">選一種建築</span></h3><ul class="opts">';
     STAGE_TYPES.forEach(function (ty) {
       var c = R.cost(ty, 1), have = R.count(me, ty), lim = R.limit(ty, me.d.center), why = '';
       if (have >= lim) why = '已達上限，先升級' + t.b.center.zh; else if (full) why = '工程已滿'; else if (!affordable(me, c)) why = '物資還不夠';
@@ -231,6 +236,14 @@
         (why ? '<p class="why">' + why + '</p>' : '') + '</li>';
     });
     return h + '</ul></section>';
+  }
+  function wildCard(me, i) {
+    var t = myTribe(), info = R.clearInfo(me, i), w = me.queue.filter(function (x) { return x.tile === i && x.type === 'clear'; })[0];
+    var h = '<section class="card sel"><h3>山林<span class="lv">還沒開墾</span></h3><p>這裡還是一片山林。拓荒之後會變成建地，清出來的木石也會成為' + t.res.mat + '。</p>';
+    if (w) return h + '<p class="busyline">拓荒中，還要 <b data-until="' + w.doneAt + '"></b></p></section>';
+    var why = info.ok ? '' : info.why === 'center' ? '要先把' + t.b.center.zh + '升到等級 ' + R.CLEAR[R.SITES[i].ring].center : info.why;
+    return h + '<div class="act"><button class="btn" data-act="clear" data-tile="' + i + '"' + (info.ok ? '' : ' disabled') + '>拓荒</button>' + costHTML(me, { food: info.food, mat: 0 }) +
+      '<span class="gain">' + Art.icon('mat') + '+' + info.gain + '</span><span class="time">' + dur(info.time) + '</span></div>' + (why ? '<p class="why">' + why + '</p>' : '') + '</section>';
   }
   function jobsCard(me) {
     var t = myTribe(), d = me.d, names = { food: t.res.food, mat: t.res.mat, special: t.sp.zh }, ic = { food: 'food', mat: 'mat', special: 'sp' };
@@ -245,14 +258,14 @@
   }
   function queueCard(me) {
     if (!me.queue.length) return '';
-    var t = myTribe(), h = '<section class="card"><h3>施工中<span class="lv">' + me.queue.length + '/' + R.BUILDERS + '</span></h3>';
-    me.queue.forEach(function (q) { h += '<div class="qrow"><span>' + esc(t.b[q.type].zh) + ' → 等級 ' + q.to + '</span><b data-until="' + q.doneAt + '"></b></div>'; });
+    var t = myTribe(), h = '<section class="card"><h3>進行中的工程<span class="lv">' + me.queue.length + '/' + R.BUILDERS + '</span></h3>';
+    me.queue.forEach(function (w) { h += '<div class="qrow"><span>' + (w.type === 'clear' ? '拓荒' : esc(t.b[w.type].zh) + ' → 等級 ' + w.to) + '</span><b data-until="' + w.doneAt + '"></b></div>'; });
     return h + '</section>';
   }
   function buildPanel(me) {
-    var h = '';
-    if (S.selTile != null) h += me.tiles[S.selTile] ? buildingCard(me, S.selTile, me.tiles[S.selTile]) : emptyCard(me, S.selTile);
-    else h += '<p class="hint">點部落裡的建築可以升級，點空地可以蓋新的建築。</p>';
+    var h = '', i = S.selTile;
+    if (i != null) h += !me.land[i] ? wildCard(me, i) : me.tiles[i] ? buildingCard(me, i, me.tiles[i]) : emptyCard(me, i);
+    else h += '<p class="hint">點建築可以升級，點有 ＋ 的空地可以蓋新建築，點外圍有斧頭記號的山林可以拓荒。畫面可以拖曳和縮放。</p>';
     return h + jobsCard(me) + queueCard(me);
   }
   function tribeCard(t, cells) {
@@ -319,12 +332,14 @@
     if (a) a.value = S.form.owner; if (b) b.value = S.form.name;
   }
   function renderTools() {
-    setHTML(el.tools, scene() === 'map' ? '<div class="zoom"><button data-act="zoom" data-f="1.5" aria-label="放大">＋</button><button data-act="zoom" data-f="0.667" aria-label="縮小">−</button><button data-act="whole" aria-label="顯示全島">全島</button></div>' : '');
+    setHTML(el.tools, '<div class="zoom"><button data-act="zoom" data-f="1.4" aria-label="放大">＋</button><button data-act="zoom" data-f="0.714" aria-label="縮小">−</button>' +
+      (scene() === 'map' ? '<button data-act="whole" aria-label="顯示全島">全島</button>' : '<button data-act="home" aria-label="回到部落中央">中央</button>') + '</div>');
   }
   function render() {
     if (!el.hud) return;
     var sc = scene();
-    if (el.scene.getAttribute('data-scene') !== sc) { el.scene.setAttribute('data-scene', sc); if (sc === 'map') setTimeout(mapResize, 0); }
+    if (el.scene.getAttribute('data-scene') !== sc) { el.scene.setAttribute('data-scene', sc); if (sc === 'map') MV.resize(); else VV.resize(); }
+    if (sc === 'map' && !MV.sized) MV.resize();
     renderHud(); renderTools(); renderPanel();
     if (sc === 'village') renderVillage(); else renderMarks();
   }
@@ -337,25 +352,30 @@
   }
   function onClick(e) {
     var b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
-    var a = b.getAttribute('data-act'), me = S.me;
-    if (a === 'tab') { S.tab = b.getAttribute('data-tab'); if (S.tab === 'map' && me) { S.zone = S.zone || me.hex; focusHex(G.byId[me.hex], 2.6); } render(); }
+    var a = b.getAttribute('data-act'), me = S.me, tile = +b.getAttribute('data-tile');
+    if (a === 'tab') {
+      S.tab = b.getAttribute('data-tab'); render();
+      if (S.tab === 'map' && me) { S.zone = S.zone || me.hex; var h = G.byId[me.hex]; MV.focus(h.x, h.y, Math.max(MV.k, 2.6)); render(); }
+    }
     else if (a === 'pick') {
-      var id = b.getAttribute('data-t'), c = G.centroid[id], h = Geo.nearestHex(c[0], c[1]);
+      var id = b.getAttribute('data-t'), c = G.centroid[id];
       var list = G.regions[id].map(function (x) { return G.byId[x]; }).sort(function (p, q) { return Math.hypot(p.x - c[0], p.y - c[1]) - Math.hypot(q.x - c[0], q.y - c[1]); });
-      h = list[0]; S.zone = h.id; focusHex(h, 1.8); render();
+      S.zone = list[0].id; MV.focus(list[0].x, list[0].y, Math.max(MV.k, 1.8)); render();
     }
     else if (a === 'join') {
       S.joining = true; render();
       Net.join({ owner: S.form.owner, name: S.form.name, tribe: G.byId[S.zone].tribe, hex: S.zone }, function (r) {
         S.joining = false;
         if (!r.ok) { toast(r.msg, true); render(); return; }
-        S.tab = 'build'; S.selTile = null; toast('部落建立了。先蓋幾間家屋，讓更多族人住進來。'); render();
+        S.tab = 'build'; S.selTile = null; toast('部落建立了。先蓋家屋讓族人住進來，空地不夠就往外拓荒。'); render();
       });
     }
-    else if (a === 'zoom') { var r = el.msvg.getBoundingClientRect(); zoomAt(+b.getAttribute('data-f'), r.left + r.width / 2, r.top + r.height / 2); }
-    else if (a === 'whole') { MV.k = 1; MV.cx = Geo.MAP_W / 2; MV.cy = Geo.MAP_H / 2; mapApply(); }
-    else if (a === 'upgrade') act({ type: 'upgrade', tile: +b.getAttribute('data-tile') }, '開始施工');
-    else if (a === 'build') act({ type: 'build', tile: +b.getAttribute('data-tile'), type2: b.getAttribute('data-type') }, '開始興建');
+    else if (a === 'zoom') (scene() === 'map' ? MV : VV).zoomCenter(+b.getAttribute('data-f'));
+    else if (a === 'whole') MV.focus(Geo.MAP_W / 2, Geo.MAP_H / 2, 1);
+    else if (a === 'home') { var p = Art.sitePos(R.CENTER_TILE); VV.focus(p[0], p[1] - 10, Math.max(1, Math.min(3.2, VV.vw / 1040))); }
+    else if (a === 'upgrade') act({ type: 'upgrade', tile: tile }, '開始施工');
+    else if (a === 'build') act({ type: 'build', tile: tile, type2: b.getAttribute('data-type') }, '開始興建');
+    else if (a === 'clear') act({ type: 'clear', tile: tile }, '族人開始拓荒');
     else if (a === 'auto') act({ type: 'auto', on: b.checked });
     else if (a === 'job') {
       var j = { type: 'jobs', food: me.jobs.food, mat: me.jobs.mat, special: me.jobs.special };

@@ -1,4 +1,4 @@
-/* 山海部落 — 畫面繪製（全部用 SVG 即時畫出，沒有外部圖檔）
+/* 山海部落 — 畫面繪製（全部用程式畫出，沒有外部圖檔；之後可以整組換成畫師的作品）
  * 圖樣只用一般的幾何形狀，不使用各族專屬或具身分意義的紋樣。 */
 window.Art = (function () {
   'use strict';
@@ -22,174 +22,250 @@ window.Art = (function () {
   };
   function icon(name, cls) { return '<svg class="ic ' + (cls || 'ic-' + name) + '" viewBox="0 0 16 16" aria-hidden="true">' + ICONS[name] + '</svg>'; }
 
-  // ---------- 建築（每格 96×96，地面約在 y=82） ----------
-  function shadow(rx) { return '<ellipse cx="48" cy="83" rx="' + (rx || 36) + '" ry="5" fill="#000" opacity=".2"/>'; }
-  function texture(k, x, y, w, h) {
-    var s = '', c = shade(k.wall, -22), i;
-    if (k.fence === 'stone') for (i = 1; i < 4; i++) s += '<path d="M' + x + ' ' + (y + i * h / 4) + 'h' + w + '" stroke="' + c + '" stroke-width="1.6"/>';
-    else for (i = 1; i < 7; i++) s += '<path d="M' + (x + i * w / 7) + ' ' + y + 'v' + h + '" stroke="' + c + '" stroke-width="1.4"/>';
+  function rgba(hex, al) { var n = parseInt(hex.slice(1), 16); return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + al + ')'; }
+
+  // ---------- 部落場景（從斜上方俯視，沒有格線；場景比螢幕大，可以拖曳縮放） ----------
+  var U = 28, SW = 2200, SH = 1240, OX = SW / 2, OY = 60, CX = 20, CY = 20;   // CX, CY：部落中央的地面座標
+  function P(gx, gy, z) { return [OX + (gx - gy) * U, OY + (gx + gy) * U / 2 - (z || 0)]; }   // 地面座標 → 畫面座標
+  function sitePos(i) { var s = R.SITES[i]; return P(s.x, s.y); }
+  function q(x, y, z) { return [(x - y) * U, (x + y) * U / 2 - (z || 0)]; }                    // 以建地中心為原點
+  function f1(n) { return n.toFixed(1); }
+  function poly(a, fill, extra) { return '<polygon points="' + a.map(function (p) { return f1(p[0]) + ',' + f1(p[1]); }).join(' ') + '" fill="' + fill + '"' + (extra || '') + '/>'; }
+  function seg(a, b, stroke, w, extra) { return '<path d="M' + f1(a[0]) + ' ' + f1(a[1]) + 'L' + f1(b[0]) + ' ' + f1(b[1]) + '" stroke="' + stroke + '" stroke-width="' + w + '" stroke-linecap="round" fill="none"' + (extra || '') + '/>'; }
+  function lerp(a, b, f) { return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]; }
+  function plot(w, d, fill, extra) { return poly([q(-w, -d), q(w, -d), q(w, d), q(-w, d)], fill, extra); }
+  function rnd(i, salt) { var x = Math.sin(i * 127.1 + salt * 311.7) * 43758.5453; return x - Math.floor(x); }
+
+  /* 立體的屋子：兩面看得到的牆、山形屋頂。o = {w, d: 佔地（地面單位）, h: 牆高, rh: 屋頂高, z: 架高, open: 沒有牆的涼亭式} */
+  function house(k, o) {
+    var w = o.w / 2, d = o.d / 2, h = o.h, rh = o.rh, e = o.ov == null ? 0.2 : o.ov, z = o.z || 0, s = '', i;
+    var wl = k.wall, wr = shade(k.wall, -18), dk = shade(k.wall, -52), rf = k.roof, rb = shade(k.roof, -24);
+    s += plot(w + 0.3, d + 0.3, '#000', ' opacity=".2" transform="translate(6 4)"');
+    if (z) [[-w, d], [w, d], [w, -d]].forEach(function (c) {
+      var g = q(c[0], c[1], z - 3);
+      s += seg(q(c[0], c[1]), q(c[0], c[1], z), dk, 3.2) + '<ellipse cx="' + f1(g[0]) + '" cy="' + f1(g[1]) + '" rx="6" ry="2.6" fill="' + dk + '"/>';
+    });
+    var r1 = q(-w - e, 0, z + h + rh), r2 = q(w + e, 0, z + h + rh), eL = q(-w - e, d + e, z + h), eB = q(w + e, d + e, z + h);
+    s += poly([q(-w - e, -d - e, z + h), q(w + e, -d - e, z + h), r2, r1], rb);
+    if (o.open) {
+      s += plot(w, d, shade(k.wall, -8));
+      [[-w, -d], [-w, d], [0, d], [w, d], [w, 0], [w, -d]].forEach(function (c) { s += seg(q(c[0], c[1]), q(c[0], c[1], h + 2), dk, 3.4); });
+    } else {
+      s += poly([q(-w, d, z), q(w, d, z), q(w, d, z + h), q(-w, d, z + h)], wl) +
+        poly([q(w, d, z), q(w, -d, z), q(w, -d, z + h), q(w, 0, z + h + rh), q(w, d, z + h)], wr);
+      if (k.fence === 'stone') for (i = 1; i < 3; i++) s += seg(q(-w, d, z + h * i / 3), q(w, d, z + h * i / 3), shade(wl, -20), 1.2) + seg(q(w, d, z + h * i / 3), q(w, -d, z + h * i / 3), shade(wr, -20), 1.2);
+      else for (i = 1; i < 6; i++) s += seg(q(-w + 2 * w * i / 6, d, z), q(-w + 2 * w * i / 6, d, z + h), shade(wl, -20), 1.1);
+      s += poly([q(-w, d, z + h - 5), q(w, d, z + h - 5), q(w, d, z + h), q(-w, d, z + h)], k.trim) +
+        poly([q(w, d, z + h - 5), q(w, -d, z + h - 5), q(w, -d, z + h), q(w, d, z + h)], shade(k.trim, -20));
+      if (o.door !== false) s += poly([q(-w * 0.3, d, z), q(w * 0.3, d, z), q(w * 0.3, d, z + h * 0.7), q(-w * 0.3, d, z + h * 0.7)], dk);
+    }
+    s += poly([eL, eB, r2, r1], rf);
+    for (i = 1; i < 4; i++) s += seg(lerp(eL, r1, i / 4), lerp(eB, r2, i / 4), rb, 1.2);
+    return s + seg(r1, r2, shade(k.roof, 22), 2.2);
+  }
+  function rack(k, x, y, hang) {   // 曬架：兩根柱子、一根橫桿，掛著 hang 畫的東西
+    var a = q(x, y - 0.55), b = q(x, y + 0.55), dk = shade(k.wall, -50), s = seg(a, [a[0], a[1] - 24], dk, 2.6) + seg(b, [b[0], b[1] - 24], dk, 2.6) + seg([a[0], a[1] - 23], [b[0], b[1] - 23], dk, 2.4);
+    for (var i = 1; i < 4; i++) { var p = lerp([a[0], a[1] - 23], [b[0], b[1] - 23], i / 4); s += hang(p[0], p[1], i); }
     return s;
   }
-  function houseShape(k, big) {
-    var s = shadow(big ? 42 : 36);
-    if (big) return s + '<g transform="translate(48 82) scale(1.22) translate(-48 -82)">' + houseBody(k) + '</g>';
-    return s + houseBody(k);
+  function log(y, z) {
+    var a = q(-0.8, y, z + 5), b = q(0.8, y, z + 5);
+    return seg(a, b, '#9B6B3F', 10) + '<circle cx="' + f1(b[0]) + '" cy="' + f1(b[1]) + '" r="5" fill="#C99A63"/><circle cx="' + f1(b[0]) + '" cy="' + f1(b[1]) + '" r="2.4" fill="none" stroke="#9B6B3F" stroke-width="1"/>';
   }
-  function houseBody(k) {
-    var flat = k.fence === 'stone';
-    var roof = flat ? '10,50 48,31 86,50' : '11,50 48,22 85,50';
-    return '<rect x="20" y="49" width="56" height="32" fill="' + k.wall + '"/>' + texture(k, 20, 49, 56, 32) +
-      '<rect x="41" y="59" width="14" height="22" rx="1.5" fill="' + shade(k.wall, -55) + '"/>' +
-      '<polygon points="' + roof + '" fill="' + k.roof + '"/>' +
-      '<path d="M' + roof.split(' ')[0].replace(',', ' ') + 'L' + roof.split(' ')[2].replace(',', ' ') + '" stroke="' + shade(k.roof, -30) + '" stroke-width="3"/>' +
-      '<rect x="20" y="50" width="56" height="4" fill="' + k.trim + '"/>';
-  }
-  function pennant(k, x, y) {
-    return '<path d="M' + x + ' ' + y + 'v-26" stroke="' + shade(k.wall, -45) + '" stroke-width="2.4" stroke-linecap="round"/>' +
-      '<path d="M' + x + ' ' + (y - 26) + 'l15 5-15 5z" fill="' + k.trim + '"/>';
-  }
-  var DRAW = {
+  var ISO = {
     center: function (k, t) {
-      if (t.id === 'amis') {   // 聚會所：四面開放的大茅草屋
-        var posts = '';
-        [16, 32, 48, 64, 80].forEach(function (x) { posts += '<rect x="' + (x - 2) + '" y="46" width="4" height="36" fill="' + shade(k.wall, -35) + '"/>'; });
-        return shadow(44) + '<rect x="12" y="76" width="72" height="6" fill="' + shade(k.wall, -15) + '"/>' + posts +
-          '<polygon points="3,48 48,10 93,48" fill="' + k.roof + '"/>' +
-          '<path d="M14 40 48 12 82 40" fill="none" stroke="' + shade(k.roof, -22) + '" stroke-width="2.5"/>' +
-          '<path d="M3 48h90" stroke="' + k.trim + '" stroke-width="5"/>';
-      }
-      var s = houseShape(k, true);
-      if (t.id === 'paiwan') s += '<rect x="4" y="80" width="88" height="6" rx="1" fill="#8A877F"/><rect x="82" y="50" width="7" height="31" rx="2.5" fill="#6E6B64"/>';
-      else s += pennant(k, 88, 80);
+      if (t.id === 'amis') return house(k, { w: 2.9, d: 2.4, h: 26, rh: 32, open: true, ov: 0.4 });   // 聚會所：四面開放的大茅草屋
+      var s = house(k, { w: 2.7, d: 2.2, h: 30, rh: 26 }), p;
+      if (t.id === 'paiwan') {   // 頭目家屋前的石砌平臺與立石（不畫任何雕刻紋樣）
+        s += '<g transform="translate(' + f1(q(0, 2.1)[0]) + ' ' + f1(q(0, 2.1)[1]) + ')">' + plot(1.5, 0.55, '#8A877F') + '</g>';
+        p = q(1.5, 2.1); s += '<rect x="' + f1(p[0] - 4) + '" y="' + f1(p[1] - 34) + '" width="8" height="34" rx="3" fill="#6E6B64"/>';
+      } else { p = q(1.75, 1.5); s += seg(p, [p[0], p[1] - 46], shade(k.wall, -50), 2.6) + poly([[p[0], p[1] - 46], [p[0] + 17, p[1] - 40], [p[0], p[1] - 34]], k.trim); }
       return s;
     },
-    house: function (k) { return houseShape(k, false); },
+    house: function (k) { return house(k, { w: 1.9, d: 1.6, h: 22, rh: 20 }); },
     farm: function (k, t, head) {
-      var s = '<rect x="9" y="24" width="78" height="60" rx="5" fill="#73553A"/>', hc = head || '#E3B341';
-      for (var r = 0; r < 3; r++) {
-        s += '<path d="M12 ' + (44 + r * 18) + 'h72" stroke="#5C422B" stroke-width="3"/>';
+      var w = 1.25, d = 1.15, s = plot(w + 0.1, d + 0.1, '#5C422B') + plot(w, d, '#7A5A3A'), hc = head || '#E3B341';
+      for (var r = 0; r < 4; r++) {
+        var y = -d + (r + 0.5) * d / 2;
+        s += seg(q(-w + 0.12, y), q(w - 0.12, y), '#5C422B', 2.2);
         for (var c = 0; c < 6; c++) {
-          var x = 19 + c * 12, y = 42 + r * 18;
-          s += '<path d="M' + x + ' ' + y + 'q0 -8 3 -13" stroke="#6FA04B" stroke-width="2.2" fill="none" stroke-linecap="round"/>' +
-            '<ellipse cx="' + (x + 4) + '" cy="' + (y - 13) + '" rx="2.6" ry="4" fill="' + hc + '" transform="rotate(35 ' + (x + 4) + ' ' + (y - 13) + ')"/>';
+          var p = q(-w + 0.28 + c * (2 * w - 0.56) / 5, y);
+          s += '<path d="M' + f1(p[0]) + ' ' + f1(p[1]) + 'q1 -6 3 -10" stroke="#6FA04B" stroke-width="2" fill="none" stroke-linecap="round"/>' +
+            '<ellipse cx="' + f1(p[0] + 4) + '" cy="' + f1(p[1] - 11) + '" rx="2.4" ry="3.8" fill="' + hc + '" transform="rotate(30 ' + f1(p[0] + 4) + ' ' + f1(p[1] - 11) + ')"/>';
         }
       }
       return s;
     },
     mat: function (k, t) {
-      var s = shadow(34);
+      var s = plot(1.15, 1.0, '#000', ' opacity=".16" transform="translate(5 3)"');
       if (t.id === 'paiwan' || t.id === 'bunun') {   // 石板堆
-        [[14, 66, 68], [20, 54, 56], [26, 43, 44]].forEach(function (p, i) {
-          s += '<polygon points="' + p[0] + ',' + (p[1] + 11) + ' ' + (p[0] + 6) + ',' + p[1] + ' ' + (p[0] + p[2]) + ',' + p[1] + ' ' + (p[0] + p[2] - 6) + ',' + (p[1] + 11) + '" fill="' + ['#7C7F84', '#8F9297', '#A3A6AA'][i] + '"/>';
+        [[1.0, 0.8, 0, '#74777C', '#8F9297'], [0.8, 0.64, 7, '#7F8287', '#9DA0A5'], [0.6, 0.48, 14, '#8A8D92', '#AEB1B5']].forEach(function (L) {
+          s += poly([q(-L[0], L[1], L[2]), q(L[0], L[1], L[2]), q(L[0], L[1], L[2] + 7), q(-L[0], L[1], L[2] + 7)], L[3]) +
+            poly([q(L[0], L[1], L[2]), q(L[0], -L[1], L[2]), q(L[0], -L[1], L[2] + 7), q(L[0], L[1], L[2] + 7)], shade(L[3], -16)) +
+            poly([q(-L[0], -L[1], L[2] + 7), q(L[0], -L[1], L[2] + 7), q(L[0], L[1], L[2] + 7), q(-L[0], L[1], L[2] + 7)], L[4]);
         });
-        if (t.id === 'bunun') s += '<rect x="56" y="28" width="26" height="9" rx="4.5" fill="#9B6B3F"/><circle cx="81" cy="32.5" r="4.5" fill="#C99A63"/>';
+        if (t.id === 'bunun') s += '<g transform="translate(-34 10)">' + log(0, 0) + '</g>';
       } else {   // 竹木堆
-        [[14, 68], [38, 68], [26, 55]].forEach(function (p) {
-          s += '<rect x="' + p[0] + '" y="' + p[1] + '" width="44" height="13" rx="6.5" fill="#9B6B3F"/><circle cx="' + (p[0] + 44 - 6.5) + '" cy="' + (p[1] + 6.5) + '" r="6.5" fill="#C99A63"/><circle cx="' + (p[0] + 44 - 6.5) + '" cy="' + (p[1] + 6.5) + '" r="3" fill="none" stroke="#9B6B3F" stroke-width="1.2"/>';
-        });
-        s += '<path d="M70 50V20M76 50V26M82 50V18" stroke="#7FA65A" stroke-width="3.2" stroke-linecap="round"/>';
+        s += log(-0.3, 0) + log(0.3, 0) + log(0, 8);
+        [[-0.9, -0.5, 34], [-0.7, -0.75, 40], [-1.05, -0.3, 30]].forEach(function (b) { var p = q(b[0], b[1]); s += seg(p, [p[0], p[1] - b[2]], '#7FA65A', 3); });
       }
       return s;
     },
     special: function (k, t) {
-      if (t.id === 'paiwan') return DRAW.farm(k, t, '#D4476B');
-      var s = shadow(36), rack = '<path d="M52 82V44M86 82V44M50 47h38" stroke="' + shade(k.wall, -45) + '" stroke-width="2.6" stroke-linecap="round" fill="none"/>';
-      var hut = '<polygon points="8,82 28,38 48,82" fill="' + k.roof + '"/><polygon points="22,82 28,62 34,82" fill="' + shade(k.roof, -45) + '"/>';
-      if (t.id === 'amis') {
-        s += hut + rack;
-        [58, 69, 80].forEach(function (x) { s += '<path d="M' + x + ' 47v5" stroke="#5C422B" stroke-width="1.2"/><path d="M' + x + ' 52c5 4 5 12 0 18c-5-6-5-14 0-18z" fill="#8FB8C9"/><path d="M' + (x - 3) + ' 74l3-5 3 5z" fill="#8FB8C9"/>'; });
-      } else if (t.id === 'atayal') {
-        s = houseShape(k, false);
-        s += '<rect x="62" y="40" width="26" height="34" fill="' + CREAM + '"/>';
-        [44, 52, 60, 68].forEach(function (y, i) { s += '<rect x="62" y="' + y + '" width="26" height="3.5" fill="' + (i % 2 ? '#2F3B45' : k.trim) + '"/>'; });
-        s += '<path d="M60 40h30" stroke="' + shade(k.wall, -45) + '" stroke-width="2.6" stroke-linecap="round"/>';
-      } else {   // 獵寮
-        s += hut + rack;
-        [59, 69, 79].forEach(function (x) { s += '<path d="M' + x + ' 47v4" stroke="#5C422B" stroke-width="1.2"/><rect x="' + (x - 3.5) + '" y="51" width="7" height="13" rx="3" fill="#A6583F"/>'; });
-      }
-      return s;
+      if (t.id === 'paiwan') return ISO.farm(k, t, '#D4476B');   // 紅藜田
+      var hut = '<g transform="translate(' + f1(q(-0.55, -0.1)[0]) + ' ' + f1(q(-0.55, -0.1)[1]) + ')">' + house(k, { w: 1.3, d: 1.1, h: 14, rh: 15 }) + '</g>';
+      if (t.id === 'atayal') return hut + rack(k, 0.95, 0.3, function (x, y, i) {   // 織布屋：晾著一般條紋的布
+        return '<rect x="' + f1(x - 5) + '" y="' + f1(y) + '" width="10" height="17" fill="#F2EAD6"/><rect x="' + f1(x - 5) + '" y="' + f1(y + 4) + '" width="10" height="3" fill="' + (i % 2 ? k.trim : '#2F3B45') + '"/><rect x="' + f1(x - 5) + '" y="' + f1(y + 10) + '" width="10" height="3" fill="' + k.trim + '"/>';
+      });
+      if (t.id === 'amis') return hut + rack(k, 0.95, 0.3, function (x, y) {      // 漁寮：曬魚
+        return '<path d="M' + f1(x) + ' ' + f1(y) + 'c5 4 5 11 0 16c-5-5-5-12 0-16z" fill="#8FB8C9"/><path d="M' + f1(x - 3) + ' ' + f1(y + 20) + 'l3-5 3 5z" fill="#8FB8C9"/>';
+      });
+      return hut + rack(k, 0.95, 0.3, function (x, y) { return '<rect x="' + f1(x - 3.5) + '" y="' + f1(y) + '" width="7" height="13" rx="3" fill="#A6583F"/>'; });   // 獵寮
     },
     storage: function (k, t) {
-      var s = shadow(32);
-      if (t.id === 'bunun') {   // 小米倉傳統上在屋內，這裡畫成矮石屋
-        return s + '<g transform="translate(48 82) scale(.82) translate(-48 -82)">' + houseBody(k) + '</g>' +
-          '<path d="M70 82V62" stroke="#6FA04B" stroke-width="2.4"/><ellipse cx="73" cy="59" rx="3" ry="5" fill="#E3B341" transform="rotate(30 73 59)"/><ellipse cx="67" cy="60" rx="3" ry="5" fill="#E3B341" transform="rotate(-30 67 60)"/>';
+      if (t.id === 'bunun') {   // 小米倉傳統上在屋內，這裡畫成矮石屋，旁邊放一束小米
+        var p = q(1.0, 0.9);
+        return house(k, { w: 1.5, d: 1.3, h: 16, rh: 14 }) + seg(p, [p[0], p[1] - 16], '#6FA04B', 2.4) + '<ellipse cx="' + f1(p[0] + 3) + '" cy="' + f1(p[1] - 18) + '" rx="3" ry="5" fill="#E3B341" transform="rotate(28 ' + f1(p[0] + 3) + ' ' + f1(p[1] - 18) + ')"/>';
       }
-      [28, 64].forEach(function (x) { s += '<rect x="' + x + '" y="58" width="4.5" height="24" fill="' + shade(k.wall, -40) + '"/><ellipse cx="' + (x + 2.2) + '" cy="60" rx="8" ry="2.6" fill="' + shade(k.wall, -55) + '"/>'; });
-      return s + '<rect x="21" y="34" width="54" height="24" fill="' + k.wall + '"/>' + texture(k, 21, 34, 54, 24) +
-        '<polygon points="13,37 48,14 83,37" fill="' + k.roof + '"/><rect x="42" y="42" width="12" height="16" fill="' + shade(k.wall, -55) + '"/>';
+      return house(k, { w: 1.5, d: 1.3, h: 17, rh: 16, z: 14, door: false });   // 架高的穀倉，柱子上有防鼠板
     },
     barracks: function (k) {
-      return '<ellipse cx="48" cy="66" rx="40" ry="18" fill="#B49A6C" opacity=".85"/>' +
-        '<path d="M26 82V44" stroke="' + shade(k.wall, -45) + '" stroke-width="3" stroke-linecap="round"/>' +
-        '<circle cx="26" cy="40" r="13" fill="' + CREAM + '"/><circle cx="26" cy="40" r="8.5" fill="' + k.trim + '"/><circle cx="26" cy="40" r="3.6" fill="' + CREAM + '"/>' +
-        '<path d="M56 80 70 30M66 80 72 30M78 80 74 30" stroke="#6B4A32" stroke-width="2.6" stroke-linecap="round"/>' +
-        '<path d="M70 30l-3-9 6 3zM72 30l0-10 4 6zM74 30l4-9 1 8z" fill="#C9CDD1"/>';
+      var a = q(-0.5, 0.2), s = plot(1.25, 1.1, '#B49A6C', ' opacity=".9"') + seg(a, [a[0], a[1] - 26], shade(k.wall, -50), 3);
+      s += '<circle cx="' + f1(a[0]) + '" cy="' + f1(a[1] - 30) + '" r="12" fill="#F2EAD6"/><circle cx="' + f1(a[0]) + '" cy="' + f1(a[1] - 30) + '" r="7.5" fill="' + k.trim + '"/><circle cx="' + f1(a[0]) + '" cy="' + f1(a[1] - 30) + '" r="3" fill="#F2EAD6"/>';
+      [[0.6, -0.2, 6], [0.75, 0.05, 0], [0.9, 0.3, -6]].forEach(function (b) { var p = q(b[0], b[1]); s += seg(p, [p[0] + b[2], p[1] - 40], '#6B4A32', 2.4) + poly([[p[0] + b[2] - 3, p[1] - 40], [p[0] + b[2] + 3, p[1] - 40], [p[0] + b[2], p[1] - 50]], '#C9CDD1'); });
+      return s;
     },
     tower: function (k) {
-      return shadow(26) + '<path d="M28 84 36 34M68 84 60 34M31 64h34M33 50h30M31 64 63 50M65 64 33 50" stroke="#7A5636" stroke-width="3.2" stroke-linecap="round" fill="none"/>' +
-        '<rect x="26" y="26" width="44" height="9" fill="#8D6642"/><path d="M30 26V12M66 26V12" stroke="#7A5636" stroke-width="3"/>' +
-        '<polygon points="22,14 48,0 74,14" fill="' + k.roof + '"/><rect x="26" y="20" width="44" height="3" fill="' + k.trim + '"/>';
+      var s = plot(0.8, 0.8, '#000', ' opacity=".18" transform="translate(5 3)"'), dk = '#7A5636';
+      [[-0.55, -0.55], [-0.55, 0.55], [0.55, 0.55], [0.55, -0.55]].forEach(function (c) { s += seg(q(c[0], c[1]), q(c[0] * 0.8, c[1] * 0.8, 56), dk, 3.2); });
+      s += seg(q(-0.55, 0.55, 20), q(0.55, 0.55, 20), dk, 2.2) + seg(q(0.55, 0.55, 36), q(0.55, -0.55, 36), dk, 2.2);
+      return s + '<g transform="translate(0 -56)">' + plot(0.62, 0.62, '#8D6642') + '</g><g transform="translate(0 -58)">' + house(k, { w: 1.1, d: 1.1, h: 14, rh: 12, open: true, ov: 0.25 }) + '</g>';
     }
   };
-  function building(b, t) {
-    var k = t.look, s = DRAW[b.type](k, t);
-    if (b.level === 0) return '<g opacity=".4">' + s + '</g><rect x="8" y="14" width="80" height="72" rx="6" fill="none" stroke="' + CREAM + '" stroke-width="2.5" stroke-dasharray="7 6"/>';
-    return s;
+  var TOP = { center: 82, house: 58, farm: 26, mat: 36, special: 48, storage: 64, barracks: 56, tower: 104 };   // 各建築大約多高，用來放等級標記
+
+  // 樹、石頭、草叢：定義一次，用 <use> 重複放
+  var DEFS = '<defs>' +
+    '<g id="t-c"><ellipse cx="0" cy="1" rx="11" ry="3.6" fill="#000" opacity=".25"/><rect x="-2" y="-11" width="4" height="12" fill="#6B4A32"/><polygon points="-16,-8 0,-36 16,-8" fill="#2F6B4F"/><polygon points="0,-36 16,-8 0,-8" fill="#25573F"/><polygon points="-11,-25 0,-52 11,-25" fill="#3A7C5B"/><polygon points="0,-52 11,-25 0,-25" fill="#2D6449"/></g>' +
+    '<g id="t-b"><ellipse cx="0" cy="1" rx="14" ry="4.2" fill="#000" opacity=".25"/><rect x="-2.5" y="-15" width="5" height="16" fill="#6B4A32"/><circle cx="-8" cy="-23" r="12" fill="#3E7D4E"/><circle cx="8" cy="-25" r="13" fill="#357245"/><circle cx="0" cy="-35" r="13" fill="#4A8E59"/><circle cx="-4" cy="-39" r="6.5" fill="#63A96E" opacity=".85"/></g>' +
+    '<g id="t-r"><polygon points="-13,2 -9,-10 3,-15 13,-6 14,2" fill="#8E9196"/><polygon points="3,-15 13,-6 14,2 2,2" fill="#74777C"/></g>' +
+    '<g id="t-s"><ellipse cx="0" cy="1" rx="11" ry="3.4" fill="#000" opacity=".2"/><circle cx="-5" cy="-5" r="7" fill="#4F8F55"/><circle cx="5" cy="-6" r="8" fill="#447F4B"/><circle cx="0" cy="-10" r="6" fill="#62A566"/></g>' +
+    '</defs>';
+  function use(id, x, y, sc) { return '<use href="#' + id + '" transform="translate(' + f1(x) + ' ' + f1(y) + ') scale(' + sc.toFixed(2) + ')"/>'; }
+  function inWater(k, p) {
+    if (k.backdrop === 'coast') return p[1] > shore(p[0]) - 46;
+    return Math.abs(p[0] - stream(p[1])) < 40;
   }
-  function badge(level) {
-    return '<circle cx="80" cy="16" r="13" fill="' + INK + '" opacity=".88"/><text x="80" y="22.5" text-anchor="middle" font-size="18" font-weight="700" fill="' + CREAM + '">' + level + '</text>';
+  function stream(y) { return 1890 + 62 * Math.sin(y / 160); }
+  function shore(x) { return 1096 + 24 * Math.sin(x / 190); }
+  var decorCache = {};
+  function decor(t) {   // 開墾地外面的山林：位置固定，每次都一樣
+    if (decorCache[t.id]) return decorCache[t.id];
+    var k = t.look, out = [], coast = k.backdrop === 'coast', rocky = t.id === 'paiwan' ? 0.16 : 0.06;
+    for (var i = 0; i < 1320; i++) {
+      var gx = -9 + rnd(i, 1) * 58, gy = -9 + rnd(i, 2) * 58;
+      if (Math.hypot(gx - CX, gy - CY) < 15.3) continue;
+      var p = P(gx, gy);
+      if (p[0] < -30 || p[0] > SW + 30 || p[1] < 36 || p[1] > SH + 50 || inWater(k, p)) continue;
+      var r = rnd(i, 3), id = r < rocky ? 't-r' : coast ? (r < 0.24 ? 't-s' : 't-b') : (r < 0.66 ? 't-c' : 't-b');
+      out.push({ y: p[1], s: use(id, p[0], p[1], 0.85 + rnd(i, 4) * 0.45) });
+    }
+    out.sort(function (a, b) { return a.y - b.y; });
+    return (decorCache[t.id] = out.map(function (o) { return o.s; }).join(''));
+  }
+  var CLUMP = [[-36, -8], [-12, -22], [18, -15], [38, 0], [-20, 9], [8, 15]];
+  function badge(x, y, inner, ring) {
+    return '<g transform="translate(' + f1(x) + ' ' + f1(y) + ')"><circle r="13" fill="rgba(20,33,42,.82)" stroke="' + ring + '" stroke-width="2"/>' + inner + '</g>';
   }
 
-  // ---------- 部落場景 ----------
-  var VW = 960, VH = 600, OX = 48, OY = 78, TS = 96;
-  function tileXY(i) { return [OX + (i % R.GRID_W) * TS, OY + Math.floor(i / R.GRID_W) * TS]; }
-  function backdrop(k) {
-    var s = '<rect width="' + VW + '" height="' + VH + '" fill="' + k.ground + '"/>';
-    if (k.backdrop === 'coast') {
-      s += '<rect width="' + VW + '" height="30" fill="#BFE0EA"/><rect y="26" width="' + VW + '" height="26" fill="#3E8FB8"/>' +
-        '<path d="M0 40q30-7 60 0t60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0" fill="none" stroke="#9CD0E4" stroke-width="2.5"/>' +
-        '<rect y="50" width="' + VW + '" height="12" fill="#E2CF9C"/>';
-    } else {
-      s += '<rect width="' + VW + '" height="62" fill="#BFDDE0"/>' +
-        '<polygon points="0,62 0,34 90,8 190,40 300,4 420,36 520,14 640,44 760,6 880,38 960,20 960,62" fill="#6F9C8D"/>' +
-        '<polygon points="0,62 0,48 130,26 250,52 380,24 500,54 630,30 770,56 900,32 960,46 960,62" fill="#4B7A69"/>';
+  /* v: {tribe, tiles, land, queue, wall}；回傳放進 <svg> 的內容。倒數文字由外部依 data-until 更新。 */
+  function scene(v, sel) {
+    var t = Tribes.get(v.tribe), k = t.look, S = R.SITES, low = '', top = '', items = [], busy = {}, i;
+    v.queue.forEach(function (w) { if (w.tile >= 0) busy[w.tile] = w; });
+    function dist(j) { return Math.hypot(S[j].x - CX, S[j].y - CY); }
+    for (i = 1; i < S.length; i++) {   // 小路：每塊開墾好的地連到比較靠近中央的鄰地
+      if (!v.land[i]) continue;
+      var parent = 0, best = dist(i);
+      S[i].near.forEach(function (j) { if (v.land[j] && dist(j) < best) { best = dist(j); parent = j; } });
+      low += seg(sitePos(i), sitePos(parent), '#BFA475', 13, ' opacity=".8"');
     }
-    var dots = '';
-    for (var i = 0; i < 46; i++) {   // 固定位置的草叢，讓地面不單調
-      var x = (i * 197) % 940 + 10, y = 70 + (i * 131) % 520;
-      dots += '<ellipse cx="' + x + '" cy="' + y + '" rx="' + (9 + i % 5 * 3) + '" ry="' + (4 + i % 3) + '" fill="' + shade(k.ground, i % 2 ? -10 : 9) + '"/>';
-    }
-    return s + dots;
-  }
-  function fence(k, level) {
-    if (!level) return '';
-    var w = 3 + level * 1.6, x = 30, y = 68, ww = VW - 60, hh = VH - 92;
-    if (k.fence === 'stone') return '<rect x="' + x + '" y="' + y + '" width="' + ww + '" height="' + hh + '" rx="20" fill="none" stroke="#5F6166" stroke-width="' + (w + 5) + '"/>' +
-      '<rect x="' + x + '" y="' + y + '" width="' + ww + '" height="' + hh + '" rx="20" fill="none" stroke="#A5A8AC" stroke-width="' + (w + 1) + '" stroke-dasharray="22 5"/>';
-    return '<rect x="' + x + '" y="' + y + '" width="' + ww + '" height="' + hh + '" rx="20" fill="none" stroke="#5E7B3C" stroke-width="' + (w + 4) + '"/>' +
-      '<rect x="' + x + '" y="' + y + '" width="' + ww + '" height="' + hh + '" rx="20" fill="none" stroke="#A9C46A" stroke-width="' + w + '" stroke-dasharray="5 6"/>';
-  }
-  /* v: {tribe, tiles, wall}；回傳 <svg> 內容。timers 由外部依 data-until 更新。 */
-  function village(v, sel, queue) {
-    var t = Tribes.get(v.tribe), k = t.look, s = backdrop(k) + fence(k, v.wall), until = {};
-    (queue || []).forEach(function (q) { if (q.tile >= 0) until[q.tile] = q.doneAt; });
-    for (var i = 0; i < R.TILE_N; i++) {
-      var p = tileXY(i), b = v.tiles[i], on = sel === i;
-      s += '<g class="tile' + (on ? ' on' : '') + (b ? '' : ' empty') + '" data-tile="' + i + '" transform="translate(' + p[0] + ' ' + p[1] + ')">' +
-        '<rect class="plot" x="5" y="5" width="86" height="86" rx="12"/>';
-      if (b) {
-        s += building(b, t);
-        if (b.level > 0) s += badge(b.level);
-        if (b.busy) s += '<g class="busy"><rect x="12" y="64" width="72" height="24" rx="12" fill="' + INK + '" opacity=".9"/><text x="48" y="82" text-anchor="middle" font-size="17" font-weight="700" fill="#E3B341" data-until="' + (until[i] || 0) + '"></text></g>';
+    for (i = 0; i < S.length; i++) {
+      var p = sitePos(i), b = v.tiles[i], w = busy[i], tx = ' transform="translate(' + f1(p[0]) + ' ' + f1(p[1]) + ')"';
+      if (sel === i) low += '<ellipse cx="' + f1(p[0]) + '" cy="' + f1(p[1]) + '" rx="66" ry="33" fill="rgba(227,179,65,.25)" stroke="#E3B341" stroke-width="4"/>';
+      if (!v.land[i]) {   // 山林
+        var clearing = w && w.type === 'clear';
+        CLUMP.forEach(function (c, n) {
+          if (clearing && n % 2) return;
+          items.push({ y: p[1] + c[1], s: use(rnd(i * 7 + n, 5) < (k.backdrop === 'coast' ? 0.15 : 0.6) ? 't-c' : 't-b', p[0] + c[0], p[1] + c[1], 0.95 + rnd(i * 7 + n, 6) * 0.3) });
+        });
+        if (clearing) top += pill(p[0], p[1] + 6, w.doneAt);
+        else if (S[i].near.some(function (j) { return v.land[j]; }))
+          top += badge(p[0], p[1] - 50, '<path d="M-5 6 4 -5" stroke="#F2EAD6" stroke-width="2.4" stroke-linecap="round"/><path d="M1 -8 8 -3 4 2 -1 -4z" fill="#F2EAD6"/>', '#F2EAD6');
+      } else if (!b) {     // 開墾好的空地
+        low += '<g' + tx + '>' + plot(1.2, 1.05, '#B79B6E', ' opacity=".85"') + '</g>';
+        [[-1.2, -1.05], [1.2, -1.05], [1.2, 1.05], [-1.2, 1.05]].forEach(function (c) { var g = q(c[0], c[1]); low += seg([p[0] + g[0], p[1] + g[1]], [p[0] + g[0], p[1] + g[1] - 9], '#7A5636', 2.6); });
+        top += badge(p[0], p[1] - 2, '<path d="M-6 0H6M0 -6V6" stroke="#E3B341" stroke-width="2.6" stroke-linecap="round"/>', '#E3B341');
+      } else {
+        items.push({ y: p[1] + 8, s: '<g' + tx + (b.level === 0 ? ' opacity=".45"' : '') + '>' + ISO[b.type](k, t) + '</g>' });
+        if (b.busy && w) top += pill(p[0], p[1] + 22, w.doneAt);
+        if (b.level > 0) top += '<g transform="translate(' + f1(p[0] + 34) + ' ' + f1(p[1] - TOP[b.type]) + ')"><circle r="12" fill="rgba(20,33,42,.88)"/><text y="6" text-anchor="middle" font-size="17" font-weight="700" fill="#F2EAD6">' + b.level + '</text></g>';
       }
-      s += '<rect class="hit" width="96" height="96" fill="transparent"/></g>';
     }
-    return s;
+    items.sort(function (a, c) { return a.y - c.y; });
+    return low + items.map(function (it) { return it.s; }).join('') + top;
+  }
+  function pill(x, y, until) {
+    return '<g transform="translate(' + f1(x) + ' ' + f1(y) + ')"><rect x="-40" y="-13" width="80" height="26" rx="13" fill="rgba(20,33,42,.9)"/><text y="6" text-anchor="middle" font-size="17" font-weight="700" fill="#E3B341" data-until="' + until + '"></text></g>';
+  }
+  function person(color) {
+    return '<ellipse cx="0" cy="9" rx="6.5" ry="2.4" fill="#000" opacity=".22"/><path d="M-5.5 9c0-8 2-13 5.5-13s5.5 5 5.5 13z" fill="' + color + '"/><circle cx="0" cy="-8" r="4.8" fill="#B98660"/>';
+  }
+
+  /* 地面底圖：畫在畫布上再當成一張圖，縮放平移才順。 */
+  var groundCache = {};
+  function groundURL(t) {
+    if (groundCache[t.id]) return groundCache[t.id];
+    var k = t.look, cv = document.createElement('canvas'); cv.width = SW; cv.height = SH;
+    var c = cv.getContext('2d'), base = k.ground, i, g;
+    c.fillStyle = shade(base, -32); c.fillRect(0, 0, SW, SH);
+    for (i = 0; i < 180; i++) {   // 林地的深淺變化
+      var x = rnd(i, 11) * SW, y = rnd(i, 12) * SH, r = 50 + rnd(i, 13) * 130, col = i % 2 ? shade(base, -44) : shade(base, -20);
+      g = c.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, rgba(col, 0.55)); g.addColorStop(1, rgba(col, 0)); c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, 6.3); c.fill();
+    }
+    var ctr = P(CX, CY), rx = 16 * U * 1.414;
+    c.save(); c.translate(ctr[0], ctr[1]); c.scale(1, 0.5);   // 開墾地：比周圍亮的草地
+    g = c.createRadialGradient(0, 0, rx * 0.2, 0, 0, rx); g.addColorStop(0, shade(base, 14)); g.addColorStop(0.7, base); g.addColorStop(1, rgba(base, 0));
+    c.fillStyle = g; c.beginPath(); c.arc(0, 0, rx, 0, 6.3); c.fill();
+    var pr = 3.5 * U * 1.414;                                   // 中央的廣場
+    g = c.createRadialGradient(0, 0, pr * 0.45, 0, 0, pr); g.addColorStop(0, 'rgba(196,170,122,.95)'); g.addColorStop(1, 'rgba(196,170,122,0)');
+    c.fillStyle = g; c.beginPath(); c.arc(0, 0, pr, 0, 6.3); c.fill();
+    c.restore();
+    for (i = 0; i < 420; i++) {   // 草叢筆觸
+      var a = rnd(i, 21) * 6.283, rr = Math.sqrt(rnd(i, 22)) * rx, gx = ctr[0] + Math.cos(a) * rr, gy = ctr[1] + Math.sin(a) * rr * 0.5;
+      c.strokeStyle = rgba(shade(base, i % 2 ? 26 : -16), 0.5); c.lineWidth = 1.6; c.beginPath(); c.moveTo(gx - 4, gy); c.lineTo(gx - 2, gy - 5); c.moveTo(gx, gy); c.lineTo(gx + 1, gy - 6); c.moveTo(gx + 4, gy); c.lineTo(gx + 3, gy - 4); c.stroke();
+    }
+    c.lineCap = 'round'; c.lineJoin = 'round';
+    if (k.backdrop === 'coast') {   // 海岸：沙灘、海面、浪花
+      var edge = function (off) { c.beginPath(); c.moveTo(0, shore(0) + off); for (var x2 = 0; x2 <= SW; x2 += 20) c.lineTo(x2, shore(x2) + off); c.lineTo(SW, SH); c.lineTo(0, SH); c.closePath(); };
+      edge(-34); c.fillStyle = '#E2CF9C'; c.fill();
+      edge(4); c.fillStyle = '#3E8FB8'; c.fill();
+      edge(44); c.fillStyle = '#2F7CA6'; c.fill();
+      [[6, 0.8], [26, 0.45], [58, 0.3]].forEach(function (wv) {
+        c.beginPath(); for (var x3 = 0; x3 <= SW; x3 += 20) { var y3 = shore(x3) + wv[0] + 3 * Math.sin(x3 / 37); if (x3) c.lineTo(x3, y3); else c.moveTo(x3, y3); }
+        c.strokeStyle = 'rgba(255,255,255,' + wv[1] + ')'; c.lineWidth = 3; c.stroke();
+      });
+    } else {                        // 山區：一條溪
+      [[30, '#2E6F8E'], [20, '#4C93B5'], [5, 'rgba(255,255,255,.35)']].forEach(function (wv) {
+        c.beginPath(); for (var y4 = -20; y4 <= SH + 20; y4 += 20) { if (y4 > -20) c.lineTo(stream(y4), y4); else c.moveTo(stream(y4), y4); }
+        c.strokeStyle = wv[1]; c.lineWidth = wv[0]; c.stroke();
+      });
+    }
+    g = c.createRadialGradient(SW / 2, SH / 2, SH * 0.45, SW / 2, SH / 2, SW * 0.62);   // 四周壓暗
+    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(6,16,20,.45)'); c.fillStyle = g; c.fillRect(0, 0, SW, SH);
+    return (groundCache[t.id] = cv.toDataURL('image/jpeg', 0.86));
   }
 
   // ---------- 世界地圖（自然風格：平滑海岸線、暈染的區域色塊、山脈起伏） ----------
-  function rgba(hex, al) { var n = parseInt(hex.slice(1), 16); return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + al + ')'; }
   function tracePath(c, poly) {
     var sp = Geo.smoothPoints(poly), last = sp[sp.length - 1].m;
     c.beginPath(); c.moveTo(last[0], last[1]);
@@ -255,5 +331,6 @@ window.Art = (function () {
     return s;
   }
 
-  return { icon: icon, village: village, paintMap: paintMap, mapLabels: mapLabels, tileXY: tileXY, shade: shade, VW: VW, VH: VH, TS: TS };
+  return { icon: icon, scene: scene, decor: decor, groundURL: groundURL, sitePos: sitePos, person: person, DEFS: DEFS, SW: SW, SH: SH,
+    paintMap: paintMap, mapLabels: mapLabels, shade: shade };
 })();

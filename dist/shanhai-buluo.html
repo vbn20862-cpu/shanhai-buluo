@@ -40,12 +40,8 @@ button:disabled { cursor: default; }
 #scene { position: relative; min-width: 0; min-height: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: linear-gradient(160deg, #15394B, #0E2633); }
 #scene svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 #scene[data-scene="map"] #vsvg, #scene[data-scene="village"] #msvg { display: none; }
-#vsvg { background: #2A3B33; font-family: var(--body); }
-#msvg { touch-action: none; cursor: grab; font-family: var(--body); user-select: none; -webkit-user-select: none; }
-.tile { cursor: pointer; }
-.tile .plot { fill: rgba(255, 255, 255, .07); stroke: rgba(255, 255, 255, .28); stroke-width: 2; stroke-dasharray: 7 7; }
-.tile:not(.empty) .plot { fill: rgba(0, 0, 0, .1); stroke: none; }
-.tile.on .plot { fill: rgba(227, 179, 65, .22); stroke: var(--gold); stroke-width: 4; stroke-dasharray: none; }
+#vsvg, #msvg { touch-action: none; cursor: grab; font-family: var(--body); user-select: none; -webkit-user-select: none; }
+#vsvg { background: #1E2F27; }
 .person { transition: transform 2.2s linear; pointer-events: none; }
 .rlabel { font-size: calc(var(--u, 1) * 11px); font-weight: 700; fill: var(--ink); paint-order: stroke; stroke: rgba(12, 28, 38, .85); stroke-width: calc(var(--u, 1) * 3px); stroke-linejoin: round; text-anchor: middle; pointer-events: none; }
 .rlabel:not(.play) { fill: #D5DCD6; font-weight: 500; }
@@ -91,6 +87,7 @@ p { margin: 4px 0; }
 .costs { display: flex; gap: 9px; flex-wrap: wrap; }
 .cost { display: inline-flex; align-items: center; gap: 3px; font-variant-numeric: tabular-nums; }
 .cost.lack { color: var(--warn); }
+.gain { display: inline-flex; align-items: center; gap: 3px; color: var(--good); font-variant-numeric: tabular-nums; }
 .time { margin-left: auto; color: var(--mute); font-size: 12px; white-space: nowrap; }
 .opts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .opts li { border-top: 1px dashed var(--line); padding-top: 8px; }
@@ -519,7 +516,24 @@ p { margin: 4px 0; }
   'use strict';
 
   // ---------- 規則數值 ----------
-  var GRID_W = 9, GRID_H = 5, TILE_N = GRID_W * GRID_H, CENTER_TILE = 22;
+  // 建地：部落中央是廣場與部落中心，外面三圈是可以蓋建築的位置（地面座標，畫面再轉成斜視角）。
+  // 第 0 圈一開始就是開墾好的；第 1、2 圈是山林，要拓荒之後才能蓋。
+  var SITES = (function () {
+    var out = [{ x: 20, y: 20, ring: 0 }];
+    [[6, 4.6, 0.5], [10, 8.8, 0.2], [12, 13.0, 0.05]].forEach(function (r, ri) {
+      for (var i = 0; i < r[0]; i++) {
+        var a = i / r[0] * Math.PI * 2 + r[2], rad = r[1] + ((i * 7 + ri * 3) % 5 - 2) * 0.16;
+        out.push({ x: +(20 + rad * Math.cos(a)).toFixed(2), y: +(20 + rad * Math.sin(a)).toFixed(2), ring: ri });
+      }
+    });
+    out.forEach(function (s, i) {
+      s.near = [];
+      out.forEach(function (o, j) { if (i !== j && Math.hypot(s.x - o.x, s.y - o.y) <= 6.2) s.near.push(j); });
+    });
+    return out;
+  })();
+  var TILE_N = SITES.length, CENTER_TILE = 0;
+  var CLEAR = { 1: { food: 25, time: 12, gain: 15, center: 1 }, 2: { food: 60, time: 25, gain: 35, center: 2 } };   // 拓荒：花糧食與時間，清出來的木石變成建材
   var MULT = [1, 2.2, 4, 7, 11], TMULT = [1, 2, 3.5, 5.5, 8], MAX_LEVEL = 5;
   var TYPES = ['house', 'farm', 'mat', 'special', 'storage', 'barracks', 'tower'];
   var DEF = {
@@ -594,13 +608,26 @@ p { margin: 4px 0; }
   function foreignKinds(v) { var n = 0; for (var k in v.sp) if (k !== v.tribe && v.sp[k] >= 1) n++; return n; }
   function prosperity(v) {
     var p = 0;
-    for (var i = 0; i < TILE_N; i++) if (v.tiles[i]) p += v.tiles[i].level * (v.tiles[i].type === 'center' ? 30 : 10);
+    for (var i = 0; i < TILE_N; i++) { if (v.tiles[i]) p += v.tiles[i].level * (v.tiles[i].type === 'center' ? 30 : 10); if (v.land[i] && SITES[i].ring > 0) p += 3; }
     return Math.round(p + v.wall * 10 + v.pop * 3 + foreignKinds(v) * 15 + Math.min(40, v.gifts * 2));
   }
   function derived(v, speed) {
     var c = caps(v);
     return { cap: c.res, spCap: c.sp, protect: c.protect, slots: slots(v), rates: rates(v, speed), popCap: popCap(v),
       armyCap: armyCap(v), builders: BUILDERS, prosperity: prosperity(v), center: centerLevel(v) };
+  }
+  /* 這塊地能不能拓荒：要是山林、緊鄰已開墾的地、部落中心等級夠、有空的工程名額、糧食夠 */
+  function clearInfo(v, i) {
+    var s = SITES[i], out = { ok: false, why: '' };
+    if (!s || v.land[i]) { out.why = '這裡已經開墾過了'; return out; }
+    var c = CLEAR[s.ring]; out.food = c.food; out.time = c.time; out.gain = c.gain;
+    if (v.queue.some(function (q) { return q.type === 'clear' && q.tile === i; })) out.why = '正在拓荒';
+    else if (!s.near.some(function (j) { return v.land[j]; })) out.why = '要從已經開墾的地方往外拓荒';
+    else if (centerLevel(v) < c.center) out.why = 'center';
+    else if (v.queue.length >= BUILDERS) out.why = '同時只能進行 ' + BUILDERS + ' 項工程';
+    else if (v.res.food < c.food) out.why = '糧食不足';
+    else out.ok = true;
+    return out;
   }
   function getRes(v, k) { return k === 'food' || k === 'mat' ? v.res[k] : (v.sp[k.slice(3)] || 0); }
   function addRes(v, k, n) {
@@ -685,13 +712,14 @@ p { margin: 4px 0; }
   World.prototype.createVillage = function (o, now) {
     var tiles = []; for (var i = 0; i < TILE_N; i++) tiles.push(null);
     tiles[CENTER_TILE] = { type: 'center', level: 1 };
-    tiles[CENTER_TILE - 1] = { type: 'house', level: 1 };
-    tiles[CENTER_TILE - GRID_W] = { type: 'farm', level: 1 };
-    tiles[CENTER_TILE + GRID_W] = { type: 'mat', level: 1 };
+    tiles[4] = { type: 'house', level: 1 };
+    tiles[2] = { type: 'farm', level: 1 };
+    tiles[6] = { type: 'mat', level: 1 };
+    var land = SITES.map(function (s) { return s.ring === 0 ? 1 : 0; });
     var v = {
       id: this.id('v'), name: o.name, owner: o.owner, tribe: o.tribe, hex: o.at.hex, slot: o.at.slot, pos: o.at.pos, bot: !!o.bot,
       createdAt: now, last: now, res: { food: 120, mat: 120 }, sp: {}, pop: 4, popAcc: 0,
-      jobs: { food: 2, mat: 2, special: 0 }, auto: true, tiles: tiles, wall: 0, queue: [],
+      jobs: { food: 2, mat: 2, special: 0 }, auto: true, tiles: tiles, land: land, wall: 0, queue: [],
       units: { w: 0, a: 0 }, away: { w: 0, a: 0 }, train: [], glory: 0, wins: 0, losses: 0, gifts: 0,
       shieldUntil: 0, newbieUntil: o.bot ? 0 : now + NEWBIE_MS, ally: null, reports: [], cool: {},
       lastSay: 0, lastGift: 0, online: !!o.bot
@@ -746,6 +774,7 @@ p { margin: 4px 0; }
     v.queue = v.queue.filter(function (q) {
       if (q.doneAt > now) return true;
       if (q.type === 'wall') v.wall = q.to;
+      else if (q.type === 'clear') { v.land[q.tile] = 1; v.res.mat += q.gain; }
       else if (v.tiles[q.tile]) { v.tiles[q.tile].level = q.to; delete v.tiles[q.tile].busy; }
       return false;
     });
@@ -787,6 +816,7 @@ p { margin: 4px 0; }
       var tile = int(a.tile), type = a.type2;
       if (TYPES.indexOf(type) < 0) return { ok: false, msg: '沒有這種建築' };
       if (tile < 0 || tile >= TILE_N || v.tiles[tile]) return { ok: false, msg: '這塊地已經有建築了' };
+      if (!v.land[tile]) return { ok: false, msg: '這裡還是山林，要先拓荒' };
       if (count(v, type) >= limit(type, centerLevel(v))) return { ok: false, msg: '數量已達上限，先升級部落中心' };
       if (v.queue.length >= BUILDERS) return { ok: false, msg: '同時只能進行 ' + BUILDERS + ' 項工程' };
       var c = cost(type, 1);
@@ -794,6 +824,12 @@ p { margin: 4px 0; }
       pay(v, c);
       v.tiles[tile] = { type: type, level: 0, busy: true };
       v.queue.push({ id: this.id('q'), tile: tile, type: type, to: 1, doneAt: now + buildTime(type, 1) * 1000 / this.speed });
+    },
+    clear: function (v, a, now) {
+      var info = clearInfo(v, int(a.tile));
+      if (!info.ok) return { ok: false, msg: info.why === 'center' ? '要先把部落中心升到等級 ' + CLEAR[SITES[int(a.tile)].ring].center : info.why };
+      v.res.food -= info.food;
+      v.queue.push({ id: this.id('q'), tile: int(a.tile), type: 'clear', to: 0, gain: info.gain, doneAt: now + info.time * 1000 / this.speed });
     },
     upgrade: function (v, a, now) {
       var tile = int(a.tile), b = v.tiles[tile];
@@ -995,14 +1031,15 @@ p { margin: 4px 0; }
     var self = this, rng = this.rng, C = centerLevel(v);
     this.tickVillage(v, now);
     if (v.queue.length < BUILDERS && rng() < 0.7) {
-      var opts = [], empty = [];
+      var opts = [], empty = [], wild = [];
       for (var i = 0; i < TILE_N; i++) {
         var b = v.tiles[i];
-        if (!b) { empty.push(i); continue; }
+        if (!b) { if (v.land[i]) empty.push(i); else if (clearInfo(v, i).ok) wild.push(i); continue; }
         if (b.busy || b.level >= MAX_LEVEL) continue;
         if (b.type === 'center') { if (can(v, cost('center', b.level + 1))) opts.push({ type: 'upgrade', tile: i }, { type: 'upgrade', tile: i }); }
         else if (b.level < C && can(v, cost(b.type, b.level + 1))) opts.push({ type: 'upgrade', tile: i });
       }
+      if (empty.length < 2 && wild.length) opts.push({ type: 'clear', tile: wild[Math.floor(rng() * wild.length)] });
       if (empty.length) TYPES.forEach(function (ty) {
         if (count(v, ty) < limit(ty, C) && can(v, cost(ty, 1))) opts.push({ type: 'build', type2: ty, tile: empty[Math.floor(rng() * empty.length)] });
       });
@@ -1053,6 +1090,7 @@ p { margin: 4px 0; }
     this.tickVillage(v, now);
     var p = this.pub(v, now);
     p.tiles = v.tiles.map(function (b) { return b ? { type: b.type, level: b.level, busy: !!b.busy } : null; });
+    p.land = v.land.slice();
     p.pop = v.pop;
     return p;
   };
@@ -1078,12 +1116,16 @@ p { margin: 4px 0; }
     if (!d || !d.villages) return this;
     this.villages = d.villages; this.tokens = d.tokens || {}; this.marches = d.marches || []; this.market = d.market || [];
     this.feed = d.feed || []; this.alliances = d.alliances || {}; this.seq = d.seq || 1;
-    for (var id in this.villages) { this.villages[id].online = !!this.villages[id].bot; }
+    for (var id in this.villages) {
+      var v = this.villages[id]; v.online = !!v.bot;
+      if (!v.land || v.tiles.length !== TILE_N) delete this.villages[id];   // 舊版的方格部落無法沿用
+    }
+    for (var tk in this.tokens) if (!this.villages[this.tokens[tk]]) delete this.tokens[tk];
     return this;
   };
 
   World.rules = {
-    GRID_W: GRID_W, GRID_H: GRID_H, TILE_N: TILE_N, CENTER_TILE: CENTER_TILE, TYPES: TYPES, MAX_LEVEL: MAX_LEVEL, UNIT: UNIT,
+    SITES: SITES, CLEAR: CLEAR, clearInfo: clearInfo, TILE_N: TILE_N, CENTER_TILE: CENTER_TILE, TYPES: TYPES, MAX_LEVEL: MAX_LEVEL, UNIT: UNIT,
     CENTER_UP: CENTER_UP, BUILDERS: BUILDERS, FOREIGN_SP: FOREIGN_SP, cost: cost, buildTime: buildTime, limit: limit, count: count,
     resName: resName, battle: battle, derived: derived, popCap: popCap
   };
@@ -1091,7 +1133,7 @@ p { margin: 4px 0; }
 });
 </script>
 <script>
-/* 山海部落 — 畫面繪製（全部用 SVG 即時畫出，沒有外部圖檔）
+/* 山海部落 — 畫面繪製（全部用程式畫出，沒有外部圖檔；之後可以整組換成畫師的作品）
  * 圖樣只用一般的幾何形狀，不使用各族專屬或具身分意義的紋樣。 */
 window.Art = (function () {
   'use strict';
@@ -1115,174 +1157,250 @@ window.Art = (function () {
   };
   function icon(name, cls) { return '<svg class="ic ' + (cls || 'ic-' + name) + '" viewBox="0 0 16 16" aria-hidden="true">' + ICONS[name] + '</svg>'; }
 
-  // ---------- 建築（每格 96×96，地面約在 y=82） ----------
-  function shadow(rx) { return '<ellipse cx="48" cy="83" rx="' + (rx || 36) + '" ry="5" fill="#000" opacity=".2"/>'; }
-  function texture(k, x, y, w, h) {
-    var s = '', c = shade(k.wall, -22), i;
-    if (k.fence === 'stone') for (i = 1; i < 4; i++) s += '<path d="M' + x + ' ' + (y + i * h / 4) + 'h' + w + '" stroke="' + c + '" stroke-width="1.6"/>';
-    else for (i = 1; i < 7; i++) s += '<path d="M' + (x + i * w / 7) + ' ' + y + 'v' + h + '" stroke="' + c + '" stroke-width="1.4"/>';
+  function rgba(hex, al) { var n = parseInt(hex.slice(1), 16); return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + al + ')'; }
+
+  // ---------- 部落場景（從斜上方俯視，沒有格線；場景比螢幕大，可以拖曳縮放） ----------
+  var U = 28, SW = 2200, SH = 1240, OX = SW / 2, OY = 60, CX = 20, CY = 20;   // CX, CY：部落中央的地面座標
+  function P(gx, gy, z) { return [OX + (gx - gy) * U, OY + (gx + gy) * U / 2 - (z || 0)]; }   // 地面座標 → 畫面座標
+  function sitePos(i) { var s = R.SITES[i]; return P(s.x, s.y); }
+  function q(x, y, z) { return [(x - y) * U, (x + y) * U / 2 - (z || 0)]; }                    // 以建地中心為原點
+  function f1(n) { return n.toFixed(1); }
+  function poly(a, fill, extra) { return '<polygon points="' + a.map(function (p) { return f1(p[0]) + ',' + f1(p[1]); }).join(' ') + '" fill="' + fill + '"' + (extra || '') + '/>'; }
+  function seg(a, b, stroke, w, extra) { return '<path d="M' + f1(a[0]) + ' ' + f1(a[1]) + 'L' + f1(b[0]) + ' ' + f1(b[1]) + '" stroke="' + stroke + '" stroke-width="' + w + '" stroke-linecap="round" fill="none"' + (extra || '') + '/>'; }
+  function lerp(a, b, f) { return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]; }
+  function plot(w, d, fill, extra) { return poly([q(-w, -d), q(w, -d), q(w, d), q(-w, d)], fill, extra); }
+  function rnd(i, salt) { var x = Math.sin(i * 127.1 + salt * 311.7) * 43758.5453; return x - Math.floor(x); }
+
+  /* 立體的屋子：兩面看得到的牆、山形屋頂。o = {w, d: 佔地（地面單位）, h: 牆高, rh: 屋頂高, z: 架高, open: 沒有牆的涼亭式} */
+  function house(k, o) {
+    var w = o.w / 2, d = o.d / 2, h = o.h, rh = o.rh, e = o.ov == null ? 0.2 : o.ov, z = o.z || 0, s = '', i;
+    var wl = k.wall, wr = shade(k.wall, -18), dk = shade(k.wall, -52), rf = k.roof, rb = shade(k.roof, -24);
+    s += plot(w + 0.3, d + 0.3, '#000', ' opacity=".2" transform="translate(6 4)"');
+    if (z) [[-w, d], [w, d], [w, -d]].forEach(function (c) {
+      var g = q(c[0], c[1], z - 3);
+      s += seg(q(c[0], c[1]), q(c[0], c[1], z), dk, 3.2) + '<ellipse cx="' + f1(g[0]) + '" cy="' + f1(g[1]) + '" rx="6" ry="2.6" fill="' + dk + '"/>';
+    });
+    var r1 = q(-w - e, 0, z + h + rh), r2 = q(w + e, 0, z + h + rh), eL = q(-w - e, d + e, z + h), eB = q(w + e, d + e, z + h);
+    s += poly([q(-w - e, -d - e, z + h), q(w + e, -d - e, z + h), r2, r1], rb);
+    if (o.open) {
+      s += plot(w, d, shade(k.wall, -8));
+      [[-w, -d], [-w, d], [0, d], [w, d], [w, 0], [w, -d]].forEach(function (c) { s += seg(q(c[0], c[1]), q(c[0], c[1], h + 2), dk, 3.4); });
+    } else {
+      s += poly([q(-w, d, z), q(w, d, z), q(w, d, z + h), q(-w, d, z + h)], wl) +
+        poly([q(w, d, z), q(w, -d, z), q(w, -d, z + h), q(w, 0, z + h + rh), q(w, d, z + h)], wr);
+      if (k.fence === 'stone') for (i = 1; i < 3; i++) s += seg(q(-w, d, z + h * i / 3), q(w, d, z + h * i / 3), shade(wl, -20), 1.2) + seg(q(w, d, z + h * i / 3), q(w, -d, z + h * i / 3), shade(wr, -20), 1.2);
+      else for (i = 1; i < 6; i++) s += seg(q(-w + 2 * w * i / 6, d, z), q(-w + 2 * w * i / 6, d, z + h), shade(wl, -20), 1.1);
+      s += poly([q(-w, d, z + h - 5), q(w, d, z + h - 5), q(w, d, z + h), q(-w, d, z + h)], k.trim) +
+        poly([q(w, d, z + h - 5), q(w, -d, z + h - 5), q(w, -d, z + h), q(w, d, z + h)], shade(k.trim, -20));
+      if (o.door !== false) s += poly([q(-w * 0.3, d, z), q(w * 0.3, d, z), q(w * 0.3, d, z + h * 0.7), q(-w * 0.3, d, z + h * 0.7)], dk);
+    }
+    s += poly([eL, eB, r2, r1], rf);
+    for (i = 1; i < 4; i++) s += seg(lerp(eL, r1, i / 4), lerp(eB, r2, i / 4), rb, 1.2);
+    return s + seg(r1, r2, shade(k.roof, 22), 2.2);
+  }
+  function rack(k, x, y, hang) {   // 曬架：兩根柱子、一根橫桿，掛著 hang 畫的東西
+    var a = q(x, y - 0.55), b = q(x, y + 0.55), dk = shade(k.wall, -50), s = seg(a, [a[0], a[1] - 24], dk, 2.6) + seg(b, [b[0], b[1] - 24], dk, 2.6) + seg([a[0], a[1] - 23], [b[0], b[1] - 23], dk, 2.4);
+    for (var i = 1; i < 4; i++) { var p = lerp([a[0], a[1] - 23], [b[0], b[1] - 23], i / 4); s += hang(p[0], p[1], i); }
     return s;
   }
-  function houseShape(k, big) {
-    var s = shadow(big ? 42 : 36);
-    if (big) return s + '<g transform="translate(48 82) scale(1.22) translate(-48 -82)">' + houseBody(k) + '</g>';
-    return s + houseBody(k);
+  function log(y, z) {
+    var a = q(-0.8, y, z + 5), b = q(0.8, y, z + 5);
+    return seg(a, b, '#9B6B3F', 10) + '<circle cx="' + f1(b[0]) + '" cy="' + f1(b[1]) + '" r="5" fill="#C99A63"/><circle cx="' + f1(b[0]) + '" cy="' + f1(b[1]) + '" r="2.4" fill="none" stroke="#9B6B3F" stroke-width="1"/>';
   }
-  function houseBody(k) {
-    var flat = k.fence === 'stone';
-    var roof = flat ? '10,50 48,31 86,50' : '11,50 48,22 85,50';
-    return '<rect x="20" y="49" width="56" height="32" fill="' + k.wall + '"/>' + texture(k, 20, 49, 56, 32) +
-      '<rect x="41" y="59" width="14" height="22" rx="1.5" fill="' + shade(k.wall, -55) + '"/>' +
-      '<polygon points="' + roof + '" fill="' + k.roof + '"/>' +
-      '<path d="M' + roof.split(' ')[0].replace(',', ' ') + 'L' + roof.split(' ')[2].replace(',', ' ') + '" stroke="' + shade(k.roof, -30) + '" stroke-width="3"/>' +
-      '<rect x="20" y="50" width="56" height="4" fill="' + k.trim + '"/>';
-  }
-  function pennant(k, x, y) {
-    return '<path d="M' + x + ' ' + y + 'v-26" stroke="' + shade(k.wall, -45) + '" stroke-width="2.4" stroke-linecap="round"/>' +
-      '<path d="M' + x + ' ' + (y - 26) + 'l15 5-15 5z" fill="' + k.trim + '"/>';
-  }
-  var DRAW = {
+  var ISO = {
     center: function (k, t) {
-      if (t.id === 'amis') {   // 聚會所：四面開放的大茅草屋
-        var posts = '';
-        [16, 32, 48, 64, 80].forEach(function (x) { posts += '<rect x="' + (x - 2) + '" y="46" width="4" height="36" fill="' + shade(k.wall, -35) + '"/>'; });
-        return shadow(44) + '<rect x="12" y="76" width="72" height="6" fill="' + shade(k.wall, -15) + '"/>' + posts +
-          '<polygon points="3,48 48,10 93,48" fill="' + k.roof + '"/>' +
-          '<path d="M14 40 48 12 82 40" fill="none" stroke="' + shade(k.roof, -22) + '" stroke-width="2.5"/>' +
-          '<path d="M3 48h90" stroke="' + k.trim + '" stroke-width="5"/>';
-      }
-      var s = houseShape(k, true);
-      if (t.id === 'paiwan') s += '<rect x="4" y="80" width="88" height="6" rx="1" fill="#8A877F"/><rect x="82" y="50" width="7" height="31" rx="2.5" fill="#6E6B64"/>';
-      else s += pennant(k, 88, 80);
+      if (t.id === 'amis') return house(k, { w: 2.9, d: 2.4, h: 26, rh: 32, open: true, ov: 0.4 });   // 聚會所：四面開放的大茅草屋
+      var s = house(k, { w: 2.7, d: 2.2, h: 30, rh: 26 }), p;
+      if (t.id === 'paiwan') {   // 頭目家屋前的石砌平臺與立石（不畫任何雕刻紋樣）
+        s += '<g transform="translate(' + f1(q(0, 2.1)[0]) + ' ' + f1(q(0, 2.1)[1]) + ')">' + plot(1.5, 0.55, '#8A877F') + '</g>';
+        p = q(1.5, 2.1); s += '<rect x="' + f1(p[0] - 4) + '" y="' + f1(p[1] - 34) + '" width="8" height="34" rx="3" fill="#6E6B64"/>';
+      } else { p = q(1.75, 1.5); s += seg(p, [p[0], p[1] - 46], shade(k.wall, -50), 2.6) + poly([[p[0], p[1] - 46], [p[0] + 17, p[1] - 40], [p[0], p[1] - 34]], k.trim); }
       return s;
     },
-    house: function (k) { return houseShape(k, false); },
+    house: function (k) { return house(k, { w: 1.9, d: 1.6, h: 22, rh: 20 }); },
     farm: function (k, t, head) {
-      var s = '<rect x="9" y="24" width="78" height="60" rx="5" fill="#73553A"/>', hc = head || '#E3B341';
-      for (var r = 0; r < 3; r++) {
-        s += '<path d="M12 ' + (44 + r * 18) + 'h72" stroke="#5C422B" stroke-width="3"/>';
+      var w = 1.25, d = 1.15, s = plot(w + 0.1, d + 0.1, '#5C422B') + plot(w, d, '#7A5A3A'), hc = head || '#E3B341';
+      for (var r = 0; r < 4; r++) {
+        var y = -d + (r + 0.5) * d / 2;
+        s += seg(q(-w + 0.12, y), q(w - 0.12, y), '#5C422B', 2.2);
         for (var c = 0; c < 6; c++) {
-          var x = 19 + c * 12, y = 42 + r * 18;
-          s += '<path d="M' + x + ' ' + y + 'q0 -8 3 -13" stroke="#6FA04B" stroke-width="2.2" fill="none" stroke-linecap="round"/>' +
-            '<ellipse cx="' + (x + 4) + '" cy="' + (y - 13) + '" rx="2.6" ry="4" fill="' + hc + '" transform="rotate(35 ' + (x + 4) + ' ' + (y - 13) + ')"/>';
+          var p = q(-w + 0.28 + c * (2 * w - 0.56) / 5, y);
+          s += '<path d="M' + f1(p[0]) + ' ' + f1(p[1]) + 'q1 -6 3 -10" stroke="#6FA04B" stroke-width="2" fill="none" stroke-linecap="round"/>' +
+            '<ellipse cx="' + f1(p[0] + 4) + '" cy="' + f1(p[1] - 11) + '" rx="2.4" ry="3.8" fill="' + hc + '" transform="rotate(30 ' + f1(p[0] + 4) + ' ' + f1(p[1] - 11) + ')"/>';
         }
       }
       return s;
     },
     mat: function (k, t) {
-      var s = shadow(34);
+      var s = plot(1.15, 1.0, '#000', ' opacity=".16" transform="translate(5 3)"');
       if (t.id === 'paiwan' || t.id === 'bunun') {   // 石板堆
-        [[14, 66, 68], [20, 54, 56], [26, 43, 44]].forEach(function (p, i) {
-          s += '<polygon points="' + p[0] + ',' + (p[1] + 11) + ' ' + (p[0] + 6) + ',' + p[1] + ' ' + (p[0] + p[2]) + ',' + p[1] + ' ' + (p[0] + p[2] - 6) + ',' + (p[1] + 11) + '" fill="' + ['#7C7F84', '#8F9297', '#A3A6AA'][i] + '"/>';
+        [[1.0, 0.8, 0, '#74777C', '#8F9297'], [0.8, 0.64, 7, '#7F8287', '#9DA0A5'], [0.6, 0.48, 14, '#8A8D92', '#AEB1B5']].forEach(function (L) {
+          s += poly([q(-L[0], L[1], L[2]), q(L[0], L[1], L[2]), q(L[0], L[1], L[2] + 7), q(-L[0], L[1], L[2] + 7)], L[3]) +
+            poly([q(L[0], L[1], L[2]), q(L[0], -L[1], L[2]), q(L[0], -L[1], L[2] + 7), q(L[0], L[1], L[2] + 7)], shade(L[3], -16)) +
+            poly([q(-L[0], -L[1], L[2] + 7), q(L[0], -L[1], L[2] + 7), q(L[0], L[1], L[2] + 7), q(-L[0], L[1], L[2] + 7)], L[4]);
         });
-        if (t.id === 'bunun') s += '<rect x="56" y="28" width="26" height="9" rx="4.5" fill="#9B6B3F"/><circle cx="81" cy="32.5" r="4.5" fill="#C99A63"/>';
+        if (t.id === 'bunun') s += '<g transform="translate(-34 10)">' + log(0, 0) + '</g>';
       } else {   // 竹木堆
-        [[14, 68], [38, 68], [26, 55]].forEach(function (p) {
-          s += '<rect x="' + p[0] + '" y="' + p[1] + '" width="44" height="13" rx="6.5" fill="#9B6B3F"/><circle cx="' + (p[0] + 44 - 6.5) + '" cy="' + (p[1] + 6.5) + '" r="6.5" fill="#C99A63"/><circle cx="' + (p[0] + 44 - 6.5) + '" cy="' + (p[1] + 6.5) + '" r="3" fill="none" stroke="#9B6B3F" stroke-width="1.2"/>';
-        });
-        s += '<path d="M70 50V20M76 50V26M82 50V18" stroke="#7FA65A" stroke-width="3.2" stroke-linecap="round"/>';
+        s += log(-0.3, 0) + log(0.3, 0) + log(0, 8);
+        [[-0.9, -0.5, 34], [-0.7, -0.75, 40], [-1.05, -0.3, 30]].forEach(function (b) { var p = q(b[0], b[1]); s += seg(p, [p[0], p[1] - b[2]], '#7FA65A', 3); });
       }
       return s;
     },
     special: function (k, t) {
-      if (t.id === 'paiwan') return DRAW.farm(k, t, '#D4476B');
-      var s = shadow(36), rack = '<path d="M52 82V44M86 82V44M50 47h38" stroke="' + shade(k.wall, -45) + '" stroke-width="2.6" stroke-linecap="round" fill="none"/>';
-      var hut = '<polygon points="8,82 28,38 48,82" fill="' + k.roof + '"/><polygon points="22,82 28,62 34,82" fill="' + shade(k.roof, -45) + '"/>';
-      if (t.id === 'amis') {
-        s += hut + rack;
-        [58, 69, 80].forEach(function (x) { s += '<path d="M' + x + ' 47v5" stroke="#5C422B" stroke-width="1.2"/><path d="M' + x + ' 52c5 4 5 12 0 18c-5-6-5-14 0-18z" fill="#8FB8C9"/><path d="M' + (x - 3) + ' 74l3-5 3 5z" fill="#8FB8C9"/>'; });
-      } else if (t.id === 'atayal') {
-        s = houseShape(k, false);
-        s += '<rect x="62" y="40" width="26" height="34" fill="' + CREAM + '"/>';
-        [44, 52, 60, 68].forEach(function (y, i) { s += '<rect x="62" y="' + y + '" width="26" height="3.5" fill="' + (i % 2 ? '#2F3B45' : k.trim) + '"/>'; });
-        s += '<path d="M60 40h30" stroke="' + shade(k.wall, -45) + '" stroke-width="2.6" stroke-linecap="round"/>';
-      } else {   // 獵寮
-        s += hut + rack;
-        [59, 69, 79].forEach(function (x) { s += '<path d="M' + x + ' 47v4" stroke="#5C422B" stroke-width="1.2"/><rect x="' + (x - 3.5) + '" y="51" width="7" height="13" rx="3" fill="#A6583F"/>'; });
-      }
-      return s;
+      if (t.id === 'paiwan') return ISO.farm(k, t, '#D4476B');   // 紅藜田
+      var hut = '<g transform="translate(' + f1(q(-0.55, -0.1)[0]) + ' ' + f1(q(-0.55, -0.1)[1]) + ')">' + house(k, { w: 1.3, d: 1.1, h: 14, rh: 15 }) + '</g>';
+      if (t.id === 'atayal') return hut + rack(k, 0.95, 0.3, function (x, y, i) {   // 織布屋：晾著一般條紋的布
+        return '<rect x="' + f1(x - 5) + '" y="' + f1(y) + '" width="10" height="17" fill="#F2EAD6"/><rect x="' + f1(x - 5) + '" y="' + f1(y + 4) + '" width="10" height="3" fill="' + (i % 2 ? k.trim : '#2F3B45') + '"/><rect x="' + f1(x - 5) + '" y="' + f1(y + 10) + '" width="10" height="3" fill="' + k.trim + '"/>';
+      });
+      if (t.id === 'amis') return hut + rack(k, 0.95, 0.3, function (x, y) {      // 漁寮：曬魚
+        return '<path d="M' + f1(x) + ' ' + f1(y) + 'c5 4 5 11 0 16c-5-5-5-12 0-16z" fill="#8FB8C9"/><path d="M' + f1(x - 3) + ' ' + f1(y + 20) + 'l3-5 3 5z" fill="#8FB8C9"/>';
+      });
+      return hut + rack(k, 0.95, 0.3, function (x, y) { return '<rect x="' + f1(x - 3.5) + '" y="' + f1(y) + '" width="7" height="13" rx="3" fill="#A6583F"/>'; });   // 獵寮
     },
     storage: function (k, t) {
-      var s = shadow(32);
-      if (t.id === 'bunun') {   // 小米倉傳統上在屋內，這裡畫成矮石屋
-        return s + '<g transform="translate(48 82) scale(.82) translate(-48 -82)">' + houseBody(k) + '</g>' +
-          '<path d="M70 82V62" stroke="#6FA04B" stroke-width="2.4"/><ellipse cx="73" cy="59" rx="3" ry="5" fill="#E3B341" transform="rotate(30 73 59)"/><ellipse cx="67" cy="60" rx="3" ry="5" fill="#E3B341" transform="rotate(-30 67 60)"/>';
+      if (t.id === 'bunun') {   // 小米倉傳統上在屋內，這裡畫成矮石屋，旁邊放一束小米
+        var p = q(1.0, 0.9);
+        return house(k, { w: 1.5, d: 1.3, h: 16, rh: 14 }) + seg(p, [p[0], p[1] - 16], '#6FA04B', 2.4) + '<ellipse cx="' + f1(p[0] + 3) + '" cy="' + f1(p[1] - 18) + '" rx="3" ry="5" fill="#E3B341" transform="rotate(28 ' + f1(p[0] + 3) + ' ' + f1(p[1] - 18) + ')"/>';
       }
-      [28, 64].forEach(function (x) { s += '<rect x="' + x + '" y="58" width="4.5" height="24" fill="' + shade(k.wall, -40) + '"/><ellipse cx="' + (x + 2.2) + '" cy="60" rx="8" ry="2.6" fill="' + shade(k.wall, -55) + '"/>'; });
-      return s + '<rect x="21" y="34" width="54" height="24" fill="' + k.wall + '"/>' + texture(k, 21, 34, 54, 24) +
-        '<polygon points="13,37 48,14 83,37" fill="' + k.roof + '"/><rect x="42" y="42" width="12" height="16" fill="' + shade(k.wall, -55) + '"/>';
+      return house(k, { w: 1.5, d: 1.3, h: 17, rh: 16, z: 14, door: false });   // 架高的穀倉，柱子上有防鼠板
     },
     barracks: function (k) {
-      return '<ellipse cx="48" cy="66" rx="40" ry="18" fill="#B49A6C" opacity=".85"/>' +
-        '<path d="M26 82V44" stroke="' + shade(k.wall, -45) + '" stroke-width="3" stroke-linecap="round"/>' +
-        '<circle cx="26" cy="40" r="13" fill="' + CREAM + '"/><circle cx="26" cy="40" r="8.5" fill="' + k.trim + '"/><circle cx="26" cy="40" r="3.6" fill="' + CREAM + '"/>' +
-        '<path d="M56 80 70 30M66 80 72 30M78 80 74 30" stroke="#6B4A32" stroke-width="2.6" stroke-linecap="round"/>' +
-        '<path d="M70 30l-3-9 6 3zM72 30l0-10 4 6zM74 30l4-9 1 8z" fill="#C9CDD1"/>';
+      var a = q(-0.5, 0.2), s = plot(1.25, 1.1, '#B49A6C', ' opacity=".9"') + seg(a, [a[0], a[1] - 26], shade(k.wall, -50), 3);
+      s += '<circle cx="' + f1(a[0]) + '" cy="' + f1(a[1] - 30) + '" r="12" fill="#F2EAD6"/><circle cx="' + f1(a[0]) + '" cy="' + f1(a[1] - 30) + '" r="7.5" fill="' + k.trim + '"/><circle cx="' + f1(a[0]) + '" cy="' + f1(a[1] - 30) + '" r="3" fill="#F2EAD6"/>';
+      [[0.6, -0.2, 6], [0.75, 0.05, 0], [0.9, 0.3, -6]].forEach(function (b) { var p = q(b[0], b[1]); s += seg(p, [p[0] + b[2], p[1] - 40], '#6B4A32', 2.4) + poly([[p[0] + b[2] - 3, p[1] - 40], [p[0] + b[2] + 3, p[1] - 40], [p[0] + b[2], p[1] - 50]], '#C9CDD1'); });
+      return s;
     },
     tower: function (k) {
-      return shadow(26) + '<path d="M28 84 36 34M68 84 60 34M31 64h34M33 50h30M31 64 63 50M65 64 33 50" stroke="#7A5636" stroke-width="3.2" stroke-linecap="round" fill="none"/>' +
-        '<rect x="26" y="26" width="44" height="9" fill="#8D6642"/><path d="M30 26V12M66 26V12" stroke="#7A5636" stroke-width="3"/>' +
-        '<polygon points="22,14 48,0 74,14" fill="' + k.roof + '"/><rect x="26" y="20" width="44" height="3" fill="' + k.trim + '"/>';
+      var s = plot(0.8, 0.8, '#000', ' opacity=".18" transform="translate(5 3)"'), dk = '#7A5636';
+      [[-0.55, -0.55], [-0.55, 0.55], [0.55, 0.55], [0.55, -0.55]].forEach(function (c) { s += seg(q(c[0], c[1]), q(c[0] * 0.8, c[1] * 0.8, 56), dk, 3.2); });
+      s += seg(q(-0.55, 0.55, 20), q(0.55, 0.55, 20), dk, 2.2) + seg(q(0.55, 0.55, 36), q(0.55, -0.55, 36), dk, 2.2);
+      return s + '<g transform="translate(0 -56)">' + plot(0.62, 0.62, '#8D6642') + '</g><g transform="translate(0 -58)">' + house(k, { w: 1.1, d: 1.1, h: 14, rh: 12, open: true, ov: 0.25 }) + '</g>';
     }
   };
-  function building(b, t) {
-    var k = t.look, s = DRAW[b.type](k, t);
-    if (b.level === 0) return '<g opacity=".4">' + s + '</g><rect x="8" y="14" width="80" height="72" rx="6" fill="none" stroke="' + CREAM + '" stroke-width="2.5" stroke-dasharray="7 6"/>';
-    return s;
+  var TOP = { center: 82, house: 58, farm: 26, mat: 36, special: 48, storage: 64, barracks: 56, tower: 104 };   // 各建築大約多高，用來放等級標記
+
+  // 樹、石頭、草叢：定義一次，用 <use> 重複放
+  var DEFS = '<defs>' +
+    '<g id="t-c"><ellipse cx="0" cy="1" rx="11" ry="3.6" fill="#000" opacity=".25"/><rect x="-2" y="-11" width="4" height="12" fill="#6B4A32"/><polygon points="-16,-8 0,-36 16,-8" fill="#2F6B4F"/><polygon points="0,-36 16,-8 0,-8" fill="#25573F"/><polygon points="-11,-25 0,-52 11,-25" fill="#3A7C5B"/><polygon points="0,-52 11,-25 0,-25" fill="#2D6449"/></g>' +
+    '<g id="t-b"><ellipse cx="0" cy="1" rx="14" ry="4.2" fill="#000" opacity=".25"/><rect x="-2.5" y="-15" width="5" height="16" fill="#6B4A32"/><circle cx="-8" cy="-23" r="12" fill="#3E7D4E"/><circle cx="8" cy="-25" r="13" fill="#357245"/><circle cx="0" cy="-35" r="13" fill="#4A8E59"/><circle cx="-4" cy="-39" r="6.5" fill="#63A96E" opacity=".85"/></g>' +
+    '<g id="t-r"><polygon points="-13,2 -9,-10 3,-15 13,-6 14,2" fill="#8E9196"/><polygon points="3,-15 13,-6 14,2 2,2" fill="#74777C"/></g>' +
+    '<g id="t-s"><ellipse cx="0" cy="1" rx="11" ry="3.4" fill="#000" opacity=".2"/><circle cx="-5" cy="-5" r="7" fill="#4F8F55"/><circle cx="5" cy="-6" r="8" fill="#447F4B"/><circle cx="0" cy="-10" r="6" fill="#62A566"/></g>' +
+    '</defs>';
+  function use(id, x, y, sc) { return '<use href="#' + id + '" transform="translate(' + f1(x) + ' ' + f1(y) + ') scale(' + sc.toFixed(2) + ')"/>'; }
+  function inWater(k, p) {
+    if (k.backdrop === 'coast') return p[1] > shore(p[0]) - 46;
+    return Math.abs(p[0] - stream(p[1])) < 40;
   }
-  function badge(level) {
-    return '<circle cx="80" cy="16" r="13" fill="' + INK + '" opacity=".88"/><text x="80" y="22.5" text-anchor="middle" font-size="18" font-weight="700" fill="' + CREAM + '">' + level + '</text>';
+  function stream(y) { return 1890 + 62 * Math.sin(y / 160); }
+  function shore(x) { return 1096 + 24 * Math.sin(x / 190); }
+  var decorCache = {};
+  function decor(t) {   // 開墾地外面的山林：位置固定，每次都一樣
+    if (decorCache[t.id]) return decorCache[t.id];
+    var k = t.look, out = [], coast = k.backdrop === 'coast', rocky = t.id === 'paiwan' ? 0.16 : 0.06;
+    for (var i = 0; i < 1320; i++) {
+      var gx = -9 + rnd(i, 1) * 58, gy = -9 + rnd(i, 2) * 58;
+      if (Math.hypot(gx - CX, gy - CY) < 15.3) continue;
+      var p = P(gx, gy);
+      if (p[0] < -30 || p[0] > SW + 30 || p[1] < 36 || p[1] > SH + 50 || inWater(k, p)) continue;
+      var r = rnd(i, 3), id = r < rocky ? 't-r' : coast ? (r < 0.24 ? 't-s' : 't-b') : (r < 0.66 ? 't-c' : 't-b');
+      out.push({ y: p[1], s: use(id, p[0], p[1], 0.85 + rnd(i, 4) * 0.45) });
+    }
+    out.sort(function (a, b) { return a.y - b.y; });
+    return (decorCache[t.id] = out.map(function (o) { return o.s; }).join(''));
+  }
+  var CLUMP = [[-36, -8], [-12, -22], [18, -15], [38, 0], [-20, 9], [8, 15]];
+  function badge(x, y, inner, ring) {
+    return '<g transform="translate(' + f1(x) + ' ' + f1(y) + ')"><circle r="13" fill="rgba(20,33,42,.82)" stroke="' + ring + '" stroke-width="2"/>' + inner + '</g>';
   }
 
-  // ---------- 部落場景 ----------
-  var VW = 960, VH = 600, OX = 48, OY = 78, TS = 96;
-  function tileXY(i) { return [OX + (i % R.GRID_W) * TS, OY + Math.floor(i / R.GRID_W) * TS]; }
-  function backdrop(k) {
-    var s = '<rect width="' + VW + '" height="' + VH + '" fill="' + k.ground + '"/>';
-    if (k.backdrop === 'coast') {
-      s += '<rect width="' + VW + '" height="30" fill="#BFE0EA"/><rect y="26" width="' + VW + '" height="26" fill="#3E8FB8"/>' +
-        '<path d="M0 40q30-7 60 0t60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0" fill="none" stroke="#9CD0E4" stroke-width="2.5"/>' +
-        '<rect y="50" width="' + VW + '" height="12" fill="#E2CF9C"/>';
-    } else {
-      s += '<rect width="' + VW + '" height="62" fill="#BFDDE0"/>' +
-        '<polygon points="0,62 0,34 90,8 190,40 300,4 420,36 520,14 640,44 760,6 880,38 960,20 960,62" fill="#6F9C8D"/>' +
-        '<polygon points="0,62 0,48 130,26 250,52 380,24 500,54 630,30 770,56 900,32 960,46 960,62" fill="#4B7A69"/>';
+  /* v: {tribe, tiles, land, queue, wall}；回傳放進 <svg> 的內容。倒數文字由外部依 data-until 更新。 */
+  function scene(v, sel) {
+    var t = Tribes.get(v.tribe), k = t.look, S = R.SITES, low = '', top = '', items = [], busy = {}, i;
+    v.queue.forEach(function (w) { if (w.tile >= 0) busy[w.tile] = w; });
+    function dist(j) { return Math.hypot(S[j].x - CX, S[j].y - CY); }
+    for (i = 1; i < S.length; i++) {   // 小路：每塊開墾好的地連到比較靠近中央的鄰地
+      if (!v.land[i]) continue;
+      var parent = 0, best = dist(i);
+      S[i].near.forEach(function (j) { if (v.land[j] && dist(j) < best) { best = dist(j); parent = j; } });
+      low += seg(sitePos(i), sitePos(parent), '#BFA475', 13, ' opacity=".8"');
     }
-    var dots = '';
-    for (var i = 0; i < 46; i++) {   // 固定位置的草叢，讓地面不單調
-      var x = (i * 197) % 940 + 10, y = 70 + (i * 131) % 520;
-      dots += '<ellipse cx="' + x + '" cy="' + y + '" rx="' + (9 + i % 5 * 3) + '" ry="' + (4 + i % 3) + '" fill="' + shade(k.ground, i % 2 ? -10 : 9) + '"/>';
-    }
-    return s + dots;
-  }
-  function fence(k, level) {
-    if (!level) return '';
-    var w = 3 + level * 1.6, x = 30, y = 68, ww = VW - 60, hh = VH - 92;
-    if (k.fence === 'stone') return '<rect x="' + x + '" y="' + y + '" width="' + ww + '" height="' + hh + '" rx="20" fill="none" stroke="#5F6166" stroke-width="' + (w + 5) + '"/>' +
-      '<rect x="' + x + '" y="' + y + '" width="' + ww + '" height="' + hh + '" rx="20" fill="none" stroke="#A5A8AC" stroke-width="' + (w + 1) + '" stroke-dasharray="22 5"/>';
-    return '<rect x="' + x + '" y="' + y + '" width="' + ww + '" height="' + hh + '" rx="20" fill="none" stroke="#5E7B3C" stroke-width="' + (w + 4) + '"/>' +
-      '<rect x="' + x + '" y="' + y + '" width="' + ww + '" height="' + hh + '" rx="20" fill="none" stroke="#A9C46A" stroke-width="' + w + '" stroke-dasharray="5 6"/>';
-  }
-  /* v: {tribe, tiles, wall}；回傳 <svg> 內容。timers 由外部依 data-until 更新。 */
-  function village(v, sel, queue) {
-    var t = Tribes.get(v.tribe), k = t.look, s = backdrop(k) + fence(k, v.wall), until = {};
-    (queue || []).forEach(function (q) { if (q.tile >= 0) until[q.tile] = q.doneAt; });
-    for (var i = 0; i < R.TILE_N; i++) {
-      var p = tileXY(i), b = v.tiles[i], on = sel === i;
-      s += '<g class="tile' + (on ? ' on' : '') + (b ? '' : ' empty') + '" data-tile="' + i + '" transform="translate(' + p[0] + ' ' + p[1] + ')">' +
-        '<rect class="plot" x="5" y="5" width="86" height="86" rx="12"/>';
-      if (b) {
-        s += building(b, t);
-        if (b.level > 0) s += badge(b.level);
-        if (b.busy) s += '<g class="busy"><rect x="12" y="64" width="72" height="24" rx="12" fill="' + INK + '" opacity=".9"/><text x="48" y="82" text-anchor="middle" font-size="17" font-weight="700" fill="#E3B341" data-until="' + (until[i] || 0) + '"></text></g>';
+    for (i = 0; i < S.length; i++) {
+      var p = sitePos(i), b = v.tiles[i], w = busy[i], tx = ' transform="translate(' + f1(p[0]) + ' ' + f1(p[1]) + ')"';
+      if (sel === i) low += '<ellipse cx="' + f1(p[0]) + '" cy="' + f1(p[1]) + '" rx="66" ry="33" fill="rgba(227,179,65,.25)" stroke="#E3B341" stroke-width="4"/>';
+      if (!v.land[i]) {   // 山林
+        var clearing = w && w.type === 'clear';
+        CLUMP.forEach(function (c, n) {
+          if (clearing && n % 2) return;
+          items.push({ y: p[1] + c[1], s: use(rnd(i * 7 + n, 5) < (k.backdrop === 'coast' ? 0.15 : 0.6) ? 't-c' : 't-b', p[0] + c[0], p[1] + c[1], 0.95 + rnd(i * 7 + n, 6) * 0.3) });
+        });
+        if (clearing) top += pill(p[0], p[1] + 6, w.doneAt);
+        else if (S[i].near.some(function (j) { return v.land[j]; }))
+          top += badge(p[0], p[1] - 50, '<path d="M-5 6 4 -5" stroke="#F2EAD6" stroke-width="2.4" stroke-linecap="round"/><path d="M1 -8 8 -3 4 2 -1 -4z" fill="#F2EAD6"/>', '#F2EAD6');
+      } else if (!b) {     // 開墾好的空地
+        low += '<g' + tx + '>' + plot(1.2, 1.05, '#B79B6E', ' opacity=".85"') + '</g>';
+        [[-1.2, -1.05], [1.2, -1.05], [1.2, 1.05], [-1.2, 1.05]].forEach(function (c) { var g = q(c[0], c[1]); low += seg([p[0] + g[0], p[1] + g[1]], [p[0] + g[0], p[1] + g[1] - 9], '#7A5636', 2.6); });
+        top += badge(p[0], p[1] - 2, '<path d="M-6 0H6M0 -6V6" stroke="#E3B341" stroke-width="2.6" stroke-linecap="round"/>', '#E3B341');
+      } else {
+        items.push({ y: p[1] + 8, s: '<g' + tx + (b.level === 0 ? ' opacity=".45"' : '') + '>' + ISO[b.type](k, t) + '</g>' });
+        if (b.busy && w) top += pill(p[0], p[1] + 22, w.doneAt);
+        if (b.level > 0) top += '<g transform="translate(' + f1(p[0] + 34) + ' ' + f1(p[1] - TOP[b.type]) + ')"><circle r="12" fill="rgba(20,33,42,.88)"/><text y="6" text-anchor="middle" font-size="17" font-weight="700" fill="#F2EAD6">' + b.level + '</text></g>';
       }
-      s += '<rect class="hit" width="96" height="96" fill="transparent"/></g>';
     }
-    return s;
+    items.sort(function (a, c) { return a.y - c.y; });
+    return low + items.map(function (it) { return it.s; }).join('') + top;
+  }
+  function pill(x, y, until) {
+    return '<g transform="translate(' + f1(x) + ' ' + f1(y) + ')"><rect x="-40" y="-13" width="80" height="26" rx="13" fill="rgba(20,33,42,.9)"/><text y="6" text-anchor="middle" font-size="17" font-weight="700" fill="#E3B341" data-until="' + until + '"></text></g>';
+  }
+  function person(color) {
+    return '<ellipse cx="0" cy="9" rx="6.5" ry="2.4" fill="#000" opacity=".22"/><path d="M-5.5 9c0-8 2-13 5.5-13s5.5 5 5.5 13z" fill="' + color + '"/><circle cx="0" cy="-8" r="4.8" fill="#B98660"/>';
+  }
+
+  /* 地面底圖：畫在畫布上再當成一張圖，縮放平移才順。 */
+  var groundCache = {};
+  function groundURL(t) {
+    if (groundCache[t.id]) return groundCache[t.id];
+    var k = t.look, cv = document.createElement('canvas'); cv.width = SW; cv.height = SH;
+    var c = cv.getContext('2d'), base = k.ground, i, g;
+    c.fillStyle = shade(base, -32); c.fillRect(0, 0, SW, SH);
+    for (i = 0; i < 180; i++) {   // 林地的深淺變化
+      var x = rnd(i, 11) * SW, y = rnd(i, 12) * SH, r = 50 + rnd(i, 13) * 130, col = i % 2 ? shade(base, -44) : shade(base, -20);
+      g = c.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, rgba(col, 0.55)); g.addColorStop(1, rgba(col, 0)); c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, 6.3); c.fill();
+    }
+    var ctr = P(CX, CY), rx = 16 * U * 1.414;
+    c.save(); c.translate(ctr[0], ctr[1]); c.scale(1, 0.5);   // 開墾地：比周圍亮的草地
+    g = c.createRadialGradient(0, 0, rx * 0.2, 0, 0, rx); g.addColorStop(0, shade(base, 14)); g.addColorStop(0.7, base); g.addColorStop(1, rgba(base, 0));
+    c.fillStyle = g; c.beginPath(); c.arc(0, 0, rx, 0, 6.3); c.fill();
+    var pr = 3.5 * U * 1.414;                                   // 中央的廣場
+    g = c.createRadialGradient(0, 0, pr * 0.45, 0, 0, pr); g.addColorStop(0, 'rgba(196,170,122,.95)'); g.addColorStop(1, 'rgba(196,170,122,0)');
+    c.fillStyle = g; c.beginPath(); c.arc(0, 0, pr, 0, 6.3); c.fill();
+    c.restore();
+    for (i = 0; i < 420; i++) {   // 草叢筆觸
+      var a = rnd(i, 21) * 6.283, rr = Math.sqrt(rnd(i, 22)) * rx, gx = ctr[0] + Math.cos(a) * rr, gy = ctr[1] + Math.sin(a) * rr * 0.5;
+      c.strokeStyle = rgba(shade(base, i % 2 ? 26 : -16), 0.5); c.lineWidth = 1.6; c.beginPath(); c.moveTo(gx - 4, gy); c.lineTo(gx - 2, gy - 5); c.moveTo(gx, gy); c.lineTo(gx + 1, gy - 6); c.moveTo(gx + 4, gy); c.lineTo(gx + 3, gy - 4); c.stroke();
+    }
+    c.lineCap = 'round'; c.lineJoin = 'round';
+    if (k.backdrop === 'coast') {   // 海岸：沙灘、海面、浪花
+      var edge = function (off) { c.beginPath(); c.moveTo(0, shore(0) + off); for (var x2 = 0; x2 <= SW; x2 += 20) c.lineTo(x2, shore(x2) + off); c.lineTo(SW, SH); c.lineTo(0, SH); c.closePath(); };
+      edge(-34); c.fillStyle = '#E2CF9C'; c.fill();
+      edge(4); c.fillStyle = '#3E8FB8'; c.fill();
+      edge(44); c.fillStyle = '#2F7CA6'; c.fill();
+      [[6, 0.8], [26, 0.45], [58, 0.3]].forEach(function (wv) {
+        c.beginPath(); for (var x3 = 0; x3 <= SW; x3 += 20) { var y3 = shore(x3) + wv[0] + 3 * Math.sin(x3 / 37); if (x3) c.lineTo(x3, y3); else c.moveTo(x3, y3); }
+        c.strokeStyle = 'rgba(255,255,255,' + wv[1] + ')'; c.lineWidth = 3; c.stroke();
+      });
+    } else {                        // 山區：一條溪
+      [[30, '#2E6F8E'], [20, '#4C93B5'], [5, 'rgba(255,255,255,.35)']].forEach(function (wv) {
+        c.beginPath(); for (var y4 = -20; y4 <= SH + 20; y4 += 20) { if (y4 > -20) c.lineTo(stream(y4), y4); else c.moveTo(stream(y4), y4); }
+        c.strokeStyle = wv[1]; c.lineWidth = wv[0]; c.stroke();
+      });
+    }
+    g = c.createRadialGradient(SW / 2, SH / 2, SH * 0.45, SW / 2, SH / 2, SW * 0.62);   // 四周壓暗
+    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(6,16,20,.45)'); c.fillStyle = g; c.fillRect(0, 0, SW, SH);
+    return (groundCache[t.id] = cv.toDataURL('image/jpeg', 0.86));
   }
 
   // ---------- 世界地圖（自然風格：平滑海岸線、暈染的區域色塊、山脈起伏） ----------
-  function rgba(hex, al) { var n = parseInt(hex.slice(1), 16); return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + al + ')'; }
   function tracePath(c, poly) {
     var sp = Geo.smoothPoints(poly), last = sp[sp.length - 1].m;
     c.beginPath(); c.moveTo(last[0], last[1]);
@@ -1348,7 +1466,8 @@ window.Art = (function () {
     return s;
   }
 
-  return { icon: icon, village: village, paintMap: paintMap, mapLabels: mapLabels, tileXY: tileXY, shade: shade, VW: VW, VH: VH, TS: TS };
+  return { icon: icon, scene: scene, decor: decor, groundURL: groundURL, sitePos: sitePos, person: person, DEFS: DEFS, SW: SW, SH: SH,
+    paintMap: paintMap, mapLabels: mapLabels, shade: shade };
 })();
 </script>
 <script>
@@ -1357,7 +1476,7 @@ window.Art = (function () {
 window.Net = (function () {
   'use strict';
   var handlers = {}, mode = null, socket = null, local = null, localId = null, memToken = null;
-  var SAVE_KEY = 'shanhai_solo_v1', TOKEN_KEY = 'shanhai_token';
+  var SAVE_KEY = 'shanhai_solo_v2', TOKEN_KEY = 'shanhai_token';
 
   function on(ev, fn) { handlers[ev] = fn; }
   function fire(ev, d) { if (handlers[ev]) handlers[ev](d); }
@@ -1440,14 +1559,14 @@ window.Net = (function () {
 })();
 </script>
 <script>
-/* 山海部落 — 操作介面（階段 1：選區域落腳、部落經營、圖鑑） */
+/* 山海部落 — 操作介面（階段 1：選區域落腳、拓荒與部落經營、圖鑑） */
 (function () {
   'use strict';
   var R = World.rules, G = Geo.build();
   var STAGE_TYPES = ['house', 'farm', 'mat', 'special', 'storage'];   // 這個階段開放的建築；軍事建築在對戰階段加入
   var JOBS = ['food', 'mat', 'special'], WILD = { fish: '漁場', hunt: '獵場', wood: '林地' };
   var S = { me: null, pubs: [], tab: 'build', zone: null, selTile: null, form: { owner: '', name: '' }, mode: '', online: false, resetAt: 0, joining: false };
-  var el = {}, MV = { k: 1, cx: Geo.MAP_W / 2, cy: Geo.MAP_H / 2, s0: 1, vw: Geo.MAP_W, vh: Geo.MAP_H, ready: false };
+  var el = {}, MV = null, VV = null;
 
   // ---------- 小工具 ----------
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -1461,101 +1580,100 @@ window.Net = (function () {
   function scene() { return S.me && S.tab !== 'map' ? 'village' : 'map'; }
   function myTribe() { return Tribes.get(S.me.tribe); }
 
+  /* 可以拖曳、縮放的畫面。cover=true 時畫面一定被場景填滿（部落）；false 時整張圖都看得到（地圖）。 */
+  function PanZoom(svg, cam, W, H, o) {
+    var self = this, ptrs = {}, drag = null;
+    this.k = 1; this.cx = W / 2; this.cy = H / 2; this.s0 = 1; this.vw = W; this.vh = H; this.sized = false;
+    function count() { return Object.keys(ptrs).length; }
+    function two() { var k = Object.keys(ptrs); return Math.hypot(ptrs[k[0]].x - ptrs[k[1]].x, ptrs[k[0]].y - ptrs[k[1]].y); }
+    this.toWorld = function (cx, cy) {
+      var r = svg.getBoundingClientRect();
+      return [((cx - r.left) / self.s0 - (self.vw / 2 - self.cx * self.k)) / self.k, ((cy - r.top) / self.s0 - (self.vh / 2 - self.cy * self.k)) / self.k];
+    };
+    this.apply = function () {
+      self.k = Math.max(1, Math.min(o.maxK, self.k));
+      var hx = o.cover ? self.vw / (2 * self.k) : 0, hy = o.cover ? self.vh / (2 * self.k) : 0;
+      self.cx = Math.max(hx, Math.min(W - hx, self.cx)); self.cy = Math.max(hy, Math.min(H - hy, self.cy));
+      cam.setAttribute('transform', 'translate(' + (self.vw / 2 - self.cx * self.k).toFixed(2) + ' ' + (self.vh / 2 - self.cy * self.k).toFixed(2) + ') scale(' + self.k.toFixed(3) + ')');
+      if (o.onChange) o.onChange(self);
+    };
+    this.resize = function () {
+      var r = svg.getBoundingClientRect(); if (!r.width || !r.height) return false;
+      self.s0 = o.cover ? Math.max(r.width / W, r.height / H) : Math.min(r.width / W, r.height / H);
+      self.vw = r.width / self.s0; self.vh = r.height / self.s0; self.sized = true;
+      svg.setAttribute('viewBox', '0 0 ' + self.vw.toFixed(1) + ' ' + self.vh.toFixed(1));
+      self.apply(); return true;
+    };
+    this.zoomAt = function (f, cx, cy) {
+      var a = self.toWorld(cx, cy); self.k *= f; self.apply();
+      var b = self.toWorld(cx, cy); self.cx += a[0] - b[0]; self.cy += a[1] - b[1]; self.apply();
+    };
+    this.zoomCenter = function (f) { var r = svg.getBoundingClientRect(); self.zoomAt(f, r.left + r.width / 2, r.top + r.height / 2); };
+    this.focus = function (x, y, k) { self.cx = x; self.cy = y; if (k) self.k = k; self.apply(); };
+    svg.addEventListener('pointerdown', function (e) {
+      try { svg.setPointerCapture(e.pointerId); } catch (x) { /* 有些瀏覽器不支援，拖曳仍可用 */ }
+      ptrs[e.pointerId] = { x: e.clientX, y: e.clientY };
+      if (count() === 1) drag = { x: e.clientX, y: e.clientY, cx: self.cx, cy: self.cy, moved: false };
+      else if (count() === 2) drag = { pinch: two(), k: self.k, moved: true };
+    });
+    svg.addEventListener('pointermove', function (e) {
+      if (!ptrs[e.pointerId] || !drag) return;
+      ptrs[e.pointerId] = { x: e.clientX, y: e.clientY };
+      if (drag.pinch) { if (count() === 2) { self.k = drag.k * two() / drag.pinch; self.apply(); } return; }
+      var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (Math.abs(dx) + Math.abs(dy) > 7) drag.moved = true;
+      if (drag.moved) { self.cx = drag.cx - dx / (self.s0 * self.k); self.cy = drag.cy - dy / (self.s0 * self.k); self.apply(); }
+    });
+    function up(e) {
+      if (!ptrs[e.pointerId]) return;
+      var tap = drag && !drag.moved && count() === 1;
+      delete ptrs[e.pointerId];
+      if (tap) { var p = self.toWorld(e.clientX, e.clientY); o.onTap(p[0], p[1], 1 / (self.s0 * self.k)); }
+      if (count() === 0) drag = null;
+      else { var k = Object.keys(ptrs)[0]; drag = { x: ptrs[k].x, y: ptrs[k].y, cx: self.cx, cy: self.cy, moved: true }; }
+    }
+    svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', up);
+    svg.addEventListener('wheel', function (e) { e.preventDefault(); self.zoomAt(e.deltaY < 0 ? 1.2 : 0.83, e.clientX, e.clientY); }, { passive: false });
+  }
+
   // ---------- 骨架 ----------
   function boot() {
     var app = document.getElementById('app');
     app.innerHTML = '<header id="hud"></header><main id="stage"><section id="scene">' +
-      '<svg id="vsvg" viewBox="0 0 ' + Art.VW + ' ' + Art.VH + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="部落畫面"><g id="vbase"></g><g id="folk"></g></svg>' +
+      '<svg id="vsvg" role="img" aria-label="部落畫面">' + Art.DEFS + '<g id="vcam"><image id="vimg" width="' + Art.SW + '" height="' + Art.SH + '" preserveAspectRatio="none"/><g id="vdecor"></g><g id="vobjs"></g><g id="folk"></g></g></svg>' +
       '<svg id="msvg" role="img" aria-label="臺灣全島地圖"></svg><div id="tools"></div></section>' +
       '<aside id="panel"><nav id="tabs"></nav><div id="pbody"></div></aside></main><div id="toast" role="status" aria-live="polite"></div>';
-    ['hud', 'stage', 'scene', 'vsvg', 'vbase', 'folk', 'msvg', 'tools', 'panel', 'tabs', 'pbody', 'toast'].forEach(function (id) { el[id] = document.getElementById(id); });
+    ['hud', 'stage', 'scene', 'vsvg', 'vcam', 'vimg', 'vdecor', 'vobjs', 'folk', 'msvg', 'tools', 'panel', 'tabs', 'pbody', 'toast'].forEach(function (id) { el[id] = document.getElementById(id); });
     document.addEventListener('click', onClick);
     document.addEventListener('input', onInput);
-    el.vsvg.addEventListener('click', function (e) {
-      var g = e.target.closest('[data-tile]'); if (!g || !S.me) return;
-      var i = +g.getAttribute('data-tile'); S.selTile = S.selTile === i ? null : i; S.tab = 'build'; render();
-    });
-    mapInit();
-    window.addEventListener('resize', mapResize);
+    el.msvg.innerHTML = '<g id="cam"><image width="' + Geo.MAP_W + '" height="' + Geo.MAP_H + '" href="' + Art.paintMap(4).toDataURL('image/png') + '" preserveAspectRatio="none"/>' +
+      '<g id="mzone"></g><g id="mmarks"></g><g id="mlabels">' + Art.mapLabels() + '</g></g>';
+    el.mzone = document.getElementById('mzone'); el.mmarks = document.getElementById('mmarks');
+    MV = new PanZoom(el.msvg, document.getElementById('cam'), Geo.MAP_W, Geo.MAP_H, { cover: false, maxK: 7, onTap: mapTap, onChange: function (pz) {
+      el.msvg.style.setProperty('--u', (1 / (pz.s0 * pz.k)).toFixed(4)); el.msvg.classList.toggle('far', pz.k < 1.9); renderMarks();
+    } });
+    VV = new PanZoom(el.vsvg, el.vcam, Art.SW, Art.SH, { cover: true, maxK: 3.2, onTap: siteTap });
+    window.addEventListener('resize', function () { MV.resize(); VV.resize(); });
     setInterval(tickTimers, 250);
     setInterval(moveFolk, 2400);
     Net.on('status', function (s) { S.online = s.online; S.mode = s.mode; render(); });
-    Net.on('hello', function (h) { S.pubs = h.villages || S.pubs; if (h.reset) { S.me = null; S.zone = null; S.selTile = null; S.tab = 'build'; } render(); });
+    Net.on('hello', function (h) { S.pubs = h.villages || S.pubs; if (h.reset) { S.me = null; S.zone = null; S.selTile = null; S.tab = 'build'; el.vobjs._sig = null; } render(); });
     Net.on('state', function (st) { S.me = st.me; S.pubs = st.villages; render(); });
     Net.start();
     render();
   }
 
   // ---------- 世界地圖 ----------
-  function mapInit() {
-    var url = Art.paintMap(4).toDataURL('image/png');
-    el.msvg.innerHTML = '<g id="cam"><image width="' + Geo.MAP_W + '" height="' + Geo.MAP_H + '" href="' + url + '" preserveAspectRatio="none"/>' +
-      '<g id="mzone"></g><g id="mmarks"></g><g id="mlabels">' + Art.mapLabels() + '</g></g>';
-    el.cam = document.getElementById('cam'); el.mzone = document.getElementById('mzone'); el.mmarks = document.getElementById('mmarks');
-    var ptrs = {}, drag = null;
-    function count() { return Object.keys(ptrs).length; }
-    function two() { var k = Object.keys(ptrs); return Math.hypot(ptrs[k[0]].x - ptrs[k[1]].x, ptrs[k[0]].y - ptrs[k[1]].y); }
-    el.msvg.addEventListener('pointerdown', function (e) {
-      try { el.msvg.setPointerCapture(e.pointerId); } catch (x) { /* 有些瀏覽器不支援，拖曳仍可用 */ }
-      ptrs[e.pointerId] = { x: e.clientX, y: e.clientY };
-      if (count() === 1) drag = { x: e.clientX, y: e.clientY, cx: MV.cx, cy: MV.cy, moved: false };
-      else if (count() === 2) drag = { pinch: two(), k: MV.k, moved: true };
-    });
-    el.msvg.addEventListener('pointermove', function (e) {
-      if (!ptrs[e.pointerId] || !drag) return;
-      ptrs[e.pointerId] = { x: e.clientX, y: e.clientY };
-      if (drag.pinch && count() === 2) { MV.k = drag.k * two() / drag.pinch; mapApply(); return; }
-      if (drag.pinch) return;
-      var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-      if (Math.abs(dx) + Math.abs(dy) > 7) drag.moved = true;
-      if (drag.moved) { MV.cx = drag.cx - dx / (MV.s0 * MV.k); MV.cy = drag.cy - dy / (MV.s0 * MV.k); mapApply(); }
-    });
-    function up(e) {
-      if (!ptrs[e.pointerId]) return;
-      var tap = drag && !drag.moved && count() === 1;
-      delete ptrs[e.pointerId];
-      if (tap) mapTap(e.clientX, e.clientY);
-      if (count() === 0) drag = null;
-      else { var k = Object.keys(ptrs)[0]; drag = { x: ptrs[k].x, y: ptrs[k].y, cx: MV.cx, cy: MV.cy, moved: true }; }
-    }
-    el.msvg.addEventListener('pointerup', up); el.msvg.addEventListener('pointercancel', up);
-    el.msvg.addEventListener('wheel', function (e) { e.preventDefault(); zoomAt(e.deltaY < 0 ? 1.25 : 0.8, e.clientX, e.clientY); }, { passive: false });
-    MV.ready = true; mapResize();
-  }
-  function toMap(cx, cy) {
-    var r = el.msvg.getBoundingClientRect();
-    return [((cx - r.left) / MV.s0 - (MV.vw / 2 - MV.cx * MV.k)) / MV.k, ((cy - r.top) / MV.s0 - (MV.vh / 2 - MV.cy * MV.k)) / MV.k];
-  }
-  function zoomAt(f, cx, cy) {
-    var before = toMap(cx, cy); MV.k *= f; mapApply();
-    var after = toMap(cx, cy); MV.cx += before[0] - after[0]; MV.cy += before[1] - after[1]; mapApply();
-  }
-  function mapResize() {
-    if (!MV.ready) return;
-    var r = el.scene.getBoundingClientRect(); if (!r.width || !r.height) return;
-    MV.s0 = Math.min(r.width / Geo.MAP_W, r.height / Geo.MAP_H); MV.vw = r.width / MV.s0; MV.vh = r.height / MV.s0;
-    el.msvg.setAttribute('viewBox', '0 0 ' + MV.vw.toFixed(1) + ' ' + MV.vh.toFixed(1));
-    mapApply();
-  }
-  function mapApply() {
-    MV.k = Math.max(1, Math.min(7, MV.k));
-    MV.cx = Math.max(0, Math.min(Geo.MAP_W, MV.cx)); MV.cy = Math.max(0, Math.min(Geo.MAP_H, MV.cy));
-    el.cam.setAttribute('transform', 'translate(' + (MV.vw / 2 - MV.cx * MV.k).toFixed(2) + ' ' + (MV.vh / 2 - MV.cy * MV.k).toFixed(2) + ') scale(' + MV.k.toFixed(3) + ')');
-    el.msvg.style.setProperty('--u', (1 / (MV.s0 * MV.k)).toFixed(4));
-    el.msvg.classList.toggle('far', MV.k < 1.9);
-    renderMarks();
-  }
-  function focusHex(h, k) { MV.cx = h.x; MV.cy = h.y; if (k) MV.k = Math.max(MV.k, k); mapApply(); }
-  function mapTap(cx, cy) {
-    var p = toMap(cx, cy), u = 1 / (MV.s0 * MV.k), best = null, bd = 16 * u;
-    S.pubs.forEach(function (v) { var d = Math.hypot(v.pos[0] - p[0], v.pos[1] - p[1]); if (d < bd) { bd = d; best = v; } });
-    var h = best ? G.byId[best.hex] : Geo.nearestHex(p[0], p[1], Geo.HEX_SIZE * 1.15);
+  function mapTap(x, y, u) {
+    var best = null, bd = 16 * u;
+    S.pubs.forEach(function (v) { var d = Math.hypot(v.pos[0] - x, v.pos[1] - y); if (d < bd) { bd = d; best = v; } });
+    var h = best ? G.byId[best.hex] : Geo.nearestHex(x, y, Geo.HEX_SIZE * 1.15);
     S.zone = h ? h.id : null;
     if (S.me) S.tab = 'map';
     render();
   }
   function renderMarks() {
-    if (!MV.ready) return;
+    if (!MV || !MV.sized) return;
     var u = 1 / (MV.s0 * MV.k), s = '', z = S.zone && G.byId[S.zone];
     setHTML(el.mzone, z ? '<circle class="zsel" cx="' + z.x + '" cy="' + z.y + '" r="' + (Geo.HEX_SIZE * 1.05) + '" style="stroke-width:' + (2.2 * u).toFixed(3) + '"/>' : '');
     G.settlements.forEach(function (st) {
@@ -1571,35 +1689,41 @@ window.Net = (function () {
   }
 
   // ---------- 部落畫面 ----------
-  var folk = [];
+  var folkN = -1;
+  function siteTap(x, y) {
+    if (!S.me) return;
+    var best = null, bd = 78;
+    for (var i = 0; i < R.TILE_N; i++) {
+      var p = Art.sitePos(i), lift = S.me.tiles[i] || !S.me.land[i] ? 22 : 0, d = Math.hypot(p[0] - x, (p[1] - lift - y) * 1.25);
+      if (d < bd) { bd = d; best = i; }
+    }
+    S.selTile = best === S.selTile ? null : best; S.tab = 'build'; render();
+  }
   function renderVillage() {
     var v = S.me; if (!v) return;
-    var sig = v.tribe + '|' + v.wall + '|' + S.selTile + '|' + JSON.stringify(v.tiles) + JSON.stringify(v.queue);
-    if (el.vbase._sig !== sig) {
-      var look = Tribes.get(v.tribe).look;   // 畫面比例不同時，上下多出來的地方用天空與地面的顏色補滿
-      el.vsvg.style.background = 'linear-gradient(' + (look.backdrop === 'coast' ? '#BFE0EA' : '#BFDDE0') + ' 50%, ' + look.ground + ' 50%)';
-      el.vbase.innerHTML = Art.village(v, S.selTile, v.queue); el.vbase._sig = sig; tickTimers();
+    var t = Tribes.get(v.tribe);
+    if (el.vimg._t !== t.id) { el.vimg.setAttribute('href', Art.groundURL(t)); el.vdecor.innerHTML = Art.decor(t); el.vimg._t = t.id; }
+    if (!VV.sized || el.vimg._focus !== v.id) {
+      if (VV.resize()) { var c = Art.sitePos(R.CENTER_TILE); VV.focus(c[0], c[1] - 10, Math.max(1, Math.min(3.2, VV.vw / 1040))); el.vimg._focus = v.id; }
     }
-    var want = Math.min(v.pop, 12);
-    if (folk.length !== want) {
-      var t = Tribes.get(v.tribe), s = '';
-      folk = [];
-      for (var i = 0; i < want; i++) {
-        var p = spot(v); folk.push(p);
-        s += '<g class="person" style="transform:translate(' + p[0] + 'px,' + p[1] + 'px)"><ellipse cx="0" cy="9" rx="6" ry="2.2" fill="#000" opacity=".22"/><path d="M-5 9c0-8 2-12 5-12s5 4 5 12z" fill="' + (i % 3 ? '#F2EAD6' : t.look.trim) + '"/><circle cx="0" cy="-7" r="4.4" fill="#B98660"/></g>';
-      }
-      el.folk.innerHTML = s;
+    var sig = v.tribe + '|' + S.selTile + '|' + JSON.stringify(v.tiles) + v.land.join('') + JSON.stringify(v.queue);
+    if (el.vobjs._sig !== sig) { el.vobjs.innerHTML = Art.scene(v, S.selTile); el.vobjs._sig = sig; tickTimers(); }
+    var want = Math.min(v.pop, 14);
+    if (folkN !== want || el.folk._t !== v.id) {
+      var s = '';
+      for (var i = 0; i < want; i++) { var p = spot(v); s += '<g class="person" style="transform:translate(' + p[0] + 'px,' + p[1] + 'px)">' + Art.person(i % 3 ? '#F2EAD6' : t.look.trim) + '</g>'; }
+      el.folk.innerHTML = s; folkN = want; el.folk._t = v.id;
     }
   }
-  function spot(v) {
-    var built = []; for (var i = 0; i < R.TILE_N; i++) if (v.tiles[i] && v.tiles[i].level > 0) built.push(i);
-    var p = Art.tileXY(built[Math.floor(Math.random() * built.length)] || R.CENTER_TILE);
-    return [Math.round(p[0] + 14 + Math.random() * 68), Math.round(p[1] + 88 + Math.random() * 10)];
+  function spot(v) {   // 族人走動的位置：開墾好的地附近
+    var open = []; for (var i = 0; i < R.TILE_N; i++) if (v.land[i]) open.push(i);
+    var p = Art.sitePos(open[Math.floor(Math.random() * open.length)]);
+    return [Math.round(p[0] - 44 + Math.random() * 88), Math.round(p[1] + 24 + Math.random() * 16)];
   }
   function moveFolk() {
     if (!S.me || scene() !== 'village' || document.hidden) return;
     var nodes = el.folk.children;
-    for (var i = 0; i < nodes.length; i++) if (Math.random() < 0.6) { var p = spot(S.me); nodes[i].style.transform = 'translate(' + p[0] + 'px,' + p[1] + 'px)'; }
+    for (var i = 0; i < nodes.length; i++) if (Math.random() < 0.55) { var p = spot(S.me); nodes[i].style.transform = 'translate(' + p[0] + 'px,' + p[1] + 'px)'; }
   }
   function tickTimers() {
     var now = Date.now(), list = document.querySelectorAll('[data-until]');
@@ -1648,8 +1772,8 @@ window.Net = (function () {
     var t = myTribe(), full = me.queue.length >= R.BUILDERS, h = '<section class="card sel"><h3>' + bname(t, b.type) + '<span class="lv">' + (b.level ? '等級 ' + b.level : '興建中') + '</span></h3>';
     if (b.level) h += '<p class="eff">' + effect(b.type, b.level, t) + '</p>';
     if (b.busy) {
-      var q = me.queue.filter(function (x) { return x.tile === i; })[0];
-      h += '<p class="busyline">施工中，還要 <b data-until="' + (q ? q.doneAt : 0) + '"></b></p>';
+      var w = me.queue.filter(function (x) { return x.tile === i; })[0];
+      h += '<p class="busyline">施工中，還要 <b data-until="' + (w ? w.doneAt : 0) + '"></b></p>';
     } else if (b.level >= R.MAX_LEVEL) h += '<p class="muted">已經是最高等級。</p>';
     else {
       var to = b.level + 1, c = R.cost(b.type, to), sp = 0, why = '';
@@ -1664,7 +1788,7 @@ window.Net = (function () {
     return h + '<p class="note">' + esc(t.b[b.type].note) + '</p></section>';
   }
   function emptyCard(me, i) {
-    var t = myTribe(), full = me.queue.length >= R.BUILDERS, h = '<section class="card sel"><h3>空地<span class="lv">選一種建築</span></h3><ul class="opts">';
+    var t = myTribe(), full = me.queue.length >= R.BUILDERS, h = '<section class="card sel"><h3>開墾好的空地<span class="lv">選一種建築</span></h3><ul class="opts">';
     STAGE_TYPES.forEach(function (ty) {
       var c = R.cost(ty, 1), have = R.count(me, ty), lim = R.limit(ty, me.d.center), why = '';
       if (have >= lim) why = '已達上限，先升級' + t.b.center.zh; else if (full) why = '工程已滿'; else if (!affordable(me, c)) why = '物資還不夠';
@@ -1673,6 +1797,14 @@ window.Net = (function () {
         (why ? '<p class="why">' + why + '</p>' : '') + '</li>';
     });
     return h + '</ul></section>';
+  }
+  function wildCard(me, i) {
+    var t = myTribe(), info = R.clearInfo(me, i), w = me.queue.filter(function (x) { return x.tile === i && x.type === 'clear'; })[0];
+    var h = '<section class="card sel"><h3>山林<span class="lv">還沒開墾</span></h3><p>這裡還是一片山林。拓荒之後會變成建地，清出來的木石也會成為' + t.res.mat + '。</p>';
+    if (w) return h + '<p class="busyline">拓荒中，還要 <b data-until="' + w.doneAt + '"></b></p></section>';
+    var why = info.ok ? '' : info.why === 'center' ? '要先把' + t.b.center.zh + '升到等級 ' + R.CLEAR[R.SITES[i].ring].center : info.why;
+    return h + '<div class="act"><button class="btn" data-act="clear" data-tile="' + i + '"' + (info.ok ? '' : ' disabled') + '>拓荒</button>' + costHTML(me, { food: info.food, mat: 0 }) +
+      '<span class="gain">' + Art.icon('mat') + '+' + info.gain + '</span><span class="time">' + dur(info.time) + '</span></div>' + (why ? '<p class="why">' + why + '</p>' : '') + '</section>';
   }
   function jobsCard(me) {
     var t = myTribe(), d = me.d, names = { food: t.res.food, mat: t.res.mat, special: t.sp.zh }, ic = { food: 'food', mat: 'mat', special: 'sp' };
@@ -1687,14 +1819,14 @@ window.Net = (function () {
   }
   function queueCard(me) {
     if (!me.queue.length) return '';
-    var t = myTribe(), h = '<section class="card"><h3>施工中<span class="lv">' + me.queue.length + '/' + R.BUILDERS + '</span></h3>';
-    me.queue.forEach(function (q) { h += '<div class="qrow"><span>' + esc(t.b[q.type].zh) + ' → 等級 ' + q.to + '</span><b data-until="' + q.doneAt + '"></b></div>'; });
+    var t = myTribe(), h = '<section class="card"><h3>進行中的工程<span class="lv">' + me.queue.length + '/' + R.BUILDERS + '</span></h3>';
+    me.queue.forEach(function (w) { h += '<div class="qrow"><span>' + (w.type === 'clear' ? '拓荒' : esc(t.b[w.type].zh) + ' → 等級 ' + w.to) + '</span><b data-until="' + w.doneAt + '"></b></div>'; });
     return h + '</section>';
   }
   function buildPanel(me) {
-    var h = '';
-    if (S.selTile != null) h += me.tiles[S.selTile] ? buildingCard(me, S.selTile, me.tiles[S.selTile]) : emptyCard(me, S.selTile);
-    else h += '<p class="hint">點部落裡的建築可以升級，點空地可以蓋新的建築。</p>';
+    var h = '', i = S.selTile;
+    if (i != null) h += !me.land[i] ? wildCard(me, i) : me.tiles[i] ? buildingCard(me, i, me.tiles[i]) : emptyCard(me, i);
+    else h += '<p class="hint">點建築可以升級，點有 ＋ 的空地可以蓋新建築，點外圍有斧頭記號的山林可以拓荒。畫面可以拖曳和縮放。</p>';
     return h + jobsCard(me) + queueCard(me);
   }
   function tribeCard(t, cells) {
@@ -1761,12 +1893,14 @@ window.Net = (function () {
     if (a) a.value = S.form.owner; if (b) b.value = S.form.name;
   }
   function renderTools() {
-    setHTML(el.tools, scene() === 'map' ? '<div class="zoom"><button data-act="zoom" data-f="1.5" aria-label="放大">＋</button><button data-act="zoom" data-f="0.667" aria-label="縮小">−</button><button data-act="whole" aria-label="顯示全島">全島</button></div>' : '');
+    setHTML(el.tools, '<div class="zoom"><button data-act="zoom" data-f="1.4" aria-label="放大">＋</button><button data-act="zoom" data-f="0.714" aria-label="縮小">−</button>' +
+      (scene() === 'map' ? '<button data-act="whole" aria-label="顯示全島">全島</button>' : '<button data-act="home" aria-label="回到部落中央">中央</button>') + '</div>');
   }
   function render() {
     if (!el.hud) return;
     var sc = scene();
-    if (el.scene.getAttribute('data-scene') !== sc) { el.scene.setAttribute('data-scene', sc); if (sc === 'map') setTimeout(mapResize, 0); }
+    if (el.scene.getAttribute('data-scene') !== sc) { el.scene.setAttribute('data-scene', sc); if (sc === 'map') MV.resize(); else VV.resize(); }
+    if (sc === 'map' && !MV.sized) MV.resize();
     renderHud(); renderTools(); renderPanel();
     if (sc === 'village') renderVillage(); else renderMarks();
   }
@@ -1779,25 +1913,30 @@ window.Net = (function () {
   }
   function onClick(e) {
     var b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
-    var a = b.getAttribute('data-act'), me = S.me;
-    if (a === 'tab') { S.tab = b.getAttribute('data-tab'); if (S.tab === 'map' && me) { S.zone = S.zone || me.hex; focusHex(G.byId[me.hex], 2.6); } render(); }
+    var a = b.getAttribute('data-act'), me = S.me, tile = +b.getAttribute('data-tile');
+    if (a === 'tab') {
+      S.tab = b.getAttribute('data-tab'); render();
+      if (S.tab === 'map' && me) { S.zone = S.zone || me.hex; var h = G.byId[me.hex]; MV.focus(h.x, h.y, Math.max(MV.k, 2.6)); render(); }
+    }
     else if (a === 'pick') {
-      var id = b.getAttribute('data-t'), c = G.centroid[id], h = Geo.nearestHex(c[0], c[1]);
+      var id = b.getAttribute('data-t'), c = G.centroid[id];
       var list = G.regions[id].map(function (x) { return G.byId[x]; }).sort(function (p, q) { return Math.hypot(p.x - c[0], p.y - c[1]) - Math.hypot(q.x - c[0], q.y - c[1]); });
-      h = list[0]; S.zone = h.id; focusHex(h, 1.8); render();
+      S.zone = list[0].id; MV.focus(list[0].x, list[0].y, Math.max(MV.k, 1.8)); render();
     }
     else if (a === 'join') {
       S.joining = true; render();
       Net.join({ owner: S.form.owner, name: S.form.name, tribe: G.byId[S.zone].tribe, hex: S.zone }, function (r) {
         S.joining = false;
         if (!r.ok) { toast(r.msg, true); render(); return; }
-        S.tab = 'build'; S.selTile = null; toast('部落建立了。先蓋幾間家屋，讓更多族人住進來。'); render();
+        S.tab = 'build'; S.selTile = null; toast('部落建立了。先蓋家屋讓族人住進來，空地不夠就往外拓荒。'); render();
       });
     }
-    else if (a === 'zoom') { var r = el.msvg.getBoundingClientRect(); zoomAt(+b.getAttribute('data-f'), r.left + r.width / 2, r.top + r.height / 2); }
-    else if (a === 'whole') { MV.k = 1; MV.cx = Geo.MAP_W / 2; MV.cy = Geo.MAP_H / 2; mapApply(); }
-    else if (a === 'upgrade') act({ type: 'upgrade', tile: +b.getAttribute('data-tile') }, '開始施工');
-    else if (a === 'build') act({ type: 'build', tile: +b.getAttribute('data-tile'), type2: b.getAttribute('data-type') }, '開始興建');
+    else if (a === 'zoom') (scene() === 'map' ? MV : VV).zoomCenter(+b.getAttribute('data-f'));
+    else if (a === 'whole') MV.focus(Geo.MAP_W / 2, Geo.MAP_H / 2, 1);
+    else if (a === 'home') { var p = Art.sitePos(R.CENTER_TILE); VV.focus(p[0], p[1] - 10, Math.max(1, Math.min(3.2, VV.vw / 1040))); }
+    else if (a === 'upgrade') act({ type: 'upgrade', tile: tile }, '開始施工');
+    else if (a === 'build') act({ type: 'build', tile: tile, type2: b.getAttribute('data-type') }, '開始興建');
+    else if (a === 'clear') act({ type: 'clear', tile: tile }, '族人開始拓荒');
     else if (a === 'auto') act({ type: 'auto', on: b.checked });
     else if (a === 'job') {
       var j = { type: 'jobs', food: me.jobs.food, mat: me.jobs.mat, special: me.jobs.special };

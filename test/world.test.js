@@ -25,10 +25,10 @@ test('新部落能加入、生產並蓋建築', () => {
   assert.equal(w.join('tok2', { tribe: 'tao' }, now).ok, false, '未開放的族群不能選');
   for (let i = 0; i < 60; i++) { now += 1000; w.tick(now); }
   assert.ok(v.res.food > 120, 'food grows');
-  assert.ok(w.act(v.id, { type: 'build', tile: 0, type2: 'house' }, now).ok);
-  assert.equal(w.act(v.id, { type: 'build', tile: 0, type2: 'farm' }, now).ok, false, '同一格不能重複蓋');
+  assert.ok(w.act(v.id, { type: 'build', tile: 1, type2: 'house' }, now).ok);
+  assert.equal(w.act(v.id, { type: 'build', tile: 1, type2: 'farm' }, now).ok, false, '同一塊地不能重複蓋');
   for (let i = 0; i < 20; i++) { now += 1000; w.tick(now); }
-  assert.equal(v.tiles[0].level, 1);
+  assert.equal(v.tiles[1].level, 1);
   check(w);
 });
 
@@ -38,7 +38,8 @@ test('示範部落長時間運作不會出現負數或壞值', () => {
   assert.equal(Object.keys(w.villages).length, 8);
   for (let i = 0; i < 3000; i++) { now += 1000; w.tick(now); if (i % 200 === 0) check(w); }
   check(w);
-  const levels = Object.values(w.villages).map(v => v.tiles[22].level);
+  const levels = Object.values(w.villages).map(v => v.tiles[0].level);
+  assert.ok(Object.values(w.villages).some(v => v.land.filter(Boolean).length > 7), '示範部落會自己拓荒');
   assert.ok(Math.max(...levels) >= 2, 'bots upgrade their centre: ' + levels.join(','));
 });
 
@@ -114,11 +115,11 @@ test('部落中心升到三級要用特產，材料不夠時不會白扣', () =>
   const w = new World({ rng: seeded(13) });
   let now = 1e6;
   const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'paiwan' }, now).id];
-  v.tiles[22].level = 2; v.res.food = 1000; v.res.mat = 100; v.sp.paiwan = 5;
-  assert.equal(w.act(v.id, { type: 'upgrade', tile: 22 }, now).ok, false);
+  v.tiles[0].level = 2; v.res.food = 1000; v.res.mat = 100; v.sp.paiwan = 5;
+  assert.equal(w.act(v.id, { type: 'upgrade', tile: 0 }, now).ok, false);
   assert.equal(v.sp.paiwan, 5, '失敗時特產要還在');
   v.res.mat = 1000;
-  assert.ok(w.act(v.id, { type: 'upgrade', tile: 22 }, now).ok);
+  assert.ok(w.act(v.id, { type: 'upgrade', tile: 0 }, now).ok);
   assert.equal(v.sp.paiwan || 0, 0);
 });
 
@@ -127,4 +128,24 @@ test('地圖：沒有族群的格子是野地或中立聚落', () => {
   assert.equal(m.settlements.length, 5);
   for (const h of m.hexes) assert.ok(h.tribe || h.wild || h.settlement, h.id + ' 沒有分類');
   assert.ok(m.hexes.filter(h => h.wild).length > 50);
+});
+
+test('拓荒：只能從已開墾的地往外拓，完成後多一塊建地並得到建材', () => {
+  const w = new World({ rng: seeded(17) }), R = World.rules;
+  let now = 1e6;
+  const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'bunun' }, now).id]; v.online = true;
+  assert.equal(v.land.filter(Boolean).length, 7, '一開始只有中央七塊地');
+  const ring1 = R.SITES.findIndex(s => s.ring === 1), ring2 = R.SITES.findIndex(s => s.ring === 2);
+  assert.equal(w.act(v.id, { type: 'build', tile: ring1, type2: 'house' }, now).ok, false, '山林不能直接蓋');
+  assert.equal(w.act(v.id, { type: 'clear', tile: ring2 }, now).ok, false, '不能跳過中間直接拓最外圈');
+  const mat0 = v.res.mat, food0 = v.res.food;
+  assert.ok(w.act(v.id, { type: 'clear', tile: ring1 }, now).ok);
+  assert.equal(Math.round(food0 - v.res.food), R.CLEAR[1].food);
+  assert.equal(w.act(v.id, { type: 'clear', tile: ring1 }, now).ok, false, '同一塊地不能重複拓荒');
+  for (let i = 0; i < 14; i++) { now += 1000; w.tick(now); }
+  assert.equal(v.land[ring1], 1);
+  assert.ok(v.res.mat >= mat0 + R.CLEAR[1].gain);
+  assert.ok(w.act(v.id, { type: 'build', tile: ring1, type2: 'house' }, now).ok, '拓荒完就能蓋');
+  const outer = R.SITES[ring1].near.find(j => R.SITES[j].ring === 2);
+  assert.equal(w.act(v.id, { type: 'clear', tile: outer }, now).ok, false, '最外圈要部落中心等級 2');
 });

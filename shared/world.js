@@ -7,7 +7,24 @@
   'use strict';
 
   // ---------- 規則數值 ----------
-  var GRID_W = 9, GRID_H = 5, TILE_N = GRID_W * GRID_H, CENTER_TILE = 22;
+  // 建地：部落中央是廣場與部落中心，外面三圈是可以蓋建築的位置（地面座標，畫面再轉成斜視角）。
+  // 第 0 圈一開始就是開墾好的；第 1、2 圈是山林，要拓荒之後才能蓋。
+  var SITES = (function () {
+    var out = [{ x: 20, y: 20, ring: 0 }];
+    [[6, 4.6, 0.5], [10, 8.8, 0.2], [12, 13.0, 0.05]].forEach(function (r, ri) {
+      for (var i = 0; i < r[0]; i++) {
+        var a = i / r[0] * Math.PI * 2 + r[2], rad = r[1] + ((i * 7 + ri * 3) % 5 - 2) * 0.16;
+        out.push({ x: +(20 + rad * Math.cos(a)).toFixed(2), y: +(20 + rad * Math.sin(a)).toFixed(2), ring: ri });
+      }
+    });
+    out.forEach(function (s, i) {
+      s.near = [];
+      out.forEach(function (o, j) { if (i !== j && Math.hypot(s.x - o.x, s.y - o.y) <= 6.2) s.near.push(j); });
+    });
+    return out;
+  })();
+  var TILE_N = SITES.length, CENTER_TILE = 0;
+  var CLEAR = { 1: { food: 25, time: 12, gain: 15, center: 1 }, 2: { food: 60, time: 25, gain: 35, center: 2 } };   // 拓荒：花糧食與時間，清出來的木石變成建材
   var MULT = [1, 2.2, 4, 7, 11], TMULT = [1, 2, 3.5, 5.5, 8], MAX_LEVEL = 5;
   var TYPES = ['house', 'farm', 'mat', 'special', 'storage', 'barracks', 'tower'];
   var DEF = {
@@ -82,13 +99,26 @@
   function foreignKinds(v) { var n = 0; for (var k in v.sp) if (k !== v.tribe && v.sp[k] >= 1) n++; return n; }
   function prosperity(v) {
     var p = 0;
-    for (var i = 0; i < TILE_N; i++) if (v.tiles[i]) p += v.tiles[i].level * (v.tiles[i].type === 'center' ? 30 : 10);
+    for (var i = 0; i < TILE_N; i++) { if (v.tiles[i]) p += v.tiles[i].level * (v.tiles[i].type === 'center' ? 30 : 10); if (v.land[i] && SITES[i].ring > 0) p += 3; }
     return Math.round(p + v.wall * 10 + v.pop * 3 + foreignKinds(v) * 15 + Math.min(40, v.gifts * 2));
   }
   function derived(v, speed) {
     var c = caps(v);
     return { cap: c.res, spCap: c.sp, protect: c.protect, slots: slots(v), rates: rates(v, speed), popCap: popCap(v),
       armyCap: armyCap(v), builders: BUILDERS, prosperity: prosperity(v), center: centerLevel(v) };
+  }
+  /* 這塊地能不能拓荒：要是山林、緊鄰已開墾的地、部落中心等級夠、有空的工程名額、糧食夠 */
+  function clearInfo(v, i) {
+    var s = SITES[i], out = { ok: false, why: '' };
+    if (!s || v.land[i]) { out.why = '這裡已經開墾過了'; return out; }
+    var c = CLEAR[s.ring]; out.food = c.food; out.time = c.time; out.gain = c.gain;
+    if (v.queue.some(function (q) { return q.type === 'clear' && q.tile === i; })) out.why = '正在拓荒';
+    else if (!s.near.some(function (j) { return v.land[j]; })) out.why = '要從已經開墾的地方往外拓荒';
+    else if (centerLevel(v) < c.center) out.why = 'center';
+    else if (v.queue.length >= BUILDERS) out.why = '同時只能進行 ' + BUILDERS + ' 項工程';
+    else if (v.res.food < c.food) out.why = '糧食不足';
+    else out.ok = true;
+    return out;
   }
   function getRes(v, k) { return k === 'food' || k === 'mat' ? v.res[k] : (v.sp[k.slice(3)] || 0); }
   function addRes(v, k, n) {
@@ -173,13 +203,14 @@
   World.prototype.createVillage = function (o, now) {
     var tiles = []; for (var i = 0; i < TILE_N; i++) tiles.push(null);
     tiles[CENTER_TILE] = { type: 'center', level: 1 };
-    tiles[CENTER_TILE - 1] = { type: 'house', level: 1 };
-    tiles[CENTER_TILE - GRID_W] = { type: 'farm', level: 1 };
-    tiles[CENTER_TILE + GRID_W] = { type: 'mat', level: 1 };
+    tiles[4] = { type: 'house', level: 1 };
+    tiles[2] = { type: 'farm', level: 1 };
+    tiles[6] = { type: 'mat', level: 1 };
+    var land = SITES.map(function (s) { return s.ring === 0 ? 1 : 0; });
     var v = {
       id: this.id('v'), name: o.name, owner: o.owner, tribe: o.tribe, hex: o.at.hex, slot: o.at.slot, pos: o.at.pos, bot: !!o.bot,
       createdAt: now, last: now, res: { food: 120, mat: 120 }, sp: {}, pop: 4, popAcc: 0,
-      jobs: { food: 2, mat: 2, special: 0 }, auto: true, tiles: tiles, wall: 0, queue: [],
+      jobs: { food: 2, mat: 2, special: 0 }, auto: true, tiles: tiles, land: land, wall: 0, queue: [],
       units: { w: 0, a: 0 }, away: { w: 0, a: 0 }, train: [], glory: 0, wins: 0, losses: 0, gifts: 0,
       shieldUntil: 0, newbieUntil: o.bot ? 0 : now + NEWBIE_MS, ally: null, reports: [], cool: {},
       lastSay: 0, lastGift: 0, online: !!o.bot
@@ -234,6 +265,7 @@
     v.queue = v.queue.filter(function (q) {
       if (q.doneAt > now) return true;
       if (q.type === 'wall') v.wall = q.to;
+      else if (q.type === 'clear') { v.land[q.tile] = 1; v.res.mat += q.gain; }
       else if (v.tiles[q.tile]) { v.tiles[q.tile].level = q.to; delete v.tiles[q.tile].busy; }
       return false;
     });
@@ -275,6 +307,7 @@
       var tile = int(a.tile), type = a.type2;
       if (TYPES.indexOf(type) < 0) return { ok: false, msg: '沒有這種建築' };
       if (tile < 0 || tile >= TILE_N || v.tiles[tile]) return { ok: false, msg: '這塊地已經有建築了' };
+      if (!v.land[tile]) return { ok: false, msg: '這裡還是山林，要先拓荒' };
       if (count(v, type) >= limit(type, centerLevel(v))) return { ok: false, msg: '數量已達上限，先升級部落中心' };
       if (v.queue.length >= BUILDERS) return { ok: false, msg: '同時只能進行 ' + BUILDERS + ' 項工程' };
       var c = cost(type, 1);
@@ -282,6 +315,12 @@
       pay(v, c);
       v.tiles[tile] = { type: type, level: 0, busy: true };
       v.queue.push({ id: this.id('q'), tile: tile, type: type, to: 1, doneAt: now + buildTime(type, 1) * 1000 / this.speed });
+    },
+    clear: function (v, a, now) {
+      var info = clearInfo(v, int(a.tile));
+      if (!info.ok) return { ok: false, msg: info.why === 'center' ? '要先把部落中心升到等級 ' + CLEAR[SITES[int(a.tile)].ring].center : info.why };
+      v.res.food -= info.food;
+      v.queue.push({ id: this.id('q'), tile: int(a.tile), type: 'clear', to: 0, gain: info.gain, doneAt: now + info.time * 1000 / this.speed });
     },
     upgrade: function (v, a, now) {
       var tile = int(a.tile), b = v.tiles[tile];
@@ -483,14 +522,15 @@
     var self = this, rng = this.rng, C = centerLevel(v);
     this.tickVillage(v, now);
     if (v.queue.length < BUILDERS && rng() < 0.7) {
-      var opts = [], empty = [];
+      var opts = [], empty = [], wild = [];
       for (var i = 0; i < TILE_N; i++) {
         var b = v.tiles[i];
-        if (!b) { empty.push(i); continue; }
+        if (!b) { if (v.land[i]) empty.push(i); else if (clearInfo(v, i).ok) wild.push(i); continue; }
         if (b.busy || b.level >= MAX_LEVEL) continue;
         if (b.type === 'center') { if (can(v, cost('center', b.level + 1))) opts.push({ type: 'upgrade', tile: i }, { type: 'upgrade', tile: i }); }
         else if (b.level < C && can(v, cost(b.type, b.level + 1))) opts.push({ type: 'upgrade', tile: i });
       }
+      if (empty.length < 2 && wild.length) opts.push({ type: 'clear', tile: wild[Math.floor(rng() * wild.length)] });
       if (empty.length) TYPES.forEach(function (ty) {
         if (count(v, ty) < limit(ty, C) && can(v, cost(ty, 1))) opts.push({ type: 'build', type2: ty, tile: empty[Math.floor(rng() * empty.length)] });
       });
@@ -541,6 +581,7 @@
     this.tickVillage(v, now);
     var p = this.pub(v, now);
     p.tiles = v.tiles.map(function (b) { return b ? { type: b.type, level: b.level, busy: !!b.busy } : null; });
+    p.land = v.land.slice();
     p.pop = v.pop;
     return p;
   };
@@ -566,12 +607,16 @@
     if (!d || !d.villages) return this;
     this.villages = d.villages; this.tokens = d.tokens || {}; this.marches = d.marches || []; this.market = d.market || [];
     this.feed = d.feed || []; this.alliances = d.alliances || {}; this.seq = d.seq || 1;
-    for (var id in this.villages) { this.villages[id].online = !!this.villages[id].bot; }
+    for (var id in this.villages) {
+      var v = this.villages[id]; v.online = !!v.bot;
+      if (!v.land || v.tiles.length !== TILE_N) delete this.villages[id];   // 舊版的方格部落無法沿用
+    }
+    for (var tk in this.tokens) if (!this.villages[this.tokens[tk]]) delete this.tokens[tk];
     return this;
   };
 
   World.rules = {
-    GRID_W: GRID_W, GRID_H: GRID_H, TILE_N: TILE_N, CENTER_TILE: CENTER_TILE, TYPES: TYPES, MAX_LEVEL: MAX_LEVEL, UNIT: UNIT,
+    SITES: SITES, CLEAR: CLEAR, clearInfo: clearInfo, TILE_N: TILE_N, CENTER_TILE: CENTER_TILE, TYPES: TYPES, MAX_LEVEL: MAX_LEVEL, UNIT: UNIT,
     CENTER_UP: CENTER_UP, BUILDERS: BUILDERS, FOREIGN_SP: FOREIGN_SP, cost: cost, buildTime: buildTime, limit: limit, count: count,
     resName: resName, battle: battle, derived: derived, popCap: popCap
   };
