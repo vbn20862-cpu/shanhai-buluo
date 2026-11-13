@@ -55,6 +55,21 @@
     siraya: [[120.38, 23.03], [120.43, 23.28], [120.20, 23.17], [120.43, 23.14]]
   };
   var SEED_RADIUS_KM = 16;
+  // 平原上的中立聚落（平埔族群的家園；之後開放交易）。只標位置，不放未查證的文化內容。
+  var SETTLEMENTS = [
+    { id: 'n1', name: '北部平原聚落', at: [121.48, 25.03] },
+    { id: 'n2', name: '西北平原聚落', at: [120.98, 24.78] },
+    { id: 'n3', name: '中部平原聚落', at: [120.66, 24.14] },
+    { id: 'n4', name: '西部平原聚落', at: [120.42, 23.62] },
+    { id: 'n5', name: '南部平原聚落', at: [120.42, 22.66] }
+  ];
+  // 畫地圖用的山脈稜線（中央山脈、雪山山脈、阿里山山脈、海岸山脈）
+  var RANGES = [
+    [[121.62, 24.62], [121.45, 24.38], [121.30, 24.12], [121.20, 23.85], [121.08, 23.55], [120.98, 23.28], [120.92, 23.00], [120.85, 22.72], [120.80, 22.45], [120.78, 22.20]],
+    [[121.55, 24.90], [121.38, 24.70], [121.22, 24.50], [121.08, 24.32], [120.98, 24.12]],
+    [[120.82, 23.70], [120.78, 23.50], [120.72, 23.30], [120.68, 23.10]],
+    [[121.52, 23.78], [121.46, 23.55], [121.40, 23.32], [121.32, 23.10], [121.22, 22.90]]
+  ];
 
   // 投影：等距圓柱。1 單位約 1.11 公里。
   var LON0 = 119.9, LAT0 = 25.42, K = 100, COS = Math.cos(23.6 * Math.PI / 180);
@@ -129,6 +144,25 @@
         if (!byId[(h.col + nb[n][0]) + '_' + (h.row + nb[n][1])]) { h.coast = true; break; }
       }
     });
+    // 被族群區域包住的零星空格，歸給周圍最多的那一族
+    hexes.forEach(function (h) {
+      if (h.tribe || h.islet) return;
+      var nb = NEIGH[h.row & 1], cnt = {}, top = null;
+      for (var n = 0; n < 6; n++) {
+        var o = byId[(h.col + nb[n][0]) + '_' + (h.row + nb[n][1])];
+        if (o && o.tribe && !o.filled) { cnt[o.tribe] = (cnt[o.tribe] || 0) + 1; if (!top || cnt[o.tribe] > cnt[top]) top = o.tribe; }
+      }
+      if (top && cnt[top] >= 4) { h.tribe = top; h.filled = true; }
+    });
+    // 其餘沒有族群的格子是野地：靠海是漁場，其他輪流是獵場與林地
+    var wildN = 0;
+    hexes.forEach(function (h) { if (!h.tribe) h.wild = h.coast ? 'fish' : (wildN++ % 2 ? 'wood' : 'hunt'); });
+    var settlements = SETTLEMENTS.map(function (st) {
+      var p = project(st.at[0], st.at[1]), best = null, bd = 1e9;
+      hexes.forEach(function (h) { if (h.tribe) return; var d = Math.hypot(h.x - p[0], h.y - p[1]); if (d < bd) { bd = d; best = h; } });
+      best.settlement = st.id; delete best.wild;
+      return { id: st.id, name: st.name, hex: best.id, x: best.x, y: best.y };
+    });
     var regions = {}, centroid = {};
     hexes.forEach(function (h) { if (h.tribe) (regions[h.tribe] = regions[h.tribe] || []).push(h.id); });
     for (var t2 in regions) {
@@ -136,10 +170,36 @@
       list.forEach(function (id) { sx += byId[id].x; sy += byId[id].y; });
       centroid[t2] = [+(sx / list.length).toFixed(1), +(sy / list.length).toFixed(1)];
     }
-    cache = { hexes: hexes, byId: byId, regions: regions, centroid: centroid };
+    cache = { hexes: hexes, byId: byId, regions: regions, centroid: centroid, settlements: settlements };
     return cache;
   }
 
+  // 平滑的海岸線：以各點的中點為端點、原本的點為控制點
+  function smoothPoints(poly) {
+    var pts = poly.map(function (p) { return project(p[0], p[1]); }), out = [], n = pts.length;
+    for (var i = 0; i < n; i++) {
+      var a = pts[i], b = pts[(i + 1) % n];
+      out.push({ c: a, m: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] });
+    }
+    return out;
+  }
+  function smoothPath(poly) {
+    var sp = smoothPoints(poly), last = sp[sp.length - 1].m, d = 'M' + last[0].toFixed(1) + ' ' + last[1].toFixed(1);
+    sp.forEach(function (q) { d += 'Q' + q.c[0].toFixed(1) + ' ' + q.c[1].toFixed(1) + ' ' + q.m[0].toFixed(1) + ' ' + q.m[1].toFixed(1); });
+    return d + 'Z';
+  }
+  // 一格可以住好幾個部落：第 0 個在中央，其餘繞一圈
+  var SLOTS = 7;
+  function slotPos(h, i) {
+    if (!i) return [h.x, h.y];
+    var a = (i - 1) * Math.PI / 3 + 0.3;
+    return [+(h.x + 3 * Math.cos(a)).toFixed(2), +(h.y + 3 * Math.sin(a)).toFixed(2)];
+  }
+  function nearestHex(x, y, maxDist) {
+    var best = null, bd = maxDist == null ? 1e9 : maxDist;
+    build().hexes.forEach(function (h) { var d = Math.hypot(h.x - x, h.y - y); if (d < bd) { bd = d; best = h; } });
+    return best;
+  }
   function outlinePath(poly) {
     return poly.map(function (p, i) { var q = project(p[0], p[1]); return (i ? 'L' : 'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1); }).join('') + 'Z';
   }
@@ -147,6 +207,7 @@
   return {
     OUTLINE: OUTLINE, ISLETS: ISLETS, SEEDS: SEEDS, MAP_W: MAP_W, MAP_H: MAP_H, HEX_SIZE: S,
     project: project, unproject: unproject, build: build, hexCorners: hexCorners, hexDist: hexDist,
-    outlinePath: outlinePath
+    outlinePath: outlinePath, smoothPath: smoothPath, smoothPoints: smoothPoints, slotPos: slotPos, nearestHex: nearestHex,
+    SLOTS: SLOTS, RANGES: RANGES
   };
 });

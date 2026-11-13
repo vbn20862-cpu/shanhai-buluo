@@ -5,10 +5,11 @@
   "private": true,
   "main": "server.js",
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "start": "node server.js",
+    "test": "node --test test/*.test.js",
+    "build:solo": "node scripts/build-solo.js"
   },
-  "engines": { "node": ">=18" },
-  "dependencies": {
-    "socket.io": "^4.8.1"
+  "engines": {
+    "node": ">=18"
   }
 }

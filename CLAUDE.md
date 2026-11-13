@@ -22,5 +22,8 @@
 
 ## 指令
 
-- `npm install`：安裝套件
+- `npm start`：啟動本機伺服器，用瀏覽器開 http://localhost:3000 玩
 - `npm test`：跑規則核心的測試
+- `npm run build:solo`：打包成單一檔案 `dist/shanhai-buluo.html`（預覽頁用）
+
+改完畫面要實際在手機橫式尺寸（例如 844×390）跑一遍再回報。

@@ -32,6 +32,7 @@
     a: { zh: '弓手', atk: 12, hp: 18, cost: { food: 20, mat: 20 }, time: 5 }
   };
   var RATE = { food: 0.35, mat: 0.35, special: 0.03 };   // 每位族人每秒
+  var FOREIGN_SP = false;   // 階段 4 加入交易後改成 true：部落中心升級要用別族的特產
   var BUILDERS = 2, SHIELD_MS = 180000, NEWBIE_MS = 300000, OFFER_MS = 600000;
   var BOT_NAMES = {
     atayal: ['霧林部落', '溪谷部落'], bunun: ['雲海部落', '楓林部落'],
@@ -146,17 +147,28 @@
     this.feed.push({ id: this.seq++, t: now, kind: kind || 'info', text: text });
     if (this.feed.length > 60) this.feed.splice(0, this.feed.length - 60);
   };
-  World.prototype.hexTaken = function () { var m = {}; for (var id in this.villages) m[this.villages[id].hex] = id; return m; };
+  // 一格可以住好幾個部落（Geo.SLOTS 個）；回傳每格已用掉的位置
+  World.prototype.hexSlots = function () {
+    var m = {};
+    for (var id in this.villages) { var v = this.villages[id]; (m[v.hex] = m[v.hex] || {})[v.slot || 0] = id; }
+    return m;
+  };
   World.prototype.pickHex = function (tribe, prefer) {
-    var taken = this.hexTaken(), list = (this.map.regions[tribe] || []).filter(function (h) { return !taken[h]; });
+    var used = this.hexSlots(), byId = this.map.byId, self = this;
+    function n(h) { return used[h] ? Object.keys(used[h]).length : 0; }
+    var list = (this.map.regions[tribe] || []).filter(function (h) { return n(h) < Geo.SLOTS; });
     if (!list.length) return null;
-    if (prefer && list.indexOf(prefer) >= 0) return prefer;
-    if (prefer && this.map.byId[prefer]) {   // 選的格子不能用時，挑同區最近的空格
-      var p = this.map.byId[prefer], byId = this.map.byId;
-      list.sort(function (a, b) { return Geo.hexDist(p, byId[a]) - Geo.hexDist(p, byId[b]); });
-      return list[0];
+    var hex;
+    if (prefer && list.indexOf(prefer) >= 0) hex = prefer;
+    else if (prefer && byId[prefer]) {   // 選的格子滿了，挑同區最近的
+      var p = byId[prefer];
+      hex = list.slice().sort(function (a, b) { return Geo.hexDist(p, byId[a]) - Geo.hexDist(p, byId[b]); })[0];
+    } else {   // 沒指定就挑人最少的格子
+      var min = Math.min.apply(null, list.map(n)), least = list.filter(function (h) { return n(h) === min; });
+      hex = least[Math.floor(self.rng() * least.length)];
     }
-    return list[Math.floor(this.rng() * list.length)];
+    var slot = 0; while (used[hex] && used[hex][slot]) slot++;
+    return { hex: hex, slot: slot, pos: Geo.slotPos(byId[hex], slot) };
   };
   World.prototype.createVillage = function (o, now) {
     var tiles = []; for (var i = 0; i < TILE_N; i++) tiles.push(null);
@@ -165,7 +177,7 @@
     tiles[CENTER_TILE - GRID_W] = { type: 'farm', level: 1 };
     tiles[CENTER_TILE + GRID_W] = { type: 'mat', level: 1 };
     var v = {
-      id: this.id('v'), name: o.name, owner: o.owner, tribe: o.tribe, hex: o.hex, bot: !!o.bot,
+      id: this.id('v'), name: o.name, owner: o.owner, tribe: o.tribe, hex: o.at.hex, slot: o.at.slot, pos: o.at.pos, bot: !!o.bot,
       createdAt: now, last: now, res: { food: 120, mat: 120 }, sp: {}, pop: 4, popAcc: 0,
       jobs: { food: 2, mat: 2, special: 0 }, auto: true, tiles: tiles, wall: 0, queue: [],
       units: { w: 0, a: 0 }, away: { w: 0, a: 0 }, train: [], glory: 0, wins: 0, losses: 0, gifts: 0,
@@ -184,9 +196,9 @@
     if (!t) return { ok: false, msg: '請先在地圖上選一個區域' };
     if (!t.playable) return { ok: false, msg: t.zh + '的區域還在製作中，請先選其他區域' };
     var owner = clean(o.owner, 10) || '旅人', name = clean(o.name, 10) || (owner + '的部落');
-    var hex = this.pickHex(t.id, o.hex);
-    if (!hex) return { ok: false, msg: t.zh + '的區域已經住滿了，請選其他區域' };
-    var v = this.createVillage({ name: name, owner: owner, tribe: t.id, hex: hex }, now);
+    var at = this.pickHex(t.id, o.hex);
+    if (!at) return { ok: false, msg: t.zh + '的區域已經住滿了，請選其他區域' };
+    var v = this.createVillage({ name: name, owner: owner, tribe: t.id, at: at }, now);
     this.tokens[token] = v.id;
     this.log('「' + v.name + '」在' + t.zh + '的區域落腳了。', now, 'join');
     return { ok: true, id: v.id };
@@ -197,8 +209,8 @@
       var names = BOT_NAMES[t.id] || [];
       names.forEach(function (n) {
         for (var id in self.villages) if (self.villages[id].bot && self.villages[id].name === n) return;
-        var hex = self.pickHex(t.id);
-        if (hex) self.createVillage({ name: n, owner: '示範部落', tribe: t.id, hex: hex, bot: true }, now);
+        var at = self.pickHex(t.id);
+        if (at) self.createVillage({ name: n, owner: '示範部落', tribe: t.id, at: at, bot: true }, now);
       });
     });
   };
@@ -277,18 +289,24 @@
       if (b.busy) return { ok: false, msg: '還在施工中' };
       if (b.level >= MAX_LEVEL) return { ok: false, msg: '已經是最高等級' };
       if (v.queue.length >= BUILDERS) return { ok: false, msg: '同時只能進行 ' + BUILDERS + ' 項工程' };
-      var to = b.level + 1, c = cost(b.type, to), picked = [];
+      var to = b.level + 1, c = cost(b.type, to), picked = [], ownSp = 0;
       if (b.type === 'center') {
         var need = CENTER_UP[to];
         if (need.kinds > 0) {
-          var have = Object.keys(v.sp).filter(function (k) { return k !== v.tribe && v.sp[k] >= need.each; })
-            .sort(function (x, y) { return v.sp[y] - v.sp[x]; });
-          if (have.length < need.kinds) return { ok: false, msg: '還需要 ' + need.kinds + ' 種別族特產，每種 ' + need.each + ' 份（可以交易、送禮或出征取得）' };
-          picked = have.slice(0, need.kinds);
+          if (!FOREIGN_SP) {
+            ownSp = need.each * need.kinds;
+            if ((v.sp[v.tribe] || 0) < ownSp) return { ok: false, msg: '還需要 ' + ownSp + ' 份特產' };
+          } else {
+            var have = Object.keys(v.sp).filter(function (k) { return k !== v.tribe && v.sp[k] >= need.each; })
+              .sort(function (x, y) { return v.sp[y] - v.sp[x]; });
+            if (have.length < need.kinds) return { ok: false, msg: '還需要 ' + need.kinds + ' 種別族特產，每種 ' + need.each + ' 份（可以交易、送禮或出征取得）' };
+            picked = have.slice(0, need.kinds);
+          }
         }
       } else if (to > centerLevel(v)) return { ok: false, msg: '等級不能超過部落中心' };
       if (!can(v, c)) return { ok: false, msg: '糧食或建材不足' };
       pay(v, c);
+      if (ownSp) addRes(v, 'sp:' + v.tribe, -ownSp);
       picked.forEach(function (k) { addRes(v, 'sp:' + k, -CENTER_UP[to].each); });
       b.busy = true;
       v.queue.push({ id: this.id('q'), tile: tile, type: b.type, to: to, doneAt: now + buildTime(b.type, to) * 1000 / this.speed });
@@ -514,7 +532,7 @@
   // ---------- 給客戶端的資料 ----------
   World.prototype.pub = function (v, now) {
     var guard = v.units.w + v.units.a;
-    return { id: v.id, name: v.name, owner: v.owner, tribe: v.tribe, hex: v.hex, bot: v.bot, online: v.online || v.bot,
+    return { id: v.id, name: v.name, owner: v.owner, tribe: v.tribe, hex: v.hex, pos: v.pos, bot: v.bot, online: v.online || v.bot,
       c: centerLevel(v), wall: v.wall, towers: levelsOf(v, 'tower').length, guard: guard === 0 ? 0 : guard <= 4 ? 1 : guard <= 10 ? 2 : 3,
       pros: prosperity(v), glory: v.glory, ally: v.ally, safe: Math.max(v.shieldUntil, v.newbieUntil) };
   };
@@ -554,7 +572,7 @@
 
   World.rules = {
     GRID_W: GRID_W, GRID_H: GRID_H, TILE_N: TILE_N, CENTER_TILE: CENTER_TILE, TYPES: TYPES, MAX_LEVEL: MAX_LEVEL, UNIT: UNIT,
-    CENTER_UP: CENTER_UP, BUILDERS: BUILDERS, cost: cost, buildTime: buildTime, limit: limit, count: count,
+    CENTER_UP: CENTER_UP, BUILDERS: BUILDERS, FOREIGN_SP: FOREIGN_SP, cost: cost, buildTime: buildTime, limit: limit, count: count,
     resName: resName, battle: battle, derived: derived, popCap: popCap
   };
   return World;

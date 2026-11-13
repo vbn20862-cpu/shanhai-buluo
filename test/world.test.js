@@ -95,3 +95,36 @@ test('戰鬥：圍籬與瞭望台能擋下小隊', () => {
   const r2 = World.rules.battle({ w: 12, a: 6 }, { w: 1, a: 1, wallHp: 80, towers: [1] }, seeded(9));
   assert.equal(r2.win, true);
 });
+
+test('一格可以住好幾個部落，位置不重疊', () => {
+  const w = new World({ rng: seeded(11) });
+  const now = 1e6, first = w.villages[w.join('p0', { owner: 'P0', name: '部落0', tribe: 'amis' }, now).id];
+  const seen = new Set([first.pos.join(',')]);
+  for (let i = 1; i < 7; i++) {
+    const v = w.villages[w.join('p' + i, { owner: 'P' + i, name: '部落' + i, tribe: 'amis', hex: first.hex }, now).id];
+    assert.equal(v.hex, first.hex, '同一格還有位置時要留在同一格');
+    assert.ok(!seen.has(v.pos.join(',')), '位置不能重疊'); seen.add(v.pos.join(','));
+  }
+  const overflow = w.villages[w.join('p7', { owner: 'P7', name: '部落7', tribe: 'amis', hex: first.hex }, now).id];
+  assert.notEqual(overflow.hex, first.hex, '滿了要排到同族的鄰近格子');
+  assert.equal(w.map.byId[overflow.hex].tribe, 'amis');
+});
+
+test('部落中心升到三級要用特產，材料不夠時不會白扣', () => {
+  const w = new World({ rng: seeded(13) });
+  let now = 1e6;
+  const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'paiwan' }, now).id];
+  v.tiles[22].level = 2; v.res.food = 1000; v.res.mat = 100; v.sp.paiwan = 5;
+  assert.equal(w.act(v.id, { type: 'upgrade', tile: 22 }, now).ok, false);
+  assert.equal(v.sp.paiwan, 5, '失敗時特產要還在');
+  v.res.mat = 1000;
+  assert.ok(w.act(v.id, { type: 'upgrade', tile: 22 }, now).ok);
+  assert.equal(v.sp.paiwan || 0, 0);
+});
+
+test('地圖：沒有族群的格子是野地或中立聚落', () => {
+  const Geo = require('../shared/geo.js'), m = Geo.build();
+  assert.equal(m.settlements.length, 5);
+  for (const h of m.hexes) assert.ok(h.tribe || h.wild || h.settlement, h.id + ' 沒有分類');
+  assert.ok(m.hexes.filter(h => h.wild).length > 50);
+});

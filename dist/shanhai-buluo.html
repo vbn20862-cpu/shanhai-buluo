@@ -2,74 +2,151 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
 <style>
-/* 版面：橫式時左邊是全島地圖、右邊是族群資訊；直式時上下堆疊 */
-:root{
-  --bg:#14212A; --sea:#0F1A21; --panel:#1C2E38; --line:#30495A; --ink:#F2EAD6; --mute:#9DB0B8;
-  --gold:#E3B341; --red:#D0503A; --land:#3A4B53;
-  --display:"LXGW WenKai TC","Noto Serif TC","PMingLiU",serif;
-  --body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
-  color-scheme:dark;
+/* 山海部落 — 版面：橫式時左邊是場景（部落或地圖）、右邊是操作面板；直式時上下堆疊。單一深色主題。 */
+:root {
+  --bg: #14212A; --sea: #0F2430; --panel: #1C2E38; --raise: #24394A; --line: #30495A;
+  --ink: #F2EAD6; --mute: #9DB0B8; --gold: #E3B341; --red: #D0503A; --good: #BFE3C4; --warn: #F0A48F;
+  --display: "LXGW WenKai TC", "Noto Serif TC", "PMingLiU", serif;
+  --body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  color-scheme: dark;
 }
-html,body{height:100%}
-body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.55}
-.wrap{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;padding-block:12px;
-  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));box-sizing:border-box;min-height:100%}
-.mapbox{background:var(--sea);border:1px solid var(--line);border-radius:10px;min-width:0;display:flex;align-items:center;justify-content:center;padding:6px}
-.mapbox svg{width:100%;height:auto;max-height:78vh;display:block;touch-action:manipulation}
-.side{min-width:0;display:flex;flex-direction:column;gap:10px}
-h1{font-family:var(--display);font-size:26px;margin:0;letter-spacing:.06em;line-height:1.2}
-.sub{color:var(--mute);margin:0;font-size:13px}
-.band{height:8px;border-radius:2px;background:
-  linear-gradient(135deg,var(--red) 25%,transparent 25%) 0 0/16px 8px,
-  linear-gradient(225deg,var(--red) 25%,transparent 25%) 0 0/16px 8px,
-  linear-gradient(45deg,var(--gold) 25%,transparent 25%) 0 0/16px 8px,
-  linear-gradient(315deg,var(--gold) 25%,var(--panel) 25%) 0 0/16px 8px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
-.card h2{font-family:var(--display);font-size:21px;margin:0 0 2px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.card .en{color:var(--mute);font-size:13px}
-.card p{margin:6px 0 0}
-.chip{font-family:var(--body);font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;letter-spacing:.04em}
-.chip.on{background:var(--gold);color:#2A1F05}
-.chip.soon{border:1px solid var(--line);color:var(--mute)}
-.dot{width:12px;height:12px;border-radius:3px;flex:none;display:inline-block}
-.list{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:6px;margin:0;padding:0;list-style:none}
-.list button{all:unset;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;
-  border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer;font-size:13.5px}
-.list button:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
-.list button[aria-pressed="true"]{background:var(--panel);border-color:var(--gold)}
-.list .st{margin-left:auto;font-size:11px;color:var(--mute)}
-.list .st.on{color:var(--gold);font-weight:700}
-.label{font-size:11.5px;letter-spacing:.14em;color:var(--mute);margin:4px 0 0}
-.note{color:var(--mute);font-size:12.5px;margin:0}
-.hex{stroke:var(--sea);stroke-width:.6;cursor:pointer;transition:opacity .15s}
-.hex.dim{opacity:.28}
-.hex.sel{stroke:var(--ink);stroke-width:1}
-.mlabel{font-family:var(--body);font-weight:700;font-size:6.2px;fill:var(--ink);paint-order:stroke;stroke:var(--sea);stroke-width:1.6px;pointer-events:none;text-anchor:middle}
-@media (orientation:landscape) and (min-width:600px){
-  .wrap{grid-template-columns:minmax(0,.8fr) minmax(0,1fr);height:100%;min-height:0}
-  .mapbox{height:100%;box-sizing:border-box;min-height:0}
-  .mapbox svg{width:auto;height:100%;max-height:none;max-width:100%}
-  .side{overflow-y:auto;min-height:0;padding-right:2px}
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 13.5px; line-height: 1.5; overflow: hidden; -webkit-tap-highlight-color: transparent; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: default; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+
+#app { height: 100%; display: flex; flex-direction: column; gap: 6px; box-sizing: border-box; padding-block: 6px 8px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* 上方資訊列 */
+#hud { display: flex; align-items: center; gap: 6px; min-height: 30px; overflow: hidden; }
+.brand { font-family: var(--display); font-size: 20px; letter-spacing: .08em; white-space: nowrap; }
+.vname { display: flex; align-items: center; gap: 6px; min-width: 0; margin-right: 2px; }
+.vname b { font-family: var(--display); font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 8em; }
+.vname .sub { color: var(--mute); font-size: 12px; white-space: nowrap; }
+.chip { display: flex; align-items: center; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px 2px 7px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chip .lbl, .chip .cap { color: var(--mute); font-size: 11.5px; }
+.ic { width: 15px; height: 15px; flex: none; }
+.ic-food { color: var(--gold); } .ic-mat { color: #BBA88C; } .ic-sp { color: #E58A5C; } .ic-pop { color: #9CC7D8; } .ic-star { color: var(--ink); }
+.spacer { flex: 1; }
+.mode { font-size: 11.5px; color: var(--mute); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.turn { display: none; font-size: 11.5px; color: var(--gold); white-space: nowrap; }
+.dot { width: 11px; height: 11px; border-radius: 3px; display: inline-block; flex: none; }
+
+/* 場景 */
+#stage { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(250px, 37%, 350px); gap: 10px; }
+#scene { position: relative; min-width: 0; min-height: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: linear-gradient(160deg, #15394B, #0E2633); }
+#scene svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#scene[data-scene="map"] #vsvg, #scene[data-scene="village"] #msvg { display: none; }
+#vsvg { background: #2A3B33; font-family: var(--body); }
+#msvg { touch-action: none; cursor: grab; font-family: var(--body); user-select: none; -webkit-user-select: none; }
+.tile { cursor: pointer; }
+.tile .plot { fill: rgba(255, 255, 255, .07); stroke: rgba(255, 255, 255, .28); stroke-width: 2; stroke-dasharray: 7 7; }
+.tile:not(.empty) .plot { fill: rgba(0, 0, 0, .1); stroke: none; }
+.tile.on .plot { fill: rgba(227, 179, 65, .22); stroke: var(--gold); stroke-width: 4; stroke-dasharray: none; }
+.person { transition: transform 2.2s linear; pointer-events: none; }
+.rlabel { font-size: calc(var(--u, 1) * 11px); font-weight: 700; fill: var(--ink); paint-order: stroke; stroke: rgba(12, 28, 38, .85); stroke-width: calc(var(--u, 1) * 3px); stroke-linejoin: round; text-anchor: middle; pointer-events: none; }
+.rlabel:not(.play) { fill: #D5DCD6; font-weight: 500; }
+.far .rlabel.minor { display: none; }
+.zsel { fill: rgba(227, 179, 65, .2); stroke: var(--gold); }
+.sett { fill: var(--ink); stroke: var(--bg); }
+.vm circle { stroke: var(--ink); }
+.vm.me circle { stroke: var(--gold); }
+.vm text { fill: var(--ink); paint-order: stroke; stroke: rgba(12, 28, 38, .85); stroke-linejoin: round; text-anchor: middle; font-weight: 500; pointer-events: none; }
+.far .vm:not(.me) text { display: none; }
+#tools { position: absolute; right: 8px; bottom: 8px; }
+.zoom { display: flex; gap: 4px; }
+.zoom button { min-width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line); background: rgba(20, 33, 42, .88); color: var(--ink); font-size: 16px; padding: 0 8px; }
+.zoom button:last-child { font-size: 12.5px; }
+
+/* 面板 */
+#panel { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; }
+#tabs { display: flex; gap: 4px; }
+#tabs button { flex: 1; border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 4px 0; color: var(--mute); font-weight: 700; letter-spacing: .1em; }
+#tabs button[aria-pressed="true"] { background: var(--panel); color: var(--ink); border-color: var(--gold); }
+#pbody { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; overscroll-behavior: contain; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; }
+.card.sel { border-color: var(--gold); }
+h3 { font-family: var(--display); font-size: 16.5px; margin: 0 0 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; text-wrap: balance; }
+h3 .lv { margin-left: auto; font-family: var(--body); font-size: 12px; font-weight: 500; color: var(--mute); }
+.nat { font-family: var(--body); font-style: italic; font-weight: 500; font-size: .88em; color: var(--gold); }
+p { margin: 4px 0; }
+.eff.next { color: var(--good); }
+.muted, .en { color: var(--mute); font-size: 12.5px; }
+.note { color: var(--mute); font-size: 12.5px; border-top: 1px dashed var(--line); padding-top: 6px; margin: 8px 0 0; }
+.why { color: var(--warn); font-size: 12.5px; }
+.busyline b, .qrow b { font-variant-numeric: tabular-nums; }
+.hint { color: var(--mute); margin: 2px 0; }
+.label { font-size: 11.5px; letter-spacing: .12em; color: var(--mute); margin: 6px 0 0; }
+.act { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.btn { border: 0; border-radius: 8px; background: var(--gold); color: #2A1F05; font-weight: 700; padding: 6px 13px; }
+.btn.sm { padding: 4px 12px; }
+.btn.big { width: 100%; padding: 10px; font-size: 15px; margin-top: 8px; }
+.start .btn.big { position: sticky; bottom: 0; box-shadow: 0 -10px 12px 4px var(--bg); }
+.start .btn.big:disabled { opacity: 1; background: #5B5340; color: #1F1A0C; }
+.btn.ghost { background: transparent; color: var(--mute); border: 1px solid var(--line); font-weight: 500; }
+.btn:disabled { opacity: .42; }
+.costs { display: flex; gap: 9px; flex-wrap: wrap; }
+.cost { display: inline-flex; align-items: center; gap: 3px; font-variant-numeric: tabular-nums; }
+.cost.lack { color: var(--warn); }
+.time { margin-left: auto; color: var(--mute); font-size: 12px; white-space: nowrap; }
+.opts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.opts li { border-top: 1px dashed var(--line); padding-top: 8px; }
+.opts li:first-child { border-top: 0; padding-top: 0; }
+.opt-top { display: flex; justify-content: space-between; gap: 8px; }
+.cnt { color: var(--mute); font-size: 12px; font-variant-numeric: tabular-nums; }
+.job { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+.jn { flex: 1; min-width: 0; }
+.stepper { display: flex; align-items: center; gap: 5px; }
+.stepper button { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--raise); font-size: 17px; line-height: 1; padding: 0; }
+.stepper button:disabled { opacity: .4; }
+.stepper b { min-width: 2.8em; text-align: center; font-variant-numeric: tabular-nums; }
+.rate { color: var(--good); font-size: 12px; min-width: 3.8em; text-align: right; font-variant-numeric: tabular-nums; }
+.switch { margin-left: auto; font-family: var(--body); font-size: 12px; font-weight: 500; color: var(--mute); display: flex; align-items: center; gap: 5px; cursor: pointer; }
+.switch input { accent-color: var(--gold); width: 15px; height: 15px; margin: 0; }
+.qrow { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; }
+.qrow b { color: var(--gold); font-weight: 500; white-space: nowrap; }
+.chipst { margin-left: auto; font-family: var(--body); font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--mute); white-space: nowrap; }
+.chipst.on { background: var(--gold); border-color: var(--gold); color: #2A1F05; }
+.facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; margin: 6px 0 0; }
+.facts dt { color: var(--mute); }
+.facts dd { margin: 0; }
+
+/* 開始畫面 */
+.start { display: flex; flex-direction: column; gap: 6px; }
+.start h1 { font-family: var(--display); font-size: 26px; letter-spacing: .08em; margin: 0; line-height: 1.2; }
+.lead { color: var(--mute); margin: 0; }
+.fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.fields label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--mute); }
+.fields input { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; color: var(--ink); font-size: 14px; min-width: 0; }
+.picks { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+.pick { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0 7px; text-align: left; border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 6px 9px; }
+.pick span:last-child { grid-column: 2; color: var(--mute); font-size: 12px; }
+.pick[aria-pressed="true"] { background: var(--panel); border-color: var(--gold); }
+.tlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.tlist li { display: flex; gap: 8px; align-items: baseline; }
+.tlist p { margin: 0; color: var(--mute); font-size: 12.5px; }
+
+/* 提示訊息 */
+#toast { position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; z-index: 20; }
+.toast { background: var(--ink); color: #1A262E; border-radius: 999px; padding: 6px 14px; font-weight: 500; box-shadow: 0 4px 14px rgba(0, 0, 0, .35); max-width: 86vw; }
+.toast.bad { background: #F4C7B8; }
+
+@media (max-width: 860px) { .chip .lbl { display: none; } }
+@media (max-width: 700px) { .chip .cap { display: none; } .vname .sub { display: none; } }
+@media (orientation: portrait) {
+  #stage { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  #scene { aspect-ratio: 16 / 10; max-width: 100%; }
+  #hud { flex-wrap: wrap; }
+  .turn { display: block; }
 }
-@media (prefers-reduced-motion:reduce){.hex{transition:none}}
+@media (prefers-reduced-motion: reduce) { .person { transition: none; } }
 </style>
-
-<div class="wrap">
-  <div class="mapbox"><svg id="map" role="img" aria-label="台灣全島地圖，依 17 個原住民族的傳統分布區上色"></svg></div>
-  <div class="side">
-    <div>
-      <h1>山海部落</h1>
-      <p class="sub">世界地圖預覽 · 全島 313 格 · 17 族各有自己的區域</p>
-    </div>
-    <div class="band" aria-hidden="true"></div>
-    <div class="card" id="info" aria-live="polite"></div>
-    <p class="label">17 族（點一下看位置）</p>
-    <ul class="list" id="list"></ul>
-    <p class="note">目前只有地圖完成，蓋部落、採集、出征與連線還在製作中。灰色格子是尚未劃入任何族群區域的平原與都會。</p>
-  </div>
-</div>
-
-<script>/* 山海部落 — 世界地圖：台灣輪廓、六角格、各族傳統分布區
+<div id="app"></div>
+<script>
+/* 山海部落 — 世界地圖：台灣輪廓、六角格、各族傳統分布區
  * 同一份程式在伺服器（Node）與瀏覽器共用。 */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -126,6 +203,21 @@ h1{font-family:var(--display);font-size:26px;margin:0;letter-spacing:.06em;line-
     siraya: [[120.38, 23.03], [120.43, 23.28], [120.20, 23.17], [120.43, 23.14]]
   };
   var SEED_RADIUS_KM = 16;
+  // 平原上的中立聚落（平埔族群的家園；之後開放交易）。只標位置，不放未查證的文化內容。
+  var SETTLEMENTS = [
+    { id: 'n1', name: '北部平原聚落', at: [121.48, 25.03] },
+    { id: 'n2', name: '西北平原聚落', at: [120.98, 24.78] },
+    { id: 'n3', name: '中部平原聚落', at: [120.66, 24.14] },
+    { id: 'n4', name: '西部平原聚落', at: [120.42, 23.62] },
+    { id: 'n5', name: '南部平原聚落', at: [120.42, 22.66] }
+  ];
+  // 畫地圖用的山脈稜線（中央山脈、雪山山脈、阿里山山脈、海岸山脈）
+  var RANGES = [
+    [[121.62, 24.62], [121.45, 24.38], [121.30, 24.12], [121.20, 23.85], [121.08, 23.55], [120.98, 23.28], [120.92, 23.00], [120.85, 22.72], [120.80, 22.45], [120.78, 22.20]],
+    [[121.55, 24.90], [121.38, 24.70], [121.22, 24.50], [121.08, 24.32], [120.98, 24.12]],
+    [[120.82, 23.70], [120.78, 23.50], [120.72, 23.30], [120.68, 23.10]],
+    [[121.52, 23.78], [121.46, 23.55], [121.40, 23.32], [121.32, 23.10], [121.22, 22.90]]
+  ];
 
   // 投影：等距圓柱。1 單位約 1.11 公里。
   var LON0 = 119.9, LAT0 = 25.42, K = 100, COS = Math.cos(23.6 * Math.PI / 180);
@@ -200,6 +292,25 @@ h1{font-family:var(--display);font-size:26px;margin:0;letter-spacing:.06em;line-
         if (!byId[(h.col + nb[n][0]) + '_' + (h.row + nb[n][1])]) { h.coast = true; break; }
       }
     });
+    // 被族群區域包住的零星空格，歸給周圍最多的那一族
+    hexes.forEach(function (h) {
+      if (h.tribe || h.islet) return;
+      var nb = NEIGH[h.row & 1], cnt = {}, top = null;
+      for (var n = 0; n < 6; n++) {
+        var o = byId[(h.col + nb[n][0]) + '_' + (h.row + nb[n][1])];
+        if (o && o.tribe && !o.filled) { cnt[o.tribe] = (cnt[o.tribe] || 0) + 1; if (!top || cnt[o.tribe] > cnt[top]) top = o.tribe; }
+      }
+      if (top && cnt[top] >= 4) { h.tribe = top; h.filled = true; }
+    });
+    // 其餘沒有族群的格子是野地：靠海是漁場，其他輪流是獵場與林地
+    var wildN = 0;
+    hexes.forEach(function (h) { if (!h.tribe) h.wild = h.coast ? 'fish' : (wildN++ % 2 ? 'wood' : 'hunt'); });
+    var settlements = SETTLEMENTS.map(function (st) {
+      var p = project(st.at[0], st.at[1]), best = null, bd = 1e9;
+      hexes.forEach(function (h) { if (h.tribe) return; var d = Math.hypot(h.x - p[0], h.y - p[1]); if (d < bd) { bd = d; best = h; } });
+      best.settlement = st.id; delete best.wild;
+      return { id: st.id, name: st.name, hex: best.id, x: best.x, y: best.y };
+    });
     var regions = {}, centroid = {};
     hexes.forEach(function (h) { if (h.tribe) (regions[h.tribe] = regions[h.tribe] || []).push(h.id); });
     for (var t2 in regions) {
@@ -207,10 +318,36 @@ h1{font-family:var(--display);font-size:26px;margin:0;letter-spacing:.06em;line-
       list.forEach(function (id) { sx += byId[id].x; sy += byId[id].y; });
       centroid[t2] = [+(sx / list.length).toFixed(1), +(sy / list.length).toFixed(1)];
     }
-    cache = { hexes: hexes, byId: byId, regions: regions, centroid: centroid };
+    cache = { hexes: hexes, byId: byId, regions: regions, centroid: centroid, settlements: settlements };
     return cache;
   }
 
+  // 平滑的海岸線：以各點的中點為端點、原本的點為控制點
+  function smoothPoints(poly) {
+    var pts = poly.map(function (p) { return project(p[0], p[1]); }), out = [], n = pts.length;
+    for (var i = 0; i < n; i++) {
+      var a = pts[i], b = pts[(i + 1) % n];
+      out.push({ c: a, m: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] });
+    }
+    return out;
+  }
+  function smoothPath(poly) {
+    var sp = smoothPoints(poly), last = sp[sp.length - 1].m, d = 'M' + last[0].toFixed(1) + ' ' + last[1].toFixed(1);
+    sp.forEach(function (q) { d += 'Q' + q.c[0].toFixed(1) + ' ' + q.c[1].toFixed(1) + ' ' + q.m[0].toFixed(1) + ' ' + q.m[1].toFixed(1); });
+    return d + 'Z';
+  }
+  // 一格可以住好幾個部落：第 0 個在中央，其餘繞一圈
+  var SLOTS = 7;
+  function slotPos(h, i) {
+    if (!i) return [h.x, h.y];
+    var a = (i - 1) * Math.PI / 3 + 0.3;
+    return [+(h.x + 3 * Math.cos(a)).toFixed(2), +(h.y + 3 * Math.sin(a)).toFixed(2)];
+  }
+  function nearestHex(x, y, maxDist) {
+    var best = null, bd = maxDist == null ? 1e9 : maxDist;
+    build().hexes.forEach(function (h) { var d = Math.hypot(h.x - x, h.y - y); if (d < bd) { bd = d; best = h; } });
+    return best;
+  }
   function outlinePath(poly) {
     return poly.map(function (p, i) { var q = project(p[0], p[1]); return (i ? 'L' : 'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1); }).join('') + 'Z';
   }
@@ -218,65 +355,1462 @@ h1{font-family:var(--display);font-size:26px;margin:0;letter-spacing:.06em;line-
   return {
     OUTLINE: OUTLINE, ISLETS: ISLETS, SEEDS: SEEDS, MAP_W: MAP_W, MAP_H: MAP_H, HEX_SIZE: S,
     project: project, unproject: unproject, build: build, hexCorners: hexCorners, hexDist: hexDist,
-    outlinePath: outlinePath
+    outlinePath: outlinePath, smoothPath: smoothPath, smoothPoints: smoothPoints, slotPos: slotPos, nearestHex: nearestHex,
+    SLOTS: SLOTS, RANGES: RANGES
   };
 });
 </script>
 <script>
-(function(){
-  var T=[
-    {id:'atayal',zh:'泰雅族',en:'Atayal',c:'#B5483A',on:1,area:'北部山區，從新北烏來到臺中和平，以及宜蘭大同、南澳'},
-    {id:'bunun',zh:'布農族',en:'Bunun',c:'#3E8A62',on:1,area:'中央山脈兩側：南投信義、仁愛，花蓮卓溪、萬榮，臺東海端、延平，高雄桃源、那瑪夏'},
-    {id:'amis',zh:'阿美族',en:'Amis / Pangcah',c:'#2F78C2',on:1,area:'花蓮、臺東的縱谷與海岸'},
-    {id:'paiwan',zh:'排灣族',en:'Paiwan',c:'#C9962B',on:1,area:'屏東山區與臺東南部'},
-    {id:'saisiyat',zh:'賽夏族',en:'SaySiyat',c:'#D98E3F',area:'新竹五峰，苗栗南庄、獅潭'},
-    {id:'kavalan',zh:'噶瑪蘭族',en:'Kavalan',c:'#4FA7B0',area:'原居宜蘭平原，今日多在花蓮、臺東海岸'},
-    {id:'truku',zh:'太魯閣族',en:'Truku',c:'#8163B5',area:'花蓮秀林、萬榮、卓溪'},
-    {id:'sakizaya',zh:'撒奇萊雅族',en:'Sakizaya',c:'#E6C04A',area:'花蓮奇萊平原'},
-    {id:'seediq',zh:'賽德克族',en:'Seediq',c:'#C9628F',area:'南投仁愛'},
-    {id:'thao',zh:'邵族',en:'Thao',c:'#59A6DC',area:'南投日月潭'},
-    {id:'tsou',zh:'鄒族',en:'Tsou',c:'#9A7645',area:'嘉義阿里山'},
-    {id:'kanakanavu',zh:'卡那卡那富族',en:'Kanakanavu',c:'#A9BC4E',area:'高雄那瑪夏'},
-    {id:'hlaalua',zh:'拉阿魯哇族',en:"Hla'alua",c:'#D6805F',area:'高雄桃源、那瑪夏'},
-    {id:'siraya',zh:'西拉雅族',en:'Siraya',c:'#8FA3B8',area:'臺南一帶。2026 年核定為第 17 個原住民族'},
-    {id:'rukai',zh:'魯凱族',en:'Rukai',c:'#A4559A',area:'屏東霧台、高雄茂林、臺東東興'},
-    {id:'pinuyumayan',zh:'卑南族',en:'Pinuyumayan',c:'#5FAE70',area:'臺東平原'},
-    {id:'tao',zh:'雅美族（達悟族）',en:'Yami / Tao',c:'#2BB3AC',area:'蘭嶼'}
+/* 山海部落 — 17 族資料與各族預設內容
+ * 新增一族：把該族的 playable 設為 true，並補上 preset（建築名稱、物產、族語、文化卡）。
+ * 族語與文化內容請務必先查證，並標明語別／地區。 */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.Tribes = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  var SOURCE_NOTE = '文化內容整理自原住民族委員會、原住民族語言研究發展基金會等公開資料，正式推出前仍需請族人與專家審閱。';
+
+  var LIST = [
+    {
+      id: 'atayal', zh: '泰雅族', en: 'Atayal', color: '#B5483A', terrain: '北部山區', playable: true,
+      area: '北部山區：宜蘭大同、南澳，新北烏來，桃園復興，新竹尖石、五峰，苗栗泰安，臺中和平，南投仁愛',
+      intro: '分布在北部與中部山區，以苧麻織布聞名，生活依循祖先留下的規範 gaga。',
+      lang: '賽考利克泰雅語', hello: "Lokah su'", thanks: "Mhway su'",
+      bonus: { key: 'special', mult: 1.25, text: '織布屋產量 +25%' },
+      sp: { zh: '苧麻布', desc: '用苧麻線織成的布' },
+      res: { food: '小米', mat: '竹木' },
+      look: { roof: '#6B4A32', wall: '#B88A55', trim: '#B5483A', ground: '#55703F', fence: 'bamboo', backdrop: 'mountain' },
+      b: {
+        center: { zh: '領袖家屋', native: 'mrhuw', note: '部落的領袖叫 mrhuw，「頭目」是日治時期才有的稱呼。遊戲中以領袖的家屋代表部落的中心。' },
+        house: { zh: '家屋', native: 'ngasal', note: '家屋（ngasal）主要有兩種：往下挖的半穴居木屋，以及蓋在平地、用竹子和茅草搭成的竹屋，各地做法不同。' },
+        farm: { zh: '小米田', native: 'trakis', note: '以山田輪耕的方式種小米（trakis）、地瓜與芋頭，再用狩獵和捕魚補充食物。' },
+        mat: { zh: '竹木採集場', note: '竹子與木材是蓋家屋、穀倉和望樓的材料。' },
+        special: { zh: '織布屋', native: 'tminun', note: '婦女以苧麻（nuka）為原料織布（tminun），從種麻、刮麻、捻線到織成布都由女性完成。' },
+        storage: { zh: '穀倉', native: "khu'", note: "穀倉（khu'）架高在柱子上，柱子裝有防鼠板，用來存放小米等收成。" },
+        barracks: { zh: '訓練場', note: '遊戲設定的建築，勇士在這裡練習弓（bhuniq）與矛（soriq）。' },
+        tower: { zh: '望樓', note: '用原木搭高的望樓設在部落入口或中央，青年在上面守夜，後來也成為聚會的地方，以宜蘭南澳一帶最常見。' },
+        wall: { zh: '竹圍', note: '遊戲設定的防禦設施，用竹子圍繞部落。' }
+      },
+      cards: [
+        { t: 'Gaga：祖先的訓示', x: '泰雅族人遵守祖先的訓示 gaga，並以祖靈祭為最重要的祭儀。' },
+        { t: '苧麻織布', x: '泰雅婦女以苧麻（nuka）為原料織布（tminun），從種麻、刮麻、捻線到織成布匹都由女性完成。' },
+        { t: "高架穀倉 Khu'", x: '傳統穀倉為高架式，支柱上裝有防鼠板，用來儲存小米等收成。' },
+        { t: '兩大群的起源', x: '賽考列克群相傳祖先起源於南投仁愛鄉的瑞岩，澤敖列群則以大霸尖山為起源地。' },
+        { t: '換工 Sbayux', x: '農忙時親族之間互相幫忙，稱為 sbayux，主人會準備飯菜招待來幫忙的人。' }
+      ]
+    },
+    {
+      id: 'bunun', zh: '布農族', en: 'Bunun', color: '#3E8A62', terrain: '中央山脈', playable: true,
+      area: '中央山脈兩側：南投信義、仁愛，花蓮卓溪、萬榮，臺東海端、延平，高雄桃源、那瑪夏',
+      intro: '住在中央山脈高處的民族，一年的祭儀圍繞小米進行，並依月亮的圓缺安排日子。',
+      lang: '郡群布農語', hello: 'Mihumisang', thanks: 'Uninang',
+      bonus: { key: 'food', mult: 1.15, text: '小米田產量 +15%' },
+      sp: { zh: '山肉', desc: '獵人帶回、與親族分享的獵物' },
+      res: { food: '小米', mat: '木石' },
+      look: { roof: '#5B6168', wall: '#8D8F8A', trim: '#3E8A62', ground: '#4E6B45', fence: 'stone', backdrop: 'mountain' },
+      b: {
+        center: { zh: '主屋', native: 'lumah', note: '布農社會以家（lumah）和氏族為核心，沒有世襲的頭目。遊戲中以主屋代表部落的中心。' },
+        house: { zh: '家屋', native: 'lumah', note: '各地建材不同：南投多用石板砌牆，花蓮以木板為主，臺東與高雄是石砌基座加上木牆或竹牆。' },
+        farm: { zh: '小米田', native: 'maduh', note: '小米（maduh）是最重要的作物，以山田輪耕的方式種植，也種玉米、地瓜、芋頭與樹豆。' },
+        mat: { zh: '木石採集場', note: '木材與石板是蓋家屋的主要材料。' },
+        special: { zh: '獵寮', native: 'taluhan', note: 'Taluhan 是山上的工寮。獵人不能獨占獵物，必須與親族分享；出獵前會以夢（taisah）判斷吉凶。' },
+        storage: { zh: '小米倉', native: 'patcilasan', note: '傳統的小米倉設在家屋裡面，是家的象徵，外人不能進入。遊戲中為了方便呈現才獨立畫出。' },
+        barracks: { zh: '訓練場', note: '遊戲設定的建築，勇士在這裡練習弓箭與長矛。' },
+        tower: { zh: '瞭望台', note: '遊戲設定的防禦建築，可以看見遠處的動靜。' },
+        wall: { zh: '石牆', note: '遊戲設定的防禦設施，用石塊堆砌、圍繞部落。' }
+      },
+      cards: [
+        { t: '與月亮的約定', x: '傳說祖先射下了其中一個太陽，受傷的太陽變成月亮，並與族人約定依月亮的圓缺舉行祭儀。布農族的歲時祭儀因此隨月相進行。' },
+        { t: '以小米為中心的一年', x: '播種祭 Minpinang、除草祭 Minhulau、射耳祭 Malahtangia、進倉祭 Andaza，一年的祭儀都圍繞小米的生長。' },
+        { t: '木刻畫曆 Islulusan', x: '1925 年公開的木刻畫曆出自南投信義鄉地利一帶，用圖畫符號記下一年中舉行祭儀的日子。' },
+        { t: '五大社群', x: '卓社群 Takitudu、卡社群 Takibakha、丹社群 Takivatan、巒社群 Takbanuaz、郡社群 Isbukun。各社群與各氏族的做法不盡相同。' }
+      ]
+    },
+    {
+      id: 'amis', zh: '阿美族', en: 'Amis / Pangcah', color: '#2F78C2', terrain: '東部縱谷與海岸', playable: true,
+      area: '花蓮、臺東的縱谷與海岸',
+      intro: '人口最多的原住民族，住在東部的縱谷與海岸，擅長捕魚與採集野菜，以年齡階級組織部落。',
+      lang: '秀姑巒阿美語', hello: "Nga'ay ho", thanks: 'Aray',
+      bonus: { key: 'special', mult: 1.25, text: '漁寮產量 +25%' },
+      sp: { zh: '漁獲', desc: '從溪流與海邊捕來、大家分享的魚' },
+      res: { food: '小米', mat: '竹木' },
+      look: { roof: '#C9A24A', wall: '#B98F5E', trim: '#C8452F', ground: '#6E8F4E', fence: 'bamboo', backdrop: 'coast' },
+      b: {
+        center: { zh: '聚會所', native: "'adawang", note: "男子年齡階級集合、訓練與議事的地方。各地稱呼不同：北部叫 talo'an，太巴塱叫 soraratan，南部叫 sefi。" },
+        house: { zh: '家屋', native: "loma'", note: '茅草屋頂、木柱、竹牆，屋裡有藤編的床。' },
+        farm: { zh: '小米田', native: 'hafay', note: '傳統主食是小米（hafay），後來改種水稻（panay）。' },
+        mat: { zh: '竹木採集場', note: '竹子、木材、藤與茅草，是蓋房子和編器具的材料。' },
+        special: { zh: '漁寮', native: 'foting', note: '用八卦網（tafokod）、魚筌（rakar）在溪流與海邊捕魚（foting），漁獲由大家分享。' },
+        storage: { zh: '穀倉', native: "'alili", note: "存放穀物的倉庫，阿美語叫 'alili。" },
+        barracks: { zh: '青年訓練場', native: 'kapah', note: '青年（kapah）依年齡編入階級（selal），一起接受訓練、分工合作。' },
+        tower: { zh: '瞭望台', note: '遊戲設定的防禦建築，可以看見遠處的動靜。' },
+        wall: { zh: '竹圍', note: '遊戲設定的防禦設施，用竹子圍繞部落。' }
+      },
+      cards: [
+        { t: "Pangcah 與 'Amis", x: "花蓮一帶多自稱 Pangcah，臺東一帶多自稱 'Amis。阿美族是人口最多的原住民族。" },
+        { t: '年齡階級 Selal', x: '男子依年齡編入階級，在聚會所接受訓練並分擔部落的工作，是部落運作的骨幹。' },
+        { t: 'Ilisin', x: '一年中最重要的祭儀，在收成之後感謝祖靈，也進行年齡階級的晉升。日期與規範由各部落自己決定，它是祭儀而不是表演。' },
+        { t: '野菜知識', x: '阿美族熟悉各種可以吃的野菜（dateng），採野菜叫 midateng。' },
+        { t: '母系傳統', x: '傳統上是母系社會，男子結婚後住進妻子的家。' }
+      ]
+    },
+    {
+      id: 'paiwan', zh: '排灣族', en: 'Paiwan', color: '#C9962B', terrain: '南部山區', playable: true,
+      area: '屏東山區與臺東南部，中央山脈南段的兩側',
+      intro: '住在中央山脈南段兩側，有世襲的頭目制度，北、中排灣以石板屋聞名，小米與芋頭是重要的作物。',
+      lang: '排灣語', hello: 'Djavadjavay', thanks: 'Masalu',
+      bonus: { key: 'mat', mult: 1.15, text: '石板採集場產量 +15%' },
+      sp: { zh: '紅藜', desc: '色彩鮮豔的臺灣原生穀物' },
+      res: { food: '小米', mat: '石板' },
+      look: { roof: '#4A4E55', wall: '#77736B', trim: '#C9962B', ground: '#5D7443', fence: 'stone', backdrop: 'mountain' },
+      b: {
+        center: { zh: '頭目家屋', note: '排灣族有世襲的頭目（mamazangiljan）。頭目家屋前有寬廣的前庭與石砌的平臺，是部落議事與聚會的地方。' },
+        house: { zh: '石板屋', native: 'umaq', note: '北、中排灣用板岩砌成石板屋；南、東排灣多用木板與茅草，東排灣還會用卵石做牆基。遊戲裡畫的是石板屋。' },
+        farm: { zh: '小米田', native: 'vaqu', note: '以山田輪耕的方式種小米（vaqu）、芋頭（vasa）與地瓜。芋頭會烘成芋頭乾保存。' },
+        mat: { zh: '石板採集場', note: '板岩是北、中排灣蓋家屋最主要的材料。' },
+        special: { zh: '紅藜田', native: 'djulis', note: '紅藜（djulis）是臺灣原生的作物，耐旱、大約四個月就能收成，也是釀小米酒的酒麴原料。' },
+        storage: { zh: '穀倉', note: '存放小米與芋頭乾的倉庫。' },
+        barracks: { zh: '訓練場', note: '遊戲設定的建築，勇士在這裡練習弓（vetjeljatan）與矛（vuluq）。' },
+        tower: { zh: '瞭望台', note: '遊戲設定的防禦建築，可以看見遠處的動靜。' },
+        wall: { zh: '石牆', note: '遊戲設定的防禦設施，用石塊堆砌、圍繞部落。' }
+      },
+      cards: [
+        { t: '中央山脈的南段', x: '排灣族分布在中央山脈南段的兩側，北起大武山、南到恆春半島，橫跨屏東與臺東兩縣。' },
+        { t: '長嗣繼承 Vusam', x: '排灣族布曹爾群由長嗣（vusam）繼承家屋與家名，不分男女，長女也能成為領袖。' },
+        { t: '石板屋與木板屋', x: '北、中排灣以板岩砌成石板屋；南、東排灣多用木板與茅草，東排灣還以卵石作牆基。' },
+        { t: '五年祭 Maljeveq', x: '每五年舉行一次，族人以長竹竿刺球，祈求祖靈賜福。' },
+        { t: '紅藜 Djulis', x: '紅藜是臺灣原生作物臺灣藜，耐旱、約四個月可收成，也是釀小米酒的酒麴原料。' }
+      ]
+    },
+    { id: 'saisiyat', zh: '賽夏族', en: 'SaySiyat', color: '#D98E3F', terrain: '西北山區', area: '新竹五峰，苗栗南庄、獅潭', intro: '住在新竹與苗栗的山區，每兩年舉行一次 paSta\'ay。' },
+    { id: 'kavalan', zh: '噶瑪蘭族', en: 'Kavalan', color: '#4FA7B0', terrain: '蘭陽平原', area: '原居宜蘭平原，今日多在花蓮、臺東海岸', intro: '原居蘭陽平原，後來遷往花東海岸，以香蕉絲織布聞名。2002 年核定。' },
+    { id: 'truku', zh: '太魯閣族', en: 'Truku', color: '#8163B5', terrain: '東部峽谷', area: '花蓮秀林、萬榮、卓溪', intro: '住在花蓮的山區與峽谷，重視織布與狩獵。2004 年核定。' },
+    { id: 'sakizaya', zh: '撒奇萊雅族', en: 'Sakizaya', color: '#E6C04A', terrain: '奇萊平原', area: '花蓮奇萊平原', intro: '世居花蓮奇萊平原，每年舉行火神祭 Palamal。2007 年核定。' },
+    { id: 'seediq', zh: '賽德克族', en: 'Seediq', color: '#C9628F', terrain: '中部山區', area: '南投仁愛', intro: '以南投仁愛鄉為主要居住地，織布技藝精湛。2008 年核定。' },
+    { id: 'thao', zh: '邵族', en: 'Thao', color: '#59A6DC', terrain: '湖畔', area: '南投日月潭', intro: '住在日月潭畔，以杵音聞名。2001 年核定。' },
+    { id: 'tsou', zh: '鄒族', en: 'Tsou', color: '#9A7645', terrain: '阿里山', area: '嘉義阿里山', intro: '住在阿里山一帶，男子會所 kuba 是部落的中心。' },
+    { id: 'kanakanavu', zh: '卡那卡那富族', en: 'Kanakanavu', color: '#A9BC4E', terrain: '楠梓仙溪', area: '高雄那瑪夏', intro: '住在高雄那瑪夏，有米貢祭與河祭。2014 年核定。' },
+    { id: 'hlaalua', zh: '拉阿魯哇族', en: "Hla'alua", color: '#D6805F', terrain: '荖濃溪', area: '高雄桃源、那瑪夏', intro: '住在高雄桃源與那瑪夏，舉行聖貝祭 Miatungusu。2014 年核定。' },
+    { id: 'siraya', zh: '西拉雅族', en: 'Siraya', color: '#8FA3B8', terrain: '嘉南平原', area: '臺南一帶', intro: '世居臺南一帶的平原與淺山。2026 年核定為第 17 個原住民族。' },
+    { id: 'rukai', zh: '魯凱族', en: 'Rukai', color: '#A4559A', terrain: '南部山區', area: '屏東霧台、高雄茂林、臺東東興', intro: '住在南部山區，以石板屋聞名，百合花是榮耀的象徵。' },
+    { id: 'pinuyumayan', zh: '卑南族', en: 'Pinuyumayan', color: '#5FAE70', terrain: '臺東平原', area: '臺東平原', intro: '住在臺東平原，以嚴格的會所訓練聞名。' },
+    { id: 'tao', zh: '雅美族（達悟族）', en: 'Yami / Tao', color: '#2BB3AC', terrain: '海島', area: '蘭嶼', intro: '住在蘭嶼的海洋民族，以拼板舟與飛魚文化聞名。' }
   ];
-  var byId={};T.forEach(function(t){byId[t.id]=t});
-  var G=Geo.build(),NS='http://www.w3.org/2000/svg',svg=document.getElementById('map');
-  svg.setAttribute('viewBox','0 0 '+Geo.MAP_W+' '+Geo.MAP_H);
-  function el(n,a,txt){var e=document.createElementNS(NS,n);for(var k in a)e.setAttribute(k,a[k]);if(txt!=null)e.textContent=txt;return e}
-  var cnt={};
-  G.hexes.forEach(function(h){
-    var t=h.tribe&&byId[h.tribe];if(t)cnt[t.id]=(cnt[t.id]||0)+1;
-    var p=el('polygon',{points:Geo.hexCorners(h.x,h.y).map(function(q){return q[0].toFixed(2)+','+q[1].toFixed(2)}).join(' '),
-      fill:t?t.c:'#3A4B53','class':'hex','data-t':h.tribe||''});
-    if(!t)p.setAttribute('fill-opacity','.55');
-    svg.appendChild(p);
-  });
-  svg.appendChild(el('path',{d:Geo.outlinePath(Geo.ISLETS.ludao),fill:'#3A4B53','fill-opacity':'.55'}));
-  T.forEach(function(t){var c=G.centroid[t.id];if(!c)return;
-    var short=t.zh.replace('族','').replace('（達悟）','');
-    svg.appendChild(el('text',{x:c[0],y:c[1]+2,'class':'mlabel'},short));});
-  var info=document.getElementById('info'),list=document.getElementById('list'),cur=null;
-  T.forEach(function(t){
-    var li=document.createElement('li'),b=document.createElement('button');
-    b.type='button';b.id='t-'+t.id;b.setAttribute('aria-pressed','false');
-    b.innerHTML='<span class="dot" style="background:'+t.c+'"></span><span>'+t.zh+'</span><span class="st'+(t.on?' on':'')+'">'+(t.on?'第一版':'之後')+'</span>';
-    b.addEventListener('click',function(){select(t.id)});li.appendChild(b);list.appendChild(li);
-  });
-  function select(id){
-    cur=id;var t=byId[id];
-    svg.querySelectorAll('.hex').forEach(function(p){var m=p.getAttribute('data-t')===id;p.classList.toggle('sel',!!id&&m);p.classList.toggle('dim',!!id&&!m)});
-    list.querySelectorAll('button').forEach(function(b){b.setAttribute('aria-pressed',b.id==='t-'+id?'true':'false')});
-    if(!t){info.innerHTML='<h2>其他地區</h2><p>這一格還沒有劃入任何族群的區域。</p>';return}
-    info.innerHTML='<h2><span class="dot" style="background:'+t.c+'"></span>'+t.zh+
-      ' <span class="chip '+(t.on?'on':'soon')+'">'+(t.on?'第一版開放':'之後開放')+'</span></h2>'+
-      '<div class="en">'+t.en+' · 地圖上 '+(cnt[t.id]||0)+' 格</div><p>'+t.area+'</p>'+
-      '<p class="note">'+(t.on?'選這個區域落腳，部落會帶有這一族預設的建築、物產與族語。':'區域已經在地圖上，預設內容會在之後的版本加入。')+'</p>';
+
+  var BY = {};
+  LIST.forEach(function (t) { BY[t.id] = t; });
+
+  return {
+    LIST: LIST, BY: BY, SOURCE_NOTE: SOURCE_NOTE,
+    get: function (id) { return BY[id]; },
+    playable: function () { return LIST.filter(function (t) { return t.playable; }); }
+  };
+});
+</script>
+<script>
+/* 山海部落 — 遊戲規則與世界模擬
+ * 伺服器用它當唯一的裁判；單機試玩版在瀏覽器裡跑同一份程式。 */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./geo.js'), require('./tribes.js'));
+  else root.World = factory(root.Geo, root.Tribes);
+})(typeof self !== 'undefined' ? self : this, function (Geo, Tribes) {
+  'use strict';
+
+  // ---------- 規則數值 ----------
+  var GRID_W = 9, GRID_H = 5, TILE_N = GRID_W * GRID_H, CENTER_TILE = 22;
+  var MULT = [1, 2.2, 4, 7, 11], TMULT = [1, 2, 3.5, 5.5, 8], MAX_LEVEL = 5;
+  var TYPES = ['house', 'farm', 'mat', 'special', 'storage', 'barracks', 'tower'];
+  var DEF = {
+    house: { base: { food: 15, mat: 40 }, time: 8 },
+    farm: { base: { food: 0, mat: 35 }, time: 8 },
+    mat: { base: { food: 35, mat: 0 }, time: 8 },
+    special: { base: { food: 60, mat: 60 }, time: 14 },
+    storage: { base: { food: 30, mat: 70 }, time: 12 },
+    barracks: { base: { food: 80, mat: 80 }, time: 16 },
+    tower: { base: { food: 20, mat: 90 }, time: 14 },
+    wall: { base: { food: 0, mat: 70 }, time: 12 }
+  };
+  // 部落中心升級：除了糧食與建材，還需要「別族的特產」，鼓勵交易與往來
+  var CENTER_UP = {
+    2: { food: 150, mat: 150, time: 20, kinds: 0, each: 0 },
+    3: { food: 400, mat: 400, time: 45, kinds: 1, each: 5 },
+    4: { food: 900, mat: 900, time: 90, kinds: 2, each: 8 },
+    5: { food: 1800, mat: 1800, time: 150, kinds: 3, each: 12 }
+  };
+  var UNIT = {
+    w: { zh: '勇士', atk: 10, hp: 30, cost: { food: 30, mat: 0 }, time: 5 },
+    a: { zh: '弓手', atk: 12, hp: 18, cost: { food: 20, mat: 20 }, time: 5 }
+  };
+  var RATE = { food: 0.35, mat: 0.35, special: 0.03 };   // 每位族人每秒
+  var FOREIGN_SP = false;   // 階段 4 加入交易後改成 true：部落中心升級要用別族的特產
+  var BUILDERS = 2, SHIELD_MS = 180000, NEWBIE_MS = 300000, OFFER_MS = 600000;
+  var BOT_NAMES = {
+    atayal: ['霧林部落', '溪谷部落'], bunun: ['雲海部落', '楓林部落'],
+    amis: ['浪花部落', '月桃部落'], paiwan: ['晨曦部落', '山風部落']
+  };
+  var PHRASES = { hello: 1, thanks: 1, trade: 1, ally: 1, cheer: 1, nice: 1 };
+
+  function r5(n) { return Math.round(n / 5) * 5; }
+  function cost(type, level) {
+    if (type === 'center') { var c = CENTER_UP[level]; return c ? { food: c.food, mat: c.mat } : null; }
+    var d = DEF[type], m = MULT[level - 1];
+    return { food: r5(d.base.food * m), mat: r5(d.base.mat * m) };
   }
-  svg.addEventListener('click',function(e){var t=e.target.getAttribute&&e.target.getAttribute('data-t');if(t!=null)select(t||null)});
-  select('bunun');
+  function buildTime(type, level) {
+    if (type === 'center') return CENTER_UP[level].time;
+    return Math.round(DEF[type].time * TMULT[level - 1]);
+  }
+  function limit(type, C) {
+    switch (type) {
+      case 'house': case 'farm': case 'mat': return C + 1;
+      case 'special': case 'storage': return 1 + Math.floor(C / 2);
+      case 'barracks': return 1;
+      case 'tower': return Math.max(0, C - 1);
+    }
+    return 0;
+  }
+  function centerLevel(v) { return v.tiles[CENTER_TILE].level; }
+  function count(v, type) { var n = 0; for (var i = 0; i < TILE_N; i++) if (v.tiles[i] && v.tiles[i].type === type) n++; return n; }
+  function sumLevels(v, type) { var n = 0; for (var i = 0; i < TILE_N; i++) if (v.tiles[i] && v.tiles[i].type === type) n += v.tiles[i].level; return n; }
+  function levelsOf(v, type) { var a = []; for (var i = 0; i < TILE_N; i++) if (v.tiles[i] && v.tiles[i].type === type && v.tiles[i].level > 0) a.push(v.tiles[i].level); return a; }
+  function popCap(v) { var n = 4; levelsOf(v, 'house').forEach(function (l) { n += 1 + 2 * l; }); return n; }
+  function slots(v) { return { food: sumLevels(v, 'farm') * 2, mat: sumLevels(v, 'mat') * 2, special: sumLevels(v, 'special') * 2 }; }
+  function caps(v) {
+    var C = centerLevel(v), st = sumLevels(v, 'storage');
+    return { res: 300 + 200 * C + 400 * st, sp: 20 + 20 * C + 20 * st, protect: 50 * C + 100 * st };
+  }
+  function armyCap(v) { return sumLevels(v, 'barracks') * 6; }
+  function armyTotal(v) { return v.units.w + v.units.a + v.away.w + v.away.a + v.train.length; }
+  function rates(v, speed) {
+    var s = slots(v), t = Tribes.get(v.tribe), b = t && t.bonus, out = {};
+    ['food', 'mat', 'special'].forEach(function (k) {
+      var m = b && b.key === k ? b.mult : 1;
+      out[k] = Math.min(v.jobs[k], s[k]) * RATE[k] * m * speed;
+    });
+    return out;
+  }
+  function foreignKinds(v) { var n = 0; for (var k in v.sp) if (k !== v.tribe && v.sp[k] >= 1) n++; return n; }
+  function prosperity(v) {
+    var p = 0;
+    for (var i = 0; i < TILE_N; i++) if (v.tiles[i]) p += v.tiles[i].level * (v.tiles[i].type === 'center' ? 30 : 10);
+    return Math.round(p + v.wall * 10 + v.pop * 3 + foreignKinds(v) * 15 + Math.min(40, v.gifts * 2));
+  }
+  function derived(v, speed) {
+    var c = caps(v);
+    return { cap: c.res, spCap: c.sp, protect: c.protect, slots: slots(v), rates: rates(v, speed), popCap: popCap(v),
+      armyCap: armyCap(v), builders: BUILDERS, prosperity: prosperity(v), center: centerLevel(v) };
+  }
+  function getRes(v, k) { return k === 'food' || k === 'mat' ? v.res[k] : (v.sp[k.slice(3)] || 0); }
+  function addRes(v, k, n) {
+    if (k === 'food' || k === 'mat') v.res[k] = Math.max(0, v.res[k] + n);
+    else { var id = k.slice(3); v.sp[id] = Math.max(0, (v.sp[id] || 0) + n); if (v.sp[id] < 1e-9) delete v.sp[id]; }
+  }
+  function validKey(k) { return k === 'food' || k === 'mat' || (typeof k === 'string' && k.slice(0, 3) === 'sp:' && !!Tribes.get(k.slice(3))); }
+  function resName(k, tribeId) {
+    if (k === 'food') return '糧食'; if (k === 'mat') return '建材';
+    var t = Tribes.get(k.slice(3)); return t && t.sp ? t.sp.zh : '特產';
+  }
+  function can(v, c) { return v.res.food >= c.food && v.res.mat >= c.mat; }
+  function pay(v, c) { v.res.food -= c.food; v.res.mat -= c.mat; }
+  function clean(s, max) { return String(s == null ? '' : s).replace(/[<>&"'`\\\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().slice(0, max); }
+  function int(n) { n = Math.floor(Number(n)); return isFinite(n) ? n : 0; }
+
+  // ---------- 戰鬥 ----------
+  // 不呈現傷亡細節：失去戰力的單位視為「負傷撤退」。
+  function battle(att, def, rng) {
+    var A = { w: att.w, a: att.a }, D = { w: def.w, a: def.a };
+    var wall = def.wallHp, towers = def.towers.map(function (L) { return { L: L, hp: 60 * L }; });
+    var rounds = [], aPool = 0, dPool = 0;
+    function towersUp() { return towers.filter(function (t) { return t.hp > 0; }); }
+    function done() { return wall <= 0 && D.w + D.a === 0 && towersUp().length === 0; }
+    rounds.push({ r: 0, aw: A.w, aa: A.a, dw: D.w, da: D.a, wall: Math.round(wall), towers: towers.length });
+    for (var r = 1; r <= 10 && !done(); r++) {
+      var wallUp = wall > 0, f1 = 0.88 + rng() * 0.24, f2 = 0.88 + rng() * 0.24;
+      var dmgDef = (towersUp().reduce(function (s, t) { return s + 9 * t.L; }, 0) + (wallUp ? 0 : D.w * UNIT.w.atk) + D.a * UNIT.a.atk * (wallUp ? 1.5 : 1)) * f2;
+      if (wallUp) wall = Math.max(0, wall - (A.w * UNIT.w.atk + A.a * UNIT.a.atk * 0.5) * f1);
+      else {
+        dPool += (A.w * UNIT.w.atk + A.a * UNIT.a.atk) * f1;
+        while (D.w > 0 && dPool >= UNIT.w.hp) { D.w--; dPool -= UNIT.w.hp; }
+        if (D.w === 0) while (D.a > 0 && dPool >= UNIT.a.hp) { D.a--; dPool -= UNIT.a.hp; }
+        if (D.w + D.a === 0) { towers.forEach(function (t) { if (t.hp > 0 && dPool > 0) { var x = Math.min(t.hp, dPool); t.hp -= x; dPool -= x; } }); dPool = 0; }
+      }
+      aPool += dmgDef;
+      while (A.w > 0 && aPool >= UNIT.w.hp) { A.w--; aPool -= UNIT.w.hp; }
+      if (A.w === 0) while (A.a > 0 && aPool >= UNIT.a.hp) { A.a--; aPool -= UNIT.a.hp; }
+      rounds.push({ r: r, aw: A.w, aa: A.a, dw: D.w, da: D.a, wall: Math.round(wall), towers: towersUp().length });
+      if (A.w + A.a === 0) break;
+    }
+    return { win: A.w + A.a > 0 && done(), rounds: rounds, A: A, D: D };
+  }
+
+  // ---------- 世界 ----------
+  function World(opts) {
+    opts = opts || {};
+    this.speed = opts.speed || 1;
+    this.rng = opts.rng || Math.random;
+    this.map = Geo.build();
+    this.villages = {}; this.tokens = {}; this.marches = []; this.market = []; this.feed = []; this.alliances = {};
+    this.seq = 1; this.lastBot = 0;
+  }
+  World.prototype.id = function (p) { return p + (this.seq++).toString(36); };
+  World.prototype.log = function (text, now, kind) {
+    this.feed.push({ id: this.seq++, t: now, kind: kind || 'info', text: text });
+    if (this.feed.length > 60) this.feed.splice(0, this.feed.length - 60);
+  };
+  // 一格可以住好幾個部落（Geo.SLOTS 個）；回傳每格已用掉的位置
+  World.prototype.hexSlots = function () {
+    var m = {};
+    for (var id in this.villages) { var v = this.villages[id]; (m[v.hex] = m[v.hex] || {})[v.slot || 0] = id; }
+    return m;
+  };
+  World.prototype.pickHex = function (tribe, prefer) {
+    var used = this.hexSlots(), byId = this.map.byId, self = this;
+    function n(h) { return used[h] ? Object.keys(used[h]).length : 0; }
+    var list = (this.map.regions[tribe] || []).filter(function (h) { return n(h) < Geo.SLOTS; });
+    if (!list.length) return null;
+    var hex;
+    if (prefer && list.indexOf(prefer) >= 0) hex = prefer;
+    else if (prefer && byId[prefer]) {   // 選的格子滿了，挑同區最近的
+      var p = byId[prefer];
+      hex = list.slice().sort(function (a, b) { return Geo.hexDist(p, byId[a]) - Geo.hexDist(p, byId[b]); })[0];
+    } else {   // 沒指定就挑人最少的格子
+      var min = Math.min.apply(null, list.map(n)), least = list.filter(function (h) { return n(h) === min; });
+      hex = least[Math.floor(self.rng() * least.length)];
+    }
+    var slot = 0; while (used[hex] && used[hex][slot]) slot++;
+    return { hex: hex, slot: slot, pos: Geo.slotPos(byId[hex], slot) };
+  };
+  World.prototype.createVillage = function (o, now) {
+    var tiles = []; for (var i = 0; i < TILE_N; i++) tiles.push(null);
+    tiles[CENTER_TILE] = { type: 'center', level: 1 };
+    tiles[CENTER_TILE - 1] = { type: 'house', level: 1 };
+    tiles[CENTER_TILE - GRID_W] = { type: 'farm', level: 1 };
+    tiles[CENTER_TILE + GRID_W] = { type: 'mat', level: 1 };
+    var v = {
+      id: this.id('v'), name: o.name, owner: o.owner, tribe: o.tribe, hex: o.at.hex, slot: o.at.slot, pos: o.at.pos, bot: !!o.bot,
+      createdAt: now, last: now, res: { food: 120, mat: 120 }, sp: {}, pop: 4, popAcc: 0,
+      jobs: { food: 2, mat: 2, special: 0 }, auto: true, tiles: tiles, wall: 0, queue: [],
+      units: { w: 0, a: 0 }, away: { w: 0, a: 0 }, train: [], glory: 0, wins: 0, losses: 0, gifts: 0,
+      shieldUntil: 0, newbieUntil: o.bot ? 0 : now + NEWBIE_MS, ally: null, reports: [], cool: {},
+      lastSay: 0, lastGift: 0, online: !!o.bot
+    };
+    this.villages[v.id] = v;
+    return v;
+  };
+  World.prototype.join = function (token, o, now) {
+    token = clean(token, 64);
+    if (!token) return { ok: false, msg: '缺少識別碼' };
+    if (this.tokens[token] && this.villages[this.tokens[token]]) return { ok: true, id: this.tokens[token], resumed: true };
+    o = o || {};
+    var t = Tribes.get(o.tribe);
+    if (!t) return { ok: false, msg: '請先在地圖上選一個區域' };
+    if (!t.playable) return { ok: false, msg: t.zh + '的區域還在製作中，請先選其他區域' };
+    var owner = clean(o.owner, 10) || '旅人', name = clean(o.name, 10) || (owner + '的部落');
+    var at = this.pickHex(t.id, o.hex);
+    if (!at) return { ok: false, msg: t.zh + '的區域已經住滿了，請選其他區域' };
+    var v = this.createVillage({ name: name, owner: owner, tribe: t.id, at: at }, now);
+    this.tokens[token] = v.id;
+    this.log('「' + v.name + '」在' + t.zh + '的區域落腳了。', now, 'join');
+    return { ok: true, id: v.id };
+  };
+  World.prototype.ensureBots = function (now) {
+    var self = this;
+    Tribes.playable().forEach(function (t) {
+      var names = BOT_NAMES[t.id] || [];
+      names.forEach(function (n) {
+        for (var id in self.villages) if (self.villages[id].bot && self.villages[id].name === n) return;
+        var at = self.pickHex(t.id);
+        if (at) self.createVillage({ name: n, owner: '示範部落', tribe: t.id, at: at, bot: true }, now);
+      });
+    });
+  };
+
+  // ---------- 單一部落的時間推進 ----------
+  World.prototype.autoJobs = function (v) {
+    var s = slots(v), j = { food: 0, mat: 0, special: 0 }, left = v.pop, order = ['food', 'mat', 'special'];
+    while (left > 0) {
+      var best = null, bestR = 2;
+      for (var i = 0; i < 3; i++) { var k = order[i]; if (j[k] < s[k]) { var r = j[k] / s[k]; if (r < bestR) { bestR = r; best = k; } } }
+      if (!best) break;
+      j[best]++; left--;
+    }
+    v.jobs = j;
+  };
+  World.prototype.tickVillage = function (v, now) {
+    var dt = Math.min((now - v.last) / 1000, 8 * 3600);
+    if (dt <= 0) return;
+    v.last = now;
+    var self = this;
+    v.queue = v.queue.filter(function (q) {
+      if (q.doneAt > now) return true;
+      if (q.type === 'wall') v.wall = q.to;
+      else if (v.tiles[q.tile]) { v.tiles[q.tile].level = q.to; delete v.tiles[q.tile].busy; }
+      return false;
+    });
+    v.train = v.train.filter(function (q) { if (q.doneAt > now) return true; v.units[q.u]++; return false; });
+    var pc = popCap(v);
+    if (v.pop < pc) {
+      v.popAcc += dt * self.speed / 10;
+      while (v.popAcc >= 1 && v.pop < pc) { v.pop++; v.popAcc -= 1; }
+    } else v.popAcc = 0;
+    if (v.auto) this.autoJobs(v);
+    else {   // 手動分工：人數不能超過族人總數
+      var sum = v.jobs.food + v.jobs.mat + v.jobs.special;
+      ['special', 'mat', 'food'].forEach(function (k) { while (sum > v.pop && v.jobs[k] > 0) { v.jobs[k]--; sum--; } });
+    }
+    var rt = rates(v, this.speed), c = caps(v);
+    ['food', 'mat'].forEach(function (k) { if (v.res[k] < c.res) v.res[k] = Math.min(c.res, v.res[k] + rt[k] * dt); });
+    var own = v.sp[v.tribe] || 0;
+    if (rt.special > 0 && own < c.sp) v.sp[v.tribe] = Math.min(c.sp, own + rt.special * dt);
+  };
+
+  // ---------- 玩家動作 ----------
+  World.prototype.act = function (id, a, now) {
+    var v = this.villages[id];
+    if (!v || !a) return { ok: false, msg: '找不到部落' };
+    this.tickVillage(v, now);
+    var fn = ACTIONS[a.type];
+    if (!fn) return { ok: false, msg: '不支援的動作' };
+    return fn.call(this, v, a, now) || { ok: true };
+  };
+  var ACTIONS = {
+    auto: function (v, a) { v.auto = !!a.on; if (v.auto) this.autoJobs(v); },
+    jobs: function (v, a) {
+      var s = slots(v), j = {}, sum = 0;
+      ['food', 'mat', 'special'].forEach(function (k) { j[k] = Math.max(0, Math.min(s[k], int(a[k]))); sum += j[k]; });
+      if (sum > v.pop) return { ok: false, msg: '族人不夠分配' };
+      v.jobs = j; v.auto = false;
+    },
+    build: function (v, a, now) {
+      var tile = int(a.tile), type = a.type2;
+      if (TYPES.indexOf(type) < 0) return { ok: false, msg: '沒有這種建築' };
+      if (tile < 0 || tile >= TILE_N || v.tiles[tile]) return { ok: false, msg: '這塊地已經有建築了' };
+      if (count(v, type) >= limit(type, centerLevel(v))) return { ok: false, msg: '數量已達上限，先升級部落中心' };
+      if (v.queue.length >= BUILDERS) return { ok: false, msg: '同時只能進行 ' + BUILDERS + ' 項工程' };
+      var c = cost(type, 1);
+      if (!can(v, c)) return { ok: false, msg: '糧食或建材不足' };
+      pay(v, c);
+      v.tiles[tile] = { type: type, level: 0, busy: true };
+      v.queue.push({ id: this.id('q'), tile: tile, type: type, to: 1, doneAt: now + buildTime(type, 1) * 1000 / this.speed });
+    },
+    upgrade: function (v, a, now) {
+      var tile = int(a.tile), b = v.tiles[tile];
+      if (!b) return { ok: false, msg: '這裡沒有建築' };
+      if (b.busy) return { ok: false, msg: '還在施工中' };
+      if (b.level >= MAX_LEVEL) return { ok: false, msg: '已經是最高等級' };
+      if (v.queue.length >= BUILDERS) return { ok: false, msg: '同時只能進行 ' + BUILDERS + ' 項工程' };
+      var to = b.level + 1, c = cost(b.type, to), picked = [], ownSp = 0;
+      if (b.type === 'center') {
+        var need = CENTER_UP[to];
+        if (need.kinds > 0) {
+          if (!FOREIGN_SP) {
+            ownSp = need.each * need.kinds;
+            if ((v.sp[v.tribe] || 0) < ownSp) return { ok: false, msg: '還需要 ' + ownSp + ' 份特產' };
+          } else {
+            var have = Object.keys(v.sp).filter(function (k) { return k !== v.tribe && v.sp[k] >= need.each; })
+              .sort(function (x, y) { return v.sp[y] - v.sp[x]; });
+            if (have.length < need.kinds) return { ok: false, msg: '還需要 ' + need.kinds + ' 種別族特產，每種 ' + need.each + ' 份（可以交易、送禮或出征取得）' };
+            picked = have.slice(0, need.kinds);
+          }
+        }
+      } else if (to > centerLevel(v)) return { ok: false, msg: '等級不能超過部落中心' };
+      if (!can(v, c)) return { ok: false, msg: '糧食或建材不足' };
+      pay(v, c);
+      if (ownSp) addRes(v, 'sp:' + v.tribe, -ownSp);
+      picked.forEach(function (k) { addRes(v, 'sp:' + k, -CENTER_UP[to].each); });
+      b.busy = true;
+      v.queue.push({ id: this.id('q'), tile: tile, type: b.type, to: to, doneAt: now + buildTime(b.type, to) * 1000 / this.speed });
+    },
+    wall: function (v, a, now) {
+      if (v.queue.some(function (q) { return q.type === 'wall'; })) return { ok: false, msg: '還在施工中' };
+      var to = v.wall + 1;
+      if (to > centerLevel(v)) return { ok: false, msg: '等級不能超過部落中心' };
+      if (v.queue.length >= BUILDERS) return { ok: false, msg: '同時只能進行 ' + BUILDERS + ' 項工程' };
+      var c = cost('wall', to);
+      if (!can(v, c)) return { ok: false, msg: '建材不足' };
+      pay(v, c);
+      v.queue.push({ id: this.id('q'), tile: -1, type: 'wall', to: to, doneAt: now + buildTime('wall', to) * 1000 / this.speed });
+    },
+    train: function (v, a, now) {
+      var u = UNIT[a.u];
+      if (!u) return { ok: false, msg: '沒有這種單位' };
+      if (armyCap(v) === 0) return { ok: false, msg: '要先蓋好訓練場' };
+      if (armyTotal(v) >= armyCap(v)) return { ok: false, msg: '人數已滿，升級訓練場可以增加名額' };
+      if (!can(v, u.cost)) return { ok: false, msg: '糧食或建材不足' };
+      pay(v, u.cost);
+      var start = v.train.length ? v.train[v.train.length - 1].doneAt : now;
+      v.train.push({ u: a.u, doneAt: Math.max(start, now) + u.time * 1000 / this.speed });
+    },
+    attack: function (v, a, now) {
+      var t = this.villages[a.to], w = int(a.w), ar = int(a.a);
+      if (!t || t.id === v.id) return { ok: false, msg: '找不到目標' };
+      if (w < 0 || ar < 0 || w + ar < 1) return { ok: false, msg: '至少要派出一位勇士' };
+      if (w > v.units.w || ar > v.units.a) return { ok: false, msg: '留在部落的人數不夠' };
+      if (v.ally && v.ally === t.ally) return { ok: false, msg: '不能出征同一個聯盟的部落' };
+      if (now < t.shieldUntil || now < t.newbieUntil) return { ok: false, msg: '對方正受到保護' };
+      if (!t.bot && centerLevel(v) - centerLevel(t) > 1) return { ok: false, msg: '對方規模比你小太多，不能出征' };
+      if ((v.cool[t.id] || 0) > now) return { ok: false, msg: '才剛交手過，晚一點再來' };
+      if (this.marches.filter(function (m) { return m.from === v.id; }).length >= 2) return { ok: false, msg: '最多同時派出兩支隊伍' };
+      v.units.w -= w; v.units.a -= ar; v.away.w += w; v.away.a += ar;
+      v.newbieUntil = 0; v.shieldUntil = 0;
+      var d = Geo.hexDist(this.map.byId[v.hex], this.map.byId[t.hex]);
+      var travel = Math.min(60, 6 + 2.5 * d) * 1000 / this.speed;
+      this.marches.push({ id: this.id('m'), from: v.id, to: t.id, w: w, a: ar, departAt: now, arriveAt: now + travel, travel: travel, phase: 'out', loot: null });
+      v.cool[t.id] = now + 120000;
+      return { ok: true, msg: '隊伍出發了' };
+    },
+    gift: function (v, a, now) {
+      var t = this.villages[a.to], k = a.key, n = int(a.n);
+      if (!t || t.id === v.id) return { ok: false, msg: '找不到對象' };
+      if (!validKey(k) || n < 1 || n > 100) return { ok: false, msg: '一次可以送 1 到 100 份' };
+      if (now - v.lastGift < 5000) return { ok: false, msg: '稍等一下再送' };
+      if (getRes(v, k) < n) return { ok: false, msg: '數量不夠' };
+      this.tickVillage(t, now);
+      addRes(v, k, -n); addRes(t, k, n); v.lastGift = now; v.gifts++;
+      this.log('「' + v.name + '」送給「' + t.name + '」' + n + ' 份' + resName(k) + '。', now, 'gift');
+      return { ok: true, msg: '禮物送到了' };
+    },
+    offer: function (v, a, now) {
+      var g = a.give, w = a.want, gn = int(a.giveN), wn = int(a.wantN);
+      if (!validKey(g) || !validKey(w) || g === w) return { ok: false, msg: '請選兩種不同的物資' };
+      if (gn < 1 || wn < 1 || gn > 500 || wn > 500) return { ok: false, msg: '數量要在 1 到 500 之間' };
+      if (this.market.filter(function (o) { return o.from === v.id; }).length >= 3) return { ok: false, msg: '最多同時掛三筆交易' };
+      if (getRes(v, g) < gn) return { ok: false, msg: '數量不夠' };
+      addRes(v, g, -gn);
+      this.market.push({ id: this.id('o'), from: v.id, give: g, giveN: gn, want: w, wantN: wn, t: now });
+      return { ok: true, msg: '已經掛到市集' };
+    },
+    cancel: function (v, a) {
+      var i = this.market.findIndex(function (o) { return o.id === a.id && o.from === v.id; });
+      if (i < 0) return { ok: false, msg: '找不到這筆交易' };
+      var o = this.market.splice(i, 1)[0]; addRes(v, o.give, o.giveN);
+      return { ok: true, msg: '已取消，物資退回來了' };
+    },
+    accept: function (v, a, now) {
+      var i = this.market.findIndex(function (o) { return o.id === a.id; });
+      if (i < 0) return { ok: false, msg: '這筆交易已經不在了' };
+      var o = this.market[i], s = this.villages[o.from];
+      if (o.from === v.id) return { ok: false, msg: '這是你自己掛的交易' };
+      if (getRes(v, o.want) < o.wantN) return { ok: false, msg: resName(o.want) + '不夠' };
+      this.market.splice(i, 1);
+      addRes(v, o.want, -o.wantN); addRes(v, o.give, o.giveN);
+      if (s) { this.tickVillage(s, now); addRes(s, o.want, o.wantN); }
+      this.log('「' + v.name + '」和「' + (s ? s.name : '遠方部落') + '」完成交易：' + o.giveN + ' ' + resName(o.give) + ' 換 ' + o.wantN + ' ' + resName(o.want) + '。', now, 'trade');
+      return { ok: true, msg: '交易完成' };
+    },
+    allyCreate: function (v, a, now) {
+      if (v.ally) return { ok: false, msg: '你已經在聯盟裡了' };
+      var name = clean(a.name, 8);
+      if (name.length < 2) return { ok: false, msg: '聯盟名稱至少兩個字' };
+      for (var k in this.alliances) if (this.alliances[k].name === name) return { ok: false, msg: '已經有同名的聯盟' };
+      var al = { id: this.id('a'), name: name, leader: v.id, members: [v.id] };
+      this.alliances[al.id] = al; v.ally = al.id;
+      this.log('「' + v.name + '」發起了聯盟「' + name + '」。', now, 'ally');
+      return { ok: true, msg: '聯盟成立了' };
+    },
+    allyJoin: function (v, a, now) {
+      var al = this.alliances[a.id];
+      if (v.ally) return { ok: false, msg: '你已經在聯盟裡了' };
+      if (!al) return { ok: false, msg: '找不到這個聯盟' };
+      if (al.members.length >= 20) return { ok: false, msg: '這個聯盟滿了' };
+      al.members.push(v.id); v.ally = al.id;
+      this.log('「' + v.name + '」加入了聯盟「' + al.name + '」。', now, 'ally');
+      return { ok: true, msg: '加入了' + al.name };
+    },
+    allyLeave: function (v) {
+      var al = this.alliances[v.ally];
+      if (!al) { v.ally = null; return { ok: false, msg: '你不在聯盟裡' }; }
+      al.members = al.members.filter(function (m) { return m !== v.id; }); v.ally = null;
+      if (!al.members.length) delete this.alliances[al.id]; else if (al.leader === v.id) al.leader = al.members[0];
+      return { ok: true, msg: '已離開聯盟' };
+    },
+    say: function (v, a, now) {
+      if (!PHRASES[a.phrase]) return { ok: false, msg: '沒有這句話' };
+      if (now - v.lastSay < 4000) return { ok: false, msg: '說話慢一點' };
+      v.lastSay = now;
+      var t = Tribes.get(v.tribe), txt = {
+        hello: t.hello + '！（' + t.lang + '的問候）', thanks: t.thanks + '！（' + t.lang + '的謝謝）',
+        trade: '有人想交換特產嗎？', ally: '歡迎加入我們的聯盟！', cheer: '大家一起加油！', nice: '這場較量真精彩！'
+      }[a.phrase];
+      this.log('「' + v.name + '」：' + txt, now, 'say');
+    }
+  };
+
+  // ---------- 出征隊伍 ----------
+  World.prototype.resolveMarch = function (m, now) {
+    var v = this.villages[m.from], t = this.villages[m.to];
+    if (!v) return false;
+    if (m.phase === 'back') {
+      v.units.w += m.w; v.units.a += m.a; v.away.w = Math.max(0, v.away.w - m.w0); v.away.a = Math.max(0, v.away.a - m.a0);
+      if (m.loot) for (var k in m.loot) addRes(v, k, m.loot[k]);
+      return false;
+    }
+    m.w0 = m.w; m.a0 = m.a;
+    var back = function () { m.phase = 'back'; m.departAt = now; m.arriveAt = now + m.travel; return true; };
+    if (!t || now < t.shieldUntil || (v.ally && v.ally === t.ally)) {
+      this.pushReport(v, { t: now, role: 'atk', other: t ? t.name : '', win: false, note: '對方正受到保護，隊伍折返。', rounds: [] });
+      return back();
+    }
+    this.tickVillage(v, now); this.tickVillage(t, now);
+    var res = battle({ w: m.w, a: m.a }, { w: t.units.w, a: t.units.a, wallHp: t.wall * 80, towers: levelsOf(t, 'tower') }, this.rng);
+    var lostA = { w: m.w - res.A.w, a: m.a - res.A.a }, lostD = { w: t.units.w - res.D.w, a: t.units.a - res.D.a };
+    t.units.w = res.D.w; t.units.a = res.D.a;
+    v.away.w -= lostA.w; v.away.a -= lostA.a; m.w0 = res.A.w; m.a0 = res.A.a;
+    m.w = res.A.w; m.a = res.A.a;
+    var loot = {}, lootTxt = [];
+    if (res.win) {
+      // 每位回程的勇士能背 30 份：先帶特產，剩下的空間平均分給糧食與建材
+      var prot = caps(t).protect, carry = 30 * (m.w + m.a), want = {}, take = function (k2, n) {
+        n = Math.min(n, carry); if (n <= 0) return;
+        carry -= n; loot[k2] = n; addRes(t, k2, -n); lootTxt.push(n + ' ' + resName(k2));
+      };
+      for (var sk in t.sp) take('sp:' + sk, Math.floor(t.sp[sk] * 0.3));
+      ['food', 'mat'].forEach(function (k) { want[k] = Math.floor(Math.max(0, t.res[k] - prot) * 0.35); });
+      var total = want.food + want.mat, f = total > carry ? carry / total : 1;
+      var nf = Math.floor(want.food * f), nm = Math.floor(want.mat * f);
+      take('food', nf); take('mat', nm);
+      m.loot = loot;
+      v.wins++; t.losses++; v.glory += 10 + 2 * centerLevel(t); t.glory = Math.max(0, t.glory - 3);
+      t.shieldUntil = now + SHIELD_MS;
+      this.log('「' + v.name + '」出征「' + t.name + '」獲勝' + (lootTxt.length ? '，帶回 ' + lootTxt.join('、') : '') + '。', now, 'battle');
+    } else {
+      v.losses++; t.wins++; t.glory += 5; v.glory = Math.max(0, v.glory - 2);
+      this.log('「' + t.name + '」守住了「' + v.name + '」的出征。', now, 'battle');
+    }
+    var rid = this.id('r');
+    this.pushReport(v, { id: rid, t: now, role: 'atk', other: t.name, otherTribe: t.tribe, win: res.win, rounds: res.rounds, loot: loot, lost: lostA });
+    this.pushReport(t, { id: rid, t: now, role: 'def', other: v.name, otherTribe: v.tribe, win: !res.win, rounds: res.rounds, loot: loot, lost: lostD });
+    if (m.w + m.a === 0) return false;
+    return back();
+  };
+  World.prototype.pushReport = function (v, rep) {
+    rep.id = rep.id || this.id('r'); rep.seen = false;
+    v.reports.unshift(rep); if (v.reports.length > 8) v.reports.length = 8;
+  };
+
+  // ---------- 示範部落（電腦） ----------
+  World.prototype.botStep = function (v, now) {
+    var self = this, rng = this.rng, C = centerLevel(v);
+    this.tickVillage(v, now);
+    if (v.queue.length < BUILDERS && rng() < 0.7) {
+      var opts = [], empty = [];
+      for (var i = 0; i < TILE_N; i++) {
+        var b = v.tiles[i];
+        if (!b) { empty.push(i); continue; }
+        if (b.busy || b.level >= MAX_LEVEL) continue;
+        if (b.type === 'center') { if (can(v, cost('center', b.level + 1))) opts.push({ type: 'upgrade', tile: i }, { type: 'upgrade', tile: i }); }
+        else if (b.level < C && can(v, cost(b.type, b.level + 1))) opts.push({ type: 'upgrade', tile: i });
+      }
+      if (empty.length) TYPES.forEach(function (ty) {
+        if (count(v, ty) < limit(ty, C) && can(v, cost(ty, 1))) opts.push({ type: 'build', type2: ty, tile: empty[Math.floor(rng() * empty.length)] });
+      });
+      if (v.wall < C && can(v, cost('wall', v.wall + 1))) opts.push({ type: 'wall' });
+      if (opts.length) this.act(v.id, opts[Math.floor(rng() * opts.length)], now);
+    }
+    if (armyCap(v) > armyTotal(v) && rng() < 0.5) this.act(v.id, { type: 'train', u: rng() < 0.6 ? 'w' : 'a' }, now);
+    var mine = this.market.filter(function (o) { return o.from === v.id; });
+    if (!mine.length && (v.sp[v.tribe] || 0) >= 6 && rng() < 0.25) {
+      var others = Tribes.playable().filter(function (t) { return t.id !== v.tribe; });
+      var wantSp = rng() < 0.5;
+      this.act(v.id, wantSp ? { type: 'offer', give: 'sp:' + v.tribe, giveN: 4, want: 'sp:' + others[Math.floor(rng() * others.length)].id, wantN: 4 }
+        : { type: 'offer', give: 'sp:' + v.tribe, giveN: 4, want: rng() < 0.5 ? 'food' : 'mat', wantN: 60 }, now);
+    }
+    this.market.slice().forEach(function (o) {
+      if (o.from === v.id || rng() > 0.2) return;
+      var fair = o.give.slice(0, 3) === 'sp:' && o.give !== 'sp:' + v.tribe &&
+        ((o.want === 'food' || o.want === 'mat') ? o.wantN / o.giveN <= 25 && v.res[o.want] > o.wantN + 150 : o.want === 'sp:' + v.tribe && o.wantN <= o.giveN * 1.5);
+      if (fair && getRes(v, o.want) >= o.wantN) self.act(v.id, { type: 'accept', id: o.id }, now);
+    });
+  };
+
+  // ---------- 世界時間推進 ----------
+  World.prototype.tick = function (now) {
+    var self = this, id;
+    for (id in this.villages) { var v = this.villages[id]; if (v.online || v.bot) this.tickVillage(v, now); }
+    this.marches = this.marches.filter(function (m) { return m.arriveAt > now ? true : self.resolveMarch(m, now); });
+    this.market = this.market.filter(function (o) {
+      if (now - o.t < OFFER_MS) return true;
+      var s = self.villages[o.from]; if (s) addRes(s, o.give, o.giveN);
+      return false;
+    });
+    if (now - this.lastBot >= 4000 / this.speed) {
+      this.lastBot = now;
+      for (id in this.villages) if (this.villages[id].bot) this.botStep(this.villages[id], now);
+    }
+  };
+
+  // ---------- 給客戶端的資料 ----------
+  World.prototype.pub = function (v, now) {
+    var guard = v.units.w + v.units.a;
+    return { id: v.id, name: v.name, owner: v.owner, tribe: v.tribe, hex: v.hex, pos: v.pos, bot: v.bot, online: v.online || v.bot,
+      c: centerLevel(v), wall: v.wall, towers: levelsOf(v, 'tower').length, guard: guard === 0 ? 0 : guard <= 4 ? 1 : guard <= 10 ? 2 : 3,
+      pros: prosperity(v), glory: v.glory, ally: v.ally, safe: Math.max(v.shieldUntil, v.newbieUntil) };
+  };
+  World.prototype.detail = function (id, now) {
+    var v = this.villages[id]; if (!v) return null;
+    this.tickVillage(v, now);
+    var p = this.pub(v, now);
+    p.tiles = v.tiles.map(function (b) { return b ? { type: b.type, level: b.level, busy: !!b.busy } : null; });
+    p.pop = v.pop;
+    return p;
+  };
+  World.prototype.snapshot = function (id, now) {
+    var v = this.villages[id], self = this;
+    if (!v) return null;
+    var me = JSON.parse(JSON.stringify(v));
+    me.d = derived(v, this.speed);
+    var al = {};
+    for (var k in this.alliances) al[k] = { id: k, name: this.alliances[k].name, leader: this.alliances[k].leader, n: this.alliances[k].members.length };
+    return {
+      now: now, speed: this.speed, me: me,
+      villages: Object.keys(this.villages).map(function (k) { return self.pub(self.villages[k], now); }),
+      marches: this.marches.map(function (m) { return { id: m.id, from: m.from, to: m.to, departAt: m.departAt, arriveAt: m.arriveAt, phase: m.phase, n: m.w + m.a }; }),
+      market: this.market.map(function (o) { return { id: o.id, from: o.from, fromName: (self.villages[o.from] || {}).name || '', give: o.give, giveN: o.giveN, want: o.want, wantN: o.wantN }; }),
+      feed: this.feed.slice(-30), alliances: al
+    };
+  };
+  World.prototype.toJSON = function () {
+    return { villages: this.villages, tokens: this.tokens, marches: this.marches, market: this.market, feed: this.feed, alliances: this.alliances, seq: this.seq };
+  };
+  World.prototype.load = function (d) {
+    if (!d || !d.villages) return this;
+    this.villages = d.villages; this.tokens = d.tokens || {}; this.marches = d.marches || []; this.market = d.market || [];
+    this.feed = d.feed || []; this.alliances = d.alliances || {}; this.seq = d.seq || 1;
+    for (var id in this.villages) { this.villages[id].online = !!this.villages[id].bot; }
+    return this;
+  };
+
+  World.rules = {
+    GRID_W: GRID_W, GRID_H: GRID_H, TILE_N: TILE_N, CENTER_TILE: CENTER_TILE, TYPES: TYPES, MAX_LEVEL: MAX_LEVEL, UNIT: UNIT,
+    CENTER_UP: CENTER_UP, BUILDERS: BUILDERS, FOREIGN_SP: FOREIGN_SP, cost: cost, buildTime: buildTime, limit: limit, count: count,
+    resName: resName, battle: battle, derived: derived, popCap: popCap
+  };
+  return World;
+});
+</script>
+<script>
+/* 山海部落 — 畫面繪製（全部用 SVG 即時畫出，沒有外部圖檔）
+ * 圖樣只用一般的幾何形狀，不使用各族專屬或具身分意義的紋樣。 */
+window.Art = (function () {
+  'use strict';
+  var R = World.rules, INK = '#14212A', CREAM = '#F2EAD6';
+
+  function shade(hex, p) {
+    var n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255, t = p < 0 ? 0 : 255, a = Math.abs(p) / 100;
+    r = Math.round(r + (t - r) * a); g = Math.round(g + (t - g) * a); b = Math.round(b + (t - b) * a);
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  }
+
+  var ICONS = {
+    food: '<path d="M8 15V5" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/><g fill="currentColor"><ellipse cx="8" cy="3" rx="1.6" ry="2.2"/><ellipse cx="5.2" cy="6.2" rx="1.5" ry="2" transform="rotate(-32 5.2 6.2)"/><ellipse cx="10.8" cy="6.2" rx="1.5" ry="2" transform="rotate(32 10.8 6.2)"/><ellipse cx="5.4" cy="10" rx="1.4" ry="1.9" transform="rotate(-32 5.4 10)"/><ellipse cx="10.6" cy="10" rx="1.4" ry="1.9" transform="rotate(32 10.6 10)"/></g>',
+    mat: '<g fill="currentColor"><rect x="1.5" y="9.2" width="13" height="4.6" rx="2.3"/><rect x="3.5" y="3.6" width="9" height="4.6" rx="2.3"/></g>',
+    sp: '<path d="M2 6.5h12l-1.6 7.5H3.6z" fill="currentColor"/><path d="M4.4 6.5a3.6 3.6 0 0 1 7.2 0" fill="none" stroke="currentColor" stroke-width="1.4"/>',
+    pop: '<g fill="currentColor"><circle cx="8" cy="4.2" r="2.7"/><path d="M2.8 15c0-3.6 2.3-6 5.2-6s5.2 2.4 5.2 6z"/></g>',
+    army: '<path d="M2.5 14 11 5.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"/><path d="M14.6 1.4 13.7 6.9 9.1 2.3z" fill="currentColor"/>',
+    star: '<path d="M8 1l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" fill="currentColor"/>',
+    flag: '<path d="M3.2 15V1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/><path d="M4.2 2.4h9.3l-2.6 3 2.6 3H4.2z" fill="currentColor"/>',
+    shield: '<path d="M8 1.2 14 3.5v4.3c0 3.4-2.4 5.9-6 7-3.6-1.1-6-3.6-6-7V3.5z" fill="currentColor"/>'
+  };
+  function icon(name, cls) { return '<svg class="ic ' + (cls || 'ic-' + name) + '" viewBox="0 0 16 16" aria-hidden="true">' + ICONS[name] + '</svg>'; }
+
+  // ---------- 建築（每格 96×96，地面約在 y=82） ----------
+  function shadow(rx) { return '<ellipse cx="48" cy="83" rx="' + (rx || 36) + '" ry="5" fill="#000" opacity=".2"/>'; }
+  function texture(k, x, y, w, h) {
+    var s = '', c = shade(k.wall, -22), i;
+    if (k.fence === 'stone') for (i = 1; i < 4; i++) s += '<path d="M' + x + ' ' + (y + i * h / 4) + 'h' + w + '" stroke="' + c + '" stroke-width="1.6"/>';
+    else for (i = 1; i < 7; i++) s += '<path d="M' + (x + i * w / 7) + ' ' + y + 'v' + h + '" stroke="' + c + '" stroke-width="1.4"/>';
+    return s;
+  }
+  function houseShape(k, big) {
+    var s = shadow(big ? 42 : 36);
+    if (big) return s + '<g transform="translate(48 82) scale(1.22) translate(-48 -82)">' + houseBody(k) + '</g>';
+    return s + houseBody(k);
+  }
+  function houseBody(k) {
+    var flat = k.fence === 'stone';
+    var roof = flat ? '10,50 48,31 86,50' : '11,50 48,22 85,50';
+    return '<rect x="20" y="49" width="56" height="32" fill="' + k.wall + '"/>' + texture(k, 20, 49, 56, 32) +
+      '<rect x="41" y="59" width="14" height="22" rx="1.5" fill="' + shade(k.wall, -55) + '"/>' +
+      '<polygon points="' + roof + '" fill="' + k.roof + '"/>' +
+      '<path d="M' + roof.split(' ')[0].replace(',', ' ') + 'L' + roof.split(' ')[2].replace(',', ' ') + '" stroke="' + shade(k.roof, -30) + '" stroke-width="3"/>' +
+      '<rect x="20" y="50" width="56" height="4" fill="' + k.trim + '"/>';
+  }
+  function pennant(k, x, y) {
+    return '<path d="M' + x + ' ' + y + 'v-26" stroke="' + shade(k.wall, -45) + '" stroke-width="2.4" stroke-linecap="round"/>' +
+      '<path d="M' + x + ' ' + (y - 26) + 'l15 5-15 5z" fill="' + k.trim + '"/>';
+  }
+  var DRAW = {
+    center: function (k, t) {
+      if (t.id === 'amis') {   // 聚會所：四面開放的大茅草屋
+        var posts = '';
+        [16, 32, 48, 64, 80].forEach(function (x) { posts += '<rect x="' + (x - 2) + '" y="46" width="4" height="36" fill="' + shade(k.wall, -35) + '"/>'; });
+        return shadow(44) + '<rect x="12" y="76" width="72" height="6" fill="' + shade(k.wall, -15) + '"/>' + posts +
+          '<polygon points="3,48 48,10 93,48" fill="' + k.roof + '"/>' +
+          '<path d="M14 40 48 12 82 40" fill="none" stroke="' + shade(k.roof, -22) + '" stroke-width="2.5"/>' +
+          '<path d="M3 48h90" stroke="' + k.trim + '" stroke-width="5"/>';
+      }
+      var s = houseShape(k, true);
+      if (t.id === 'paiwan') s += '<rect x="4" y="80" width="88" height="6" rx="1" fill="#8A877F"/><rect x="82" y="50" width="7" height="31" rx="2.5" fill="#6E6B64"/>';
+      else s += pennant(k, 88, 80);
+      return s;
+    },
+    house: function (k) { return houseShape(k, false); },
+    farm: function (k, t, head) {
+      var s = '<rect x="9" y="24" width="78" height="60" rx="5" fill="#73553A"/>', hc = head || '#E3B341';
+      for (var r = 0; r < 3; r++) {
+        s += '<path d="M12 ' + (44 + r * 18) + 'h72" stroke="#5C422B" stroke-width="3"/>';
+        for (var c = 0; c < 6; c++) {
+          var x = 19 + c * 12, y = 42 + r * 18;
+          s += '<path d="M' + x + ' ' + y + 'q0 -8 3 -13" stroke="#6FA04B" stroke-width="2.2" fill="none" stroke-linecap="round"/>' +
+            '<ellipse cx="' + (x + 4) + '" cy="' + (y - 13) + '" rx="2.6" ry="4" fill="' + hc + '" transform="rotate(35 ' + (x + 4) + ' ' + (y - 13) + ')"/>';
+        }
+      }
+      return s;
+    },
+    mat: function (k, t) {
+      var s = shadow(34);
+      if (t.id === 'paiwan' || t.id === 'bunun') {   // 石板堆
+        [[14, 66, 68], [20, 54, 56], [26, 43, 44]].forEach(function (p, i) {
+          s += '<polygon points="' + p[0] + ',' + (p[1] + 11) + ' ' + (p[0] + 6) + ',' + p[1] + ' ' + (p[0] + p[2]) + ',' + p[1] + ' ' + (p[0] + p[2] - 6) + ',' + (p[1] + 11) + '" fill="' + ['#7C7F84', '#8F9297', '#A3A6AA'][i] + '"/>';
+        });
+        if (t.id === 'bunun') s += '<rect x="56" y="28" width="26" height="9" rx="4.5" fill="#9B6B3F"/><circle cx="81" cy="32.5" r="4.5" fill="#C99A63"/>';
+      } else {   // 竹木堆
+        [[14, 68], [38, 68], [26, 55]].forEach(function (p) {
+          s += '<rect x="' + p[0] + '" y="' + p[1] + '" width="44" height="13" rx="6.5" fill="#9B6B3F"/><circle cx="' + (p[0] + 44 - 6.5) + '" cy="' + (p[1] + 6.5) + '" r="6.5" fill="#C99A63"/><circle cx="' + (p[0] + 44 - 6.5) + '" cy="' + (p[1] + 6.5) + '" r="3" fill="none" stroke="#9B6B3F" stroke-width="1.2"/>';
+        });
+        s += '<path d="M70 50V20M76 50V26M82 50V18" stroke="#7FA65A" stroke-width="3.2" stroke-linecap="round"/>';
+      }
+      return s;
+    },
+    special: function (k, t) {
+      if (t.id === 'paiwan') return DRAW.farm(k, t, '#D4476B');
+      var s = shadow(36), rack = '<path d="M52 82V44M86 82V44M50 47h38" stroke="' + shade(k.wall, -45) + '" stroke-width="2.6" stroke-linecap="round" fill="none"/>';
+      var hut = '<polygon points="8,82 28,38 48,82" fill="' + k.roof + '"/><polygon points="22,82 28,62 34,82" fill="' + shade(k.roof, -45) + '"/>';
+      if (t.id === 'amis') {
+        s += hut + rack;
+        [58, 69, 80].forEach(function (x) { s += '<path d="M' + x + ' 47v5" stroke="#5C422B" stroke-width="1.2"/><path d="M' + x + ' 52c5 4 5 12 0 18c-5-6-5-14 0-18z" fill="#8FB8C9"/><path d="M' + (x - 3) + ' 74l3-5 3 5z" fill="#8FB8C9"/>'; });
+      } else if (t.id === 'atayal') {
+        s = houseShape(k, false);
+        s += '<rect x="62" y="40" width="26" height="34" fill="' + CREAM + '"/>';
+        [44, 52, 60, 68].forEach(function (y, i) { s += '<rect x="62" y="' + y + '" width="26" height="3.5" fill="' + (i % 2 ? '#2F3B45' : k.trim) + '"/>'; });
+        s += '<path d="M60 40h30" stroke="' + shade(k.wall, -45) + '" stroke-width="2.6" stroke-linecap="round"/>';
+      } else {   // 獵寮
+        s += hut + rack;
+        [59, 69, 79].forEach(function (x) { s += '<path d="M' + x + ' 47v4" stroke="#5C422B" stroke-width="1.2"/><rect x="' + (x - 3.5) + '" y="51" width="7" height="13" rx="3" fill="#A6583F"/>'; });
+      }
+      return s;
+    },
+    storage: function (k, t) {
+      var s = shadow(32);
+      if (t.id === 'bunun') {   // 小米倉傳統上在屋內，這裡畫成矮石屋
+        return s + '<g transform="translate(48 82) scale(.82) translate(-48 -82)">' + houseBody(k) + '</g>' +
+          '<path d="M70 82V62" stroke="#6FA04B" stroke-width="2.4"/><ellipse cx="73" cy="59" rx="3" ry="5" fill="#E3B341" transform="rotate(30 73 59)"/><ellipse cx="67" cy="60" rx="3" ry="5" fill="#E3B341" transform="rotate(-30 67 60)"/>';
+      }
+      [28, 64].forEach(function (x) { s += '<rect x="' + x + '" y="58" width="4.5" height="24" fill="' + shade(k.wall, -40) + '"/><ellipse cx="' + (x + 2.2) + '" cy="60" rx="8" ry="2.6" fill="' + shade(k.wall, -55) + '"/>'; });
+      return s + '<rect x="21" y="34" width="54" height="24" fill="' + k.wall + '"/>' + texture(k, 21, 34, 54, 24) +
+        '<polygon points="13,37 48,14 83,37" fill="' + k.roof + '"/><rect x="42" y="42" width="12" height="16" fill="' + shade(k.wall, -55) + '"/>';
+    },
+    barracks: function (k) {
+      return '<ellipse cx="48" cy="66" rx="40" ry="18" fill="#B49A6C" opacity=".85"/>' +
+        '<path d="M26 82V44" stroke="' + shade(k.wall, -45) + '" stroke-width="3" stroke-linecap="round"/>' +
+        '<circle cx="26" cy="40" r="13" fill="' + CREAM + '"/><circle cx="26" cy="40" r="8.5" fill="' + k.trim + '"/><circle cx="26" cy="40" r="3.6" fill="' + CREAM + '"/>' +
+        '<path d="M56 80 70 30M66 80 72 30M78 80 74 30" stroke="#6B4A32" stroke-width="2.6" stroke-linecap="round"/>' +
+        '<path d="M70 30l-3-9 6 3zM72 30l0-10 4 6zM74 30l4-9 1 8z" fill="#C9CDD1"/>';
+    },
+    tower: function (k) {
+      return shadow(26) + '<path d="M28 84 36 34M68 84 60 34M31 64h34M33 50h30M31 64 63 50M65 64 33 50" stroke="#7A5636" stroke-width="3.2" stroke-linecap="round" fill="none"/>' +
+        '<rect x="26" y="26" width="44" height="9" fill="#8D6642"/><path d="M30 26V12M66 26V12" stroke="#7A5636" stroke-width="3"/>' +
+        '<polygon points="22,14 48,0 74,14" fill="' + k.roof + '"/><rect x="26" y="20" width="44" height="3" fill="' + k.trim + '"/>';
+    }
+  };
+  function building(b, t) {
+    var k = t.look, s = DRAW[b.type](k, t);
+    if (b.level === 0) return '<g opacity=".4">' + s + '</g><rect x="8" y="14" width="80" height="72" rx="6" fill="none" stroke="' + CREAM + '" stroke-width="2.5" stroke-dasharray="7 6"/>';
+    return s;
+  }
+  function badge(level) {
+    return '<circle cx="80" cy="16" r="13" fill="' + INK + '" opacity=".88"/><text x="80" y="22.5" text-anchor="middle" font-size="18" font-weight="700" fill="' + CREAM + '">' + level + '</text>';
+  }
+
+  // ---------- 部落場景 ----------
+  var VW = 960, VH = 600, OX = 48, OY = 78, TS = 96;
+  function tileXY(i) { return [OX + (i % R.GRID_W) * TS, OY + Math.floor(i / R.GRID_W) * TS]; }
+  function backdrop(k) {
+    var s = '<rect width="' + VW + '" height="' + VH + '" fill="' + k.ground + '"/>';
+    if (k.backdrop === 'coast') {
+      s += '<rect width="' + VW + '" height="30" fill="#BFE0EA"/><rect y="26" width="' + VW + '" height="26" fill="#3E8FB8"/>' +
+        '<path d="M0 40q30-7 60 0t60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0" fill="none" stroke="#9CD0E4" stroke-width="2.5"/>' +
+        '<rect y="50" width="' + VW + '" height="12" fill="#E2CF9C"/>';
+    } else {
+      s += '<rect width="' + VW + '" height="62" fill="#BFDDE0"/>' +
+        '<polygon points="0,62 0,34 90,8 190,40 300,4 420,36 520,14 640,44 760,6 880,38 960,20 960,62" fill="#6F9C8D"/>' +
+        '<polygon points="0,62 0,48 130,26 250,52 380,24 500,54 630,30 770,56 900,32 960,46 960,62" fill="#4B7A69"/>';
+    }
+    var dots = '';
+    for (var i = 0; i < 46; i++) {   // 固定位置的草叢，讓地面不單調
+      var x = (i * 197) % 940 + 10, y = 70 + (i * 131) % 520;
+      dots += '<ellipse cx="' + x + '" cy="' + y + '" rx="' + (9 + i % 5 * 3) + '" ry="' + (4 + i % 3) + '" fill="' + shade(k.ground, i % 2 ? -10 : 9) + '"/>';
+    }
+    return s + dots;
+  }
+  function fence(k, level) {
+    if (!level) return '';
+    var w = 3 + level * 1.6, x = 30, y = 68, ww = VW - 60, hh = VH - 92;
+    if (k.fence === 'stone') return '<rect x="' + x + '" y="' + y + '" width="' + ww + '" height="' + hh + '" rx="20" fill="none" stroke="#5F6166" stroke-width="' + (w + 5) + '"/>' +
+      '<rect x="' + x + '" y="' + y + '" width="' + ww + '" height="' + hh + '" rx="20" fill="none" stroke="#A5A8AC" stroke-width="' + (w + 1) + '" stroke-dasharray="22 5"/>';
+    return '<rect x="' + x + '" y="' + y + '" width="' + ww + '" height="' + hh + '" rx="20" fill="none" stroke="#5E7B3C" stroke-width="' + (w + 4) + '"/>' +
+      '<rect x="' + x + '" y="' + y + '" width="' + ww + '" height="' + hh + '" rx="20" fill="none" stroke="#A9C46A" stroke-width="' + w + '" stroke-dasharray="5 6"/>';
+  }
+  /* v: {tribe, tiles, wall}；回傳 <svg> 內容。timers 由外部依 data-until 更新。 */
+  function village(v, sel, queue) {
+    var t = Tribes.get(v.tribe), k = t.look, s = backdrop(k) + fence(k, v.wall), until = {};
+    (queue || []).forEach(function (q) { if (q.tile >= 0) until[q.tile] = q.doneAt; });
+    for (var i = 0; i < R.TILE_N; i++) {
+      var p = tileXY(i), b = v.tiles[i], on = sel === i;
+      s += '<g class="tile' + (on ? ' on' : '') + (b ? '' : ' empty') + '" data-tile="' + i + '" transform="translate(' + p[0] + ' ' + p[1] + ')">' +
+        '<rect class="plot" x="5" y="5" width="86" height="86" rx="12"/>';
+      if (b) {
+        s += building(b, t);
+        if (b.level > 0) s += badge(b.level);
+        if (b.busy) s += '<g class="busy"><rect x="12" y="64" width="72" height="24" rx="12" fill="' + INK + '" opacity=".9"/><text x="48" y="82" text-anchor="middle" font-size="17" font-weight="700" fill="#E3B341" data-until="' + (until[i] || 0) + '"></text></g>';
+      }
+      s += '<rect class="hit" width="96" height="96" fill="transparent"/></g>';
+    }
+    return s;
+  }
+
+  // ---------- 世界地圖（自然風格：平滑海岸線、暈染的區域色塊、山脈起伏） ----------
+  function rgba(hex, al) { var n = parseInt(hex.slice(1), 16); return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + al + ')'; }
+  function tracePath(c, poly) {
+    var sp = Geo.smoothPoints(poly), last = sp[sp.length - 1].m;
+    c.beginPath(); c.moveTo(last[0], last[1]);
+    sp.forEach(function (q) { c.quadraticCurveTo(q.c[0], q.c[1], q.m[0], q.m[1]); });
+    c.closePath();
+  }
+  function blob(c, x, y, r, color, a0) {
+    var g = c.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, rgba(color, a0)); g.addColorStop(0.55, rgba(color, a0 * 0.6)); g.addColorStop(1, rgba(color, 0));
+    c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, 6.3); c.fill();
+  }
+  /* 把底圖畫在畫布上（scale = 每個地圖單位幾個像素），之後當成一張圖來縮放平移。 */
+  function paintMap(scale) {
+    var G = Geo.build(), W = Geo.MAP_W, H = Geo.MAP_H, cv = document.createElement('canvas');
+    cv.width = Math.round(W * scale); cv.height = Math.round(H * scale);
+    var c = cv.getContext('2d'); c.scale(scale, scale); c.lineJoin = 'round'; c.lineCap = 'round';
+    // 海面不畫在底圖上，由場景的背景色呈現，縮放平移時才不會看到底圖的邊界
+    var lands = [Geo.OUTLINE, Geo.ISLETS.lanyu, Geo.ISLETS.ludao];
+    lands.forEach(function (p) {   // 近岸的淺水
+      tracePath(c, p); c.strokeStyle = 'rgba(120,195,205,.10)'; c.lineWidth = 15; c.stroke();
+      c.strokeStyle = 'rgba(150,215,215,.13)'; c.lineWidth = 7; c.stroke();
+    });
+    c.save(); tracePath(c, Geo.OUTLINE); c.fillStyle = '#93A97C'; c.fill(); c.clip();
+    G.hexes.forEach(function (h) {
+      if (h.islet) return;
+      if (h.tribe) blob(c, h.x, h.y, Geo.HEX_SIZE * 2, Tribes.get(h.tribe).color, 0.66);
+      else blob(c, h.x, h.y, Geo.HEX_SIZE * 1.8, '#D8CB93', 0.5);   // 野地：平原的草色
+    });
+    Geo.RANGES.forEach(function (line) {   // 山脈的陰影
+      [[17, .07], [10, .08], [4.5, .10]].forEach(function (wv) {
+        c.beginPath(); line.forEach(function (p, i) { var q = Geo.project(p[0], p[1]); if (i) c.lineTo(q[0], q[1]); else c.moveTo(q[0], q[1]); });
+        c.strokeStyle = 'rgba(18,40,40,' + wv[1] + ')'; c.lineWidth = wv[0]; c.stroke();
+      });
+    });
+    Geo.RANGES.forEach(function (line, li) {   // 沿著稜線畫小山峰
+      for (var i = 0; i < line.length - 1; i++) {
+        var a = Geo.project(line[i][0], line[i][1]), b = Geo.project(line[i + 1][0], line[i + 1][1]);
+        var n = Math.max(2, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / 6.5));
+        for (var j = 0; j < n; j++) {
+          var f = j / n, off = ((i * 7 + j * 13 + li * 5) % 9 - 4) * 0.9, sz = 2.6 + ((i + j * 3) % 4) * 0.5;
+          var x = a[0] + (b[0] - a[0]) * f + off, y = a[1] + (b[1] - a[1]) * f + off * 0.4;
+          c.fillStyle = 'rgba(255,255,255,.34)'; c.beginPath(); c.moveTo(x - sz, y + sz * 0.7); c.lineTo(x, y - sz * 0.8); c.lineTo(x, y + sz * 0.7); c.fill();
+          c.fillStyle = 'rgba(16,38,40,.36)'; c.beginPath(); c.moveTo(x, y - sz * 0.8); c.lineTo(x + sz, y + sz * 0.7); c.lineTo(x, y + sz * 0.7); c.fill();
+        }
+      }
+    });
+    var lake = Geo.project(120.91, 23.86);   // 日月潭
+    c.fillStyle = '#5FB4D6'; c.beginPath(); c.ellipse(lake[0], lake[1], 1.5, 1.1, 0.5, 0, 6.3); c.fill();
+    c.restore();
+    tracePath(c, Geo.OUTLINE); c.strokeStyle = 'rgba(244,232,196,.9)'; c.lineWidth = 0.7; c.stroke();
+    [['lanyu', Tribes.get('tao').color], ['ludao', '#93A97C']].forEach(function (it) {
+      tracePath(c, Geo.ISLETS[it[0]]); c.fillStyle = it[1]; c.fill(); c.strokeStyle = 'rgba(244,232,196,.9)'; c.lineWidth = 0.6; c.stroke();
+    });
+    return cv;
+  }
+  function mapLabels() {
+    var G = Geo.build(), s = '';
+    Tribes.LIST.forEach(function (t) {
+      var c = G.centroid[t.id]; if (!c) return;
+      var small = (G.regions[t.id] || []).length < 10, y = t.id === 'tao' ? c[1] + 9 : c[1];
+      s += '<text class="rlabel' + (small ? ' minor' : '') + (t.playable ? ' play' : '') + '" x="' + c[0] + '" y="' + y + '">' + t.zh.replace('族', '').replace('（達悟）', '') + '</text>';
+    });
+    return s;
+  }
+
+  return { icon: icon, village: village, paintMap: paintMap, mapLabels: mapLabels, tileXY: tileXY, shade: shade, VW: VW, VH: VH, TS: TS };
+})();
+</script>
+<script>
+/* 山海部落 — 連線層
+ * 有伺服器（socket.io）時走多人連線；沒有時在瀏覽器裡跑同一套規則，當作單機試玩。 */
+window.Net = (function () {
+  'use strict';
+  var handlers = {}, mode = null, socket = null, local = null, localId = null, memToken = null;
+  var SAVE_KEY = 'shanhai_solo_v1', TOKEN_KEY = 'shanhai_token';
+
+  function on(ev, fn) { handlers[ev] = fn; }
+  function fire(ev, d) { if (handlers[ev]) handlers[ev](d); }
+  function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
+  function token() {
+    var t = store(TOKEN_KEY) || memToken;
+    if (!t) {
+      t = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+      memToken = t; store(TOKEN_KEY, t);
+    }
+    return t;
+  }
+
+  // ----- 單機 -----
+  function startLocal() {
+    mode = 'solo';
+    local = new World({ speed: 1 });
+    var saved = store(SAVE_KEY);
+    if (!saved && window.claude && window.claude.hot && window.claude.hot.data && window.claude.hot.data.world) saved = window.claude.hot.data.world;
+    if (saved) { try { local.load(JSON.parse(saved)); } catch (e) { /* 壞掉的存檔就重新開始 */ } }
+    var now = Date.now();
+    local.ensureBots(now);
+    localId = local.tokens.solo && local.villages[local.tokens.solo] ? local.tokens.solo : null;
+    if (localId) local.villages[localId].online = true;
+    fire('status', { online: true, mode: mode });
+    fire('hello', { villages: pubs(now), resumed: !!localId });
+    var n = 0;
+    setInterval(function () {
+      var t = Date.now();
+      local.tick(t);
+      if (localId) fire('state', local.snapshot(localId, t)); else fire('hello', { villages: pubs(t), resumed: false });
+      if (++n % 10 === 0) save();
+    }, 1000);
+    if (window.claude && window.claude.hot && window.claude.hot.snapshot) window.claude.hot.snapshot(function () { return { world: JSON.stringify(local.toJSON()) }; });
+  }
+  function pubs(now) { return Object.keys(local.villages).map(function (k) { return local.pub(local.villages[k], now); }); }
+  function save() { store(SAVE_KEY, JSON.stringify(local.toJSON())); }
+
+  // ----- 連線 -----
+  function startOnline() {
+    mode = 'online';
+    socket = window.io({ transports: ['websocket', 'polling'] });
+    socket.on('connect', function () {
+      fire('status', { online: true, mode: mode });
+      socket.emit('resume', { token: token() }, function (r) { fire('hello', r || { villages: [] }); });
+    });
+    socket.on('disconnect', function () { fire('status', { online: false, mode: mode }); });
+    socket.on('state', function (s) { fire('state', s); });
+    socket.on('hello', function (h) { fire('hello', h); });
+  }
+
+  return {
+    on: on,
+    mode: function () { return mode; },
+    start: function () { if (window.io) startOnline(); else startLocal(); },
+    join: function (o, cb) {
+      if (mode === 'solo') {
+        var now = Date.now(), r = local.join('solo', o, now);
+        if (r.ok) { localId = r.id; local.villages[localId].online = true; save(); fire('state', local.snapshot(localId, now)); }
+        cb(r);
+      } else { o.token = token(); socket.emit('join', o, cb); }
+    },
+    act: function (a, cb) {
+      cb = cb || function () {};
+      if (mode === 'solo') {
+        var now = Date.now(), r = local.act(localId, a, now);
+        fire('state', local.snapshot(localId, now)); cb(r);
+      } else socket.emit('act', a, cb);
+    },
+    view: function (id, cb) {
+      if (mode === 'solo') cb(local.detail(id, Date.now())); else socket.emit('view', id, cb);
+    },
+    reset: function () {   // 只有單機試玩可以重來
+      if (mode !== 'solo') return;
+      try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* 沒有存檔可清 */ }
+      local = new World({ speed: 1 }); localId = null; local.ensureBots(Date.now());
+      fire('hello', { villages: pubs(Date.now()), resumed: false, reset: true });
+    }
+  };
+})();
+</script>
+<script>
+/* 山海部落 — 操作介面（階段 1：選區域落腳、部落經營、圖鑑） */
+(function () {
+  'use strict';
+  var R = World.rules, G = Geo.build();
+  var STAGE_TYPES = ['house', 'farm', 'mat', 'special', 'storage'];   // 這個階段開放的建築；軍事建築在對戰階段加入
+  var JOBS = ['food', 'mat', 'special'], WILD = { fish: '漁場', hunt: '獵場', wood: '林地' };
+  var S = { me: null, pubs: [], tab: 'build', zone: null, selTile: null, form: { owner: '', name: '' }, mode: '', online: false, resetAt: 0, joining: false };
+  var el = {}, MV = { k: 1, cx: Geo.MAP_W / 2, cy: Geo.MAP_H / 2, s0: 1, vw: Geo.MAP_W, vh: Geo.MAP_H, ready: false };
+
+  // ---------- 小工具 ----------
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function n0(x) { return Math.floor(x || 0); }
+  function setHTML(node, html) { if (node._h === html) return false; node.innerHTML = html; node._h = html; return true; }
+  function dur(sec) { sec = Math.max(0, Math.ceil(sec)); return sec < 60 ? sec + ' 秒' : Math.floor(sec / 60) + ' 分 ' + ('0' + sec % 60).slice(-2) + ' 秒'; }
+  function toast(msg, bad) {
+    var d = document.createElement('div'); d.className = 'toast' + (bad ? ' bad' : ''); d.textContent = msg;
+    el.toast.appendChild(d); setTimeout(function () { d.remove(); }, 2600);
+  }
+  function scene() { return S.me && S.tab !== 'map' ? 'village' : 'map'; }
+  function myTribe() { return Tribes.get(S.me.tribe); }
+
+  // ---------- 骨架 ----------
+  function boot() {
+    var app = document.getElementById('app');
+    app.innerHTML = '<header id="hud"></header><main id="stage"><section id="scene">' +
+      '<svg id="vsvg" viewBox="0 0 ' + Art.VW + ' ' + Art.VH + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="部落畫面"><g id="vbase"></g><g id="folk"></g></svg>' +
+      '<svg id="msvg" role="img" aria-label="臺灣全島地圖"></svg><div id="tools"></div></section>' +
+      '<aside id="panel"><nav id="tabs"></nav><div id="pbody"></div></aside></main><div id="toast" role="status" aria-live="polite"></div>';
+    ['hud', 'stage', 'scene', 'vsvg', 'vbase', 'folk', 'msvg', 'tools', 'panel', 'tabs', 'pbody', 'toast'].forEach(function (id) { el[id] = document.getElementById(id); });
+    document.addEventListener('click', onClick);
+    document.addEventListener('input', onInput);
+    el.vsvg.addEventListener('click', function (e) {
+      var g = e.target.closest('[data-tile]'); if (!g || !S.me) return;
+      var i = +g.getAttribute('data-tile'); S.selTile = S.selTile === i ? null : i; S.tab = 'build'; render();
+    });
+    mapInit();
+    window.addEventListener('resize', mapResize);
+    setInterval(tickTimers, 250);
+    setInterval(moveFolk, 2400);
+    Net.on('status', function (s) { S.online = s.online; S.mode = s.mode; render(); });
+    Net.on('hello', function (h) { S.pubs = h.villages || S.pubs; if (h.reset) { S.me = null; S.zone = null; S.selTile = null; S.tab = 'build'; } render(); });
+    Net.on('state', function (st) { S.me = st.me; S.pubs = st.villages; render(); });
+    Net.start();
+    render();
+  }
+
+  // ---------- 世界地圖 ----------
+  function mapInit() {
+    var url = Art.paintMap(4).toDataURL('image/png');
+    el.msvg.innerHTML = '<g id="cam"><image width="' + Geo.MAP_W + '" height="' + Geo.MAP_H + '" href="' + url + '" preserveAspectRatio="none"/>' +
+      '<g id="mzone"></g><g id="mmarks"></g><g id="mlabels">' + Art.mapLabels() + '</g></g>';
+    el.cam = document.getElementById('cam'); el.mzone = document.getElementById('mzone'); el.mmarks = document.getElementById('mmarks');
+    var ptrs = {}, drag = null;
+    function count() { return Object.keys(ptrs).length; }
+    function two() { var k = Object.keys(ptrs); return Math.hypot(ptrs[k[0]].x - ptrs[k[1]].x, ptrs[k[0]].y - ptrs[k[1]].y); }
+    el.msvg.addEventListener('pointerdown', function (e) {
+      try { el.msvg.setPointerCapture(e.pointerId); } catch (x) { /* 有些瀏覽器不支援，拖曳仍可用 */ }
+      ptrs[e.pointerId] = { x: e.clientX, y: e.clientY };
+      if (count() === 1) drag = { x: e.clientX, y: e.clientY, cx: MV.cx, cy: MV.cy, moved: false };
+      else if (count() === 2) drag = { pinch: two(), k: MV.k, moved: true };
+    });
+    el.msvg.addEventListener('pointermove', function (e) {
+      if (!ptrs[e.pointerId] || !drag) return;
+      ptrs[e.pointerId] = { x: e.clientX, y: e.clientY };
+      if (drag.pinch && count() === 2) { MV.k = drag.k * two() / drag.pinch; mapApply(); return; }
+      if (drag.pinch) return;
+      var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (Math.abs(dx) + Math.abs(dy) > 7) drag.moved = true;
+      if (drag.moved) { MV.cx = drag.cx - dx / (MV.s0 * MV.k); MV.cy = drag.cy - dy / (MV.s0 * MV.k); mapApply(); }
+    });
+    function up(e) {
+      if (!ptrs[e.pointerId]) return;
+      var tap = drag && !drag.moved && count() === 1;
+      delete ptrs[e.pointerId];
+      if (tap) mapTap(e.clientX, e.clientY);
+      if (count() === 0) drag = null;
+      else { var k = Object.keys(ptrs)[0]; drag = { x: ptrs[k].x, y: ptrs[k].y, cx: MV.cx, cy: MV.cy, moved: true }; }
+    }
+    el.msvg.addEventListener('pointerup', up); el.msvg.addEventListener('pointercancel', up);
+    el.msvg.addEventListener('wheel', function (e) { e.preventDefault(); zoomAt(e.deltaY < 0 ? 1.25 : 0.8, e.clientX, e.clientY); }, { passive: false });
+    MV.ready = true; mapResize();
+  }
+  function toMap(cx, cy) {
+    var r = el.msvg.getBoundingClientRect();
+    return [((cx - r.left) / MV.s0 - (MV.vw / 2 - MV.cx * MV.k)) / MV.k, ((cy - r.top) / MV.s0 - (MV.vh / 2 - MV.cy * MV.k)) / MV.k];
+  }
+  function zoomAt(f, cx, cy) {
+    var before = toMap(cx, cy); MV.k *= f; mapApply();
+    var after = toMap(cx, cy); MV.cx += before[0] - after[0]; MV.cy += before[1] - after[1]; mapApply();
+  }
+  function mapResize() {
+    if (!MV.ready) return;
+    var r = el.scene.getBoundingClientRect(); if (!r.width || !r.height) return;
+    MV.s0 = Math.min(r.width / Geo.MAP_W, r.height / Geo.MAP_H); MV.vw = r.width / MV.s0; MV.vh = r.height / MV.s0;
+    el.msvg.setAttribute('viewBox', '0 0 ' + MV.vw.toFixed(1) + ' ' + MV.vh.toFixed(1));
+    mapApply();
+  }
+  function mapApply() {
+    MV.k = Math.max(1, Math.min(7, MV.k));
+    MV.cx = Math.max(0, Math.min(Geo.MAP_W, MV.cx)); MV.cy = Math.max(0, Math.min(Geo.MAP_H, MV.cy));
+    el.cam.setAttribute('transform', 'translate(' + (MV.vw / 2 - MV.cx * MV.k).toFixed(2) + ' ' + (MV.vh / 2 - MV.cy * MV.k).toFixed(2) + ') scale(' + MV.k.toFixed(3) + ')');
+    el.msvg.style.setProperty('--u', (1 / (MV.s0 * MV.k)).toFixed(4));
+    el.msvg.classList.toggle('far', MV.k < 1.9);
+    renderMarks();
+  }
+  function focusHex(h, k) { MV.cx = h.x; MV.cy = h.y; if (k) MV.k = Math.max(MV.k, k); mapApply(); }
+  function mapTap(cx, cy) {
+    var p = toMap(cx, cy), u = 1 / (MV.s0 * MV.k), best = null, bd = 16 * u;
+    S.pubs.forEach(function (v) { var d = Math.hypot(v.pos[0] - p[0], v.pos[1] - p[1]); if (d < bd) { bd = d; best = v; } });
+    var h = best ? G.byId[best.hex] : Geo.nearestHex(p[0], p[1], Geo.HEX_SIZE * 1.15);
+    S.zone = h ? h.id : null;
+    if (S.me) S.tab = 'map';
+    render();
+  }
+  function renderMarks() {
+    if (!MV.ready) return;
+    var u = 1 / (MV.s0 * MV.k), s = '', z = S.zone && G.byId[S.zone];
+    setHTML(el.mzone, z ? '<circle class="zsel" cx="' + z.x + '" cy="' + z.y + '" r="' + (Geo.HEX_SIZE * 1.05) + '" style="stroke-width:' + (2.2 * u).toFixed(3) + '"/>' : '');
+    G.settlements.forEach(function (st) {
+      var r = 5 * u;
+      s += '<path class="sett" d="M' + st.x + ' ' + (st.y - r) + 'L' + (st.x + r) + ' ' + st.y + 'L' + st.x + ' ' + (st.y + r) + 'L' + (st.x - r) + ' ' + st.y + 'Z" style="stroke-width:' + (1.4 * u).toFixed(3) + '"/>';
+    });
+    S.pubs.forEach(function (v) {
+      var mine = S.me && v.id === S.me.id, t = Tribes.get(v.tribe), r = (mine ? 6.5 : MV.k < 1.9 ? 3 : 4.2) * u;
+      s += '<g class="vm' + (mine ? ' me' : '') + '"><circle cx="' + v.pos[0] + '" cy="' + v.pos[1] + '" r="' + r.toFixed(3) + '" fill="' + t.color + '" style="stroke-width:' + ((mine ? 2.4 : 1.4) * u).toFixed(3) + '"/>' +
+        '<text x="' + v.pos[0] + '" y="' + (v.pos[1] + r + 10 * u).toFixed(2) + '" style="font-size:' + (10 * u).toFixed(3) + 'px;stroke-width:' + (2.6 * u).toFixed(3) + '">' + esc(v.name) + '</text></g>';
+    });
+    setHTML(el.mmarks, s);
+  }
+
+  // ---------- 部落畫面 ----------
+  var folk = [];
+  function renderVillage() {
+    var v = S.me; if (!v) return;
+    var sig = v.tribe + '|' + v.wall + '|' + S.selTile + '|' + JSON.stringify(v.tiles) + JSON.stringify(v.queue);
+    if (el.vbase._sig !== sig) {
+      var look = Tribes.get(v.tribe).look;   // 畫面比例不同時，上下多出來的地方用天空與地面的顏色補滿
+      el.vsvg.style.background = 'linear-gradient(' + (look.backdrop === 'coast' ? '#BFE0EA' : '#BFDDE0') + ' 50%, ' + look.ground + ' 50%)';
+      el.vbase.innerHTML = Art.village(v, S.selTile, v.queue); el.vbase._sig = sig; tickTimers();
+    }
+    var want = Math.min(v.pop, 12);
+    if (folk.length !== want) {
+      var t = Tribes.get(v.tribe), s = '';
+      folk = [];
+      for (var i = 0; i < want; i++) {
+        var p = spot(v); folk.push(p);
+        s += '<g class="person" style="transform:translate(' + p[0] + 'px,' + p[1] + 'px)"><ellipse cx="0" cy="9" rx="6" ry="2.2" fill="#000" opacity=".22"/><path d="M-5 9c0-8 2-12 5-12s5 4 5 12z" fill="' + (i % 3 ? '#F2EAD6' : t.look.trim) + '"/><circle cx="0" cy="-7" r="4.4" fill="#B98660"/></g>';
+      }
+      el.folk.innerHTML = s;
+    }
+  }
+  function spot(v) {
+    var built = []; for (var i = 0; i < R.TILE_N; i++) if (v.tiles[i] && v.tiles[i].level > 0) built.push(i);
+    var p = Art.tileXY(built[Math.floor(Math.random() * built.length)] || R.CENTER_TILE);
+    return [Math.round(p[0] + 14 + Math.random() * 68), Math.round(p[1] + 88 + Math.random() * 10)];
+  }
+  function moveFolk() {
+    if (!S.me || scene() !== 'village' || document.hidden) return;
+    var nodes = el.folk.children;
+    for (var i = 0; i < nodes.length; i++) if (Math.random() < 0.6) { var p = spot(S.me); nodes[i].style.transform = 'translate(' + p[0] + 'px,' + p[1] + 'px)'; }
+  }
+  function tickTimers() {
+    var now = Date.now(), list = document.querySelectorAll('[data-until]');
+    for (var i = 0; i < list.length; i++) list[i].textContent = dur((+list[i].getAttribute('data-until') - now) / 1000);
+  }
+
+  // ---------- 上方資訊列 ----------
+  function chip(ic, label, val, cap) {
+    return '<div class="chip" title="' + label + '">' + Art.icon(ic) + '<span class="lbl">' + label + '</span><b>' + val + '</b>' + (cap != null ? '<span class="cap">/' + cap + '</span>' : '') + '</div>';
+  }
+  function renderHud() {
+    var me = S.me, h, badge = '<div class="mode">' + (S.mode === 'solo' ? '單機試玩' : S.online ? '已連線' : '連線中') + '</div>';
+    if (!me) h = '<div class="brand">山海部落</div><div class="spacer"></div><div class="turn">橫放手機，畫面更大</div>' + badge;
+    else {
+      var t = myTribe(), d = me.d;
+      h = '<div class="vname"><span class="dot" style="background:' + t.color + '"></span><b>' + esc(me.name) + '</b><span class="sub">' + t.zh + '</span></div>' +
+        chip('food', t.res.food, n0(me.res.food), d.cap) + chip('mat', t.res.mat, n0(me.res.mat), d.cap) +
+        chip('sp', t.sp.zh, n0(me.sp[me.tribe]), d.spCap) + chip('pop', '族人', me.pop, d.popCap) + chip('star', '繁榮', d.prosperity) +
+        '<div class="spacer"></div>' + badge;
+    }
+    setHTML(el.hud, h);
+  }
+
+  // ---------- 右側面板 ----------
+  function costHTML(me, c, sp) {
+    var t = myTribe(), s = '<span class="costs">';
+    if (c.food) s += '<span class="cost' + (me.res.food < c.food ? ' lack' : '') + '">' + Art.icon('food') + c.food + '</span>';
+    if (c.mat) s += '<span class="cost' + (me.res.mat < c.mat ? ' lack' : '') + '">' + Art.icon('mat') + c.mat + '</span>';
+    if (sp) s += '<span class="cost' + ((me.sp[me.tribe] || 0) < sp ? ' lack' : '') + '">' + Art.icon('sp') + sp + ' ' + t.sp.zh + '</span>';
+    return s + '</span>';
+  }
+  function affordable(me, c, sp) { return me.res.food >= c.food && me.res.mat >= c.mat && (me.sp[me.tribe] || 0) >= (sp || 0); }
+  function effect(type, L, t) {
+    switch (type) {
+      case 'center': return '倉庫容量 ' + (300 + 200 * L) + '，其他建築最高可到等級 ' + L;
+      case 'house': return '可以住 ' + (1 + 2 * L) + ' 位族人';
+      case 'farm': return (2 * L) + ' 個耕作位置，產出' + t.res.food;
+      case 'mat': return (2 * L) + ' 個採集位置，產出' + t.res.mat;
+      case 'special': return (2 * L) + ' 個工作位置，產出' + t.sp.zh;
+      case 'storage': return '倉庫容量 +' + 400 * L + '，特產容量 +' + 20 * L;
+    }
+    return '';
+  }
+  function bname(t, type) { var b = t.b[type]; return esc(b.zh) + (b.native ? ' <i class="nat">' + esc(b.native) + '</i>' : ''); }
+  function buildingCard(me, i, b) {
+    var t = myTribe(), full = me.queue.length >= R.BUILDERS, h = '<section class="card sel"><h3>' + bname(t, b.type) + '<span class="lv">' + (b.level ? '等級 ' + b.level : '興建中') + '</span></h3>';
+    if (b.level) h += '<p class="eff">' + effect(b.type, b.level, t) + '</p>';
+    if (b.busy) {
+      var q = me.queue.filter(function (x) { return x.tile === i; })[0];
+      h += '<p class="busyline">施工中，還要 <b data-until="' + (q ? q.doneAt : 0) + '"></b></p>';
+    } else if (b.level >= R.MAX_LEVEL) h += '<p class="muted">已經是最高等級。</p>';
+    else {
+      var to = b.level + 1, c = R.cost(b.type, to), sp = 0, why = '';
+      if (b.type === 'center') sp = R.CENTER_UP[to].each * R.CENTER_UP[to].kinds;
+      else if (to > me.d.center) why = '要先把' + t.b.center.zh + '升到等級 ' + to;
+      if (!why && full) why = '同時只能進行 ' + R.BUILDERS + ' 項工程';
+      if (!why && !affordable(me, c, sp)) why = '物資還不夠';
+      h += '<p class="eff next">升級後：' + effect(b.type, to, t) + '</p>' +
+        '<div class="act"><button class="btn" data-act="upgrade" data-tile="' + i + '"' + (why ? ' disabled' : '') + '>升到等級 ' + to + '</button>' + costHTML(me, c, sp) + '<span class="time">' + dur(R.buildTime(b.type, to)) + '</span></div>' +
+        (why ? '<p class="why">' + why + '</p>' : '');
+    }
+    return h + '<p class="note">' + esc(t.b[b.type].note) + '</p></section>';
+  }
+  function emptyCard(me, i) {
+    var t = myTribe(), full = me.queue.length >= R.BUILDERS, h = '<section class="card sel"><h3>空地<span class="lv">選一種建築</span></h3><ul class="opts">';
+    STAGE_TYPES.forEach(function (ty) {
+      var c = R.cost(ty, 1), have = R.count(me, ty), lim = R.limit(ty, me.d.center), why = '';
+      if (have >= lim) why = '已達上限，先升級' + t.b.center.zh; else if (full) why = '工程已滿'; else if (!affordable(me, c)) why = '物資還不夠';
+      h += '<li><div class="opt-top"><b>' + bname(t, ty) + '</b><span class="cnt">' + have + '/' + lim + '</span></div><p class="eff">' + effect(ty, 1, t) + '</p>' +
+        '<div class="act"><button class="btn sm" data-act="build" data-tile="' + i + '" data-type="' + ty + '"' + (why ? ' disabled' : '') + '>興建</button>' + costHTML(me, c) + '<span class="time">' + dur(R.buildTime(ty, 1)) + '</span></div>' +
+        (why ? '<p class="why">' + why + '</p>' : '') + '</li>';
+    });
+    return h + '</ul></section>';
+  }
+  function jobsCard(me) {
+    var t = myTribe(), d = me.d, names = { food: t.res.food, mat: t.res.mat, special: t.sp.zh }, ic = { food: 'food', mat: 'mat', special: 'sp' };
+    var used = me.jobs.food + me.jobs.mat + me.jobs.special;
+    var h = '<section class="card"><h3>族人分工<label class="switch" for="auto"><input type="checkbox" id="auto" data-act="auto"' + (me.auto ? ' checked' : '') + '>自動分配</label></h3>';
+    JOBS.forEach(function (k) {
+      h += '<div class="job">' + Art.icon(ic[k]) + '<span class="jn">' + names[k] + '</span><div class="stepper"><button data-act="job" data-k="' + k + '" data-d="-1" aria-label="減少' + names[k] + '的人手"' + (me.jobs[k] <= 0 ? ' disabled' : '') + '>−</button>' +
+        '<b>' + me.jobs[k] + '/' + d.slots[k] + '</b><button data-act="job" data-k="' + k + '" data-d="1" aria-label="增加' + names[k] + '的人手"' + (me.jobs[k] >= d.slots[k] || used >= me.pop ? ' disabled' : '') + '>＋</button></div>' +
+        '<span class="rate">+' + Math.round(d.rates[k] * 60) + '/分</span></div>';
+    });
+    return h + '<p class="muted">族人 ' + me.pop + ' 位，待命 ' + (me.pop - used) + ' 位。位置不夠時，多蓋或升級對應的建築。</p></section>';
+  }
+  function queueCard(me) {
+    if (!me.queue.length) return '';
+    var t = myTribe(), h = '<section class="card"><h3>施工中<span class="lv">' + me.queue.length + '/' + R.BUILDERS + '</span></h3>';
+    me.queue.forEach(function (q) { h += '<div class="qrow"><span>' + esc(t.b[q.type].zh) + ' → 等級 ' + q.to + '</span><b data-until="' + q.doneAt + '"></b></div>'; });
+    return h + '</section>';
+  }
+  function buildPanel(me) {
+    var h = '';
+    if (S.selTile != null) h += me.tiles[S.selTile] ? buildingCard(me, S.selTile, me.tiles[S.selTile]) : emptyCard(me, S.selTile);
+    else h += '<p class="hint">點部落裡的建築可以升級，點空地可以蓋新的建築。</p>';
+    return h + jobsCard(me) + queueCard(me);
+  }
+  function tribeCard(t, cells) {
+    var h = '<section class="card tribe"><h3><span class="dot" style="background:' + t.color + '"></span>' + t.zh + '<span class="chipst ' + (t.playable ? 'on' : '') + '">' + (t.playable ? '可以落腳' : '之後開放') + '</span></h3>' +
+      '<p class="en">' + esc(t.en) + ' · ' + t.terrain + (cells ? ' · 地圖上 ' + cells + ' 格' : '') + '</p><p>' + t.intro + '</p><p class="muted">分布：' + t.area + '</p>';
+    if (t.playable) h += '<dl class="facts"><dt>特產</dt><dd>' + t.sp.zh + '（' + t.sp.desc + '）</dd><dt>特長</dt><dd>' + t.bonus.text + '</dd><dt>問候</dt><dd><i class="nat">' + esc(t.hello) + '</i>（' + t.lang + '）</dd></dl>';
+    return h + '</section>';
+  }
+  function zonePanel() {
+    if (!S.zone) return '<p class="hint">拖曳可以移動地圖，用兩指或右下角的按鈕縮放。點地圖上的任何地方，看看那裡是誰的區域。</p>';
+    var z = G.byId[S.zone], h = '';
+    if (z.tribe) h += tribeCard(Tribes.get(z.tribe), (G.regions[z.tribe] || []).length);
+    else if (z.settlement) h += '<section class="card"><h3>' + G.settlements.filter(function (s) { return s.id === z.settlement; })[0].name + '<span class="chipst">中立</span></h3><p>平原上的中立聚落。之後可以在這裡交換各族的特產。這裡不能落腳，也不會有衝突。</p></section>';
+    else h += '<section class="card"><h3>野地 · ' + WILD[z.wild] + '<span class="chipst">之後開放</span></h3><p>沒有人居住的野地。之後各部落可以派人佔領這裡的資源點。</p></section>';
+    var here = S.pubs.filter(function (v) { return v.hex === z.id; });
+    if (here.length) {
+      h += '<section class="card"><h3>這裡的部落<span class="lv">' + here.length + '/' + Geo.SLOTS + '</span></h3>';
+      here.forEach(function (v) {
+        var mine = S.me && v.id === S.me.id;
+        h += '<div class="qrow"><span>' + esc(v.name) + (mine ? '（你）' : v.bot ? '（示範）' : '') + '</span><b>等級 ' + v.c + ' · 繁榮 ' + v.pros + '</b></div>';
+      });
+      h += '</section>';
+    }
+    return h;
+  }
+  function startPanel() {
+    var z = S.zone && G.byId[S.zone], t = z && z.tribe && Tribes.get(z.tribe), ok = t && t.playable;
+    var h = '<div class="start"><h1>山海部落</h1><p class="lead">很久以前，島上的山與海之間住著許多族群。選一個地方，建立你的部落。</p>' +
+      '<div class="fields"><label for="f-owner">你的名字<input id="f-owner" maxlength="10" autocomplete="off" placeholder="例如：小米"></label>' +
+      '<label for="f-name">部落名稱<input id="f-name" maxlength="10" autocomplete="off" placeholder="例如：晨霧部落"></label></div>' +
+      '<p class="label">第一版開放的族群</p><div class="picks">';
+    Tribes.playable().forEach(function (p) {
+      h += '<button class="pick" data-act="pick" data-t="' + p.id + '" aria-pressed="' + (t && t.id === p.id) + '"><span class="dot" style="background:' + p.color + '"></span><b>' + p.zh + '</b><span>' + p.terrain + '</span></button>';
+    });
+    h += '</div>';
+    if (t) h += tribeCard(t, (G.regions[t.id] || []).length);
+    else if (z) h += zonePanel();
+    else h += '<p class="hint">點上面的族群，或直接在地圖上點一個地方。</p>';
+    h += '<button class="btn big" data-act="join"' + (ok && !S.joining ? '' : ' disabled') + '>' + (ok ? '在' + t.zh + '的區域建立部落' : '先選一個可以落腳的區域') + '</button></div>';
+    return h;
+  }
+  function codexPanel(me) {
+    var t = myTribe(), h = '<section class="card"><h3><span class="dot" style="background:' + t.color + '"></span>' + t.zh + '<span class="lv">' + esc(t.en) + '</span></h3><p>' + t.intro + '</p>' +
+      '<dl class="facts"><dt>問候</dt><dd><i class="nat">' + esc(t.hello) + '</i></dd><dt>謝謝</dt><dd><i class="nat">' + esc(t.thanks) + '</i></dd><dt>語別</dt><dd>' + t.lang + '</dd><dt>特長</dt><dd>' + t.bonus.text + '</dd></dl></section>';
+    t.cards.forEach(function (c) { h += '<section class="card"><h3>' + esc(c.t) + '</h3><p>' + esc(c.x) + '</p></section>'; });
+    h += '<p class="label">島上的 17 族</p><ul class="tlist">';
+    Tribes.LIST.forEach(function (o) { h += '<li><span class="dot" style="background:' + o.color + '"></span><div><b>' + o.zh + '</b><span class="muted"> ' + o.area + '</span><p>' + o.intro + '</p></div></li>'; });
+    h += '</ul><p class="muted">' + Tribes.SOURCE_NOTE + '</p>';
+    if (S.mode === 'solo') h += '<button class="btn ghost" data-act="reset">' + (Date.now() < S.resetAt ? '再按一次，確定重新開始' : '重新開始（清除單機存檔）') + '</button>';
+    return h;
+  }
+  function renderPanel() {
+    var me = S.me;
+    if (!me) { setHTML(el.tabs, ''); el.tabs.hidden = true; if (setHTML(el.pbody, startPanel())) restoreForm(); return; }
+    el.tabs.hidden = false;
+    setHTML(el.tabs, [['build', '部落'], ['map', '地圖'], ['codex', '圖鑑']].map(function (t) {
+      return '<button data-act="tab" data-tab="' + t[0] + '" aria-pressed="' + (S.tab === t[0]) + '">' + t[1] + '</button>';
+    }).join(''));
+    var keep = el.pbody.scrollTop;
+    if (setHTML(el.pbody, S.tab === 'build' ? buildPanel(me) : S.tab === 'map' ? zonePanel() : codexPanel(me))) { el.pbody.scrollTop = keep; tickTimers(); }
+  }
+  function restoreForm() {
+    var a = document.getElementById('f-owner'), b = document.getElementById('f-name');
+    if (a) a.value = S.form.owner; if (b) b.value = S.form.name;
+  }
+  function renderTools() {
+    setHTML(el.tools, scene() === 'map' ? '<div class="zoom"><button data-act="zoom" data-f="1.5" aria-label="放大">＋</button><button data-act="zoom" data-f="0.667" aria-label="縮小">−</button><button data-act="whole" aria-label="顯示全島">全島</button></div>' : '');
+  }
+  function render() {
+    if (!el.hud) return;
+    var sc = scene();
+    if (el.scene.getAttribute('data-scene') !== sc) { el.scene.setAttribute('data-scene', sc); if (sc === 'map') setTimeout(mapResize, 0); }
+    renderHud(); renderTools(); renderPanel();
+    if (sc === 'village') renderVillage(); else renderMarks();
+  }
+
+  // ---------- 操作 ----------
+  function act(a, okMsg) { Net.act(a, function (r) { if (r && !r.ok) toast(r.msg || '沒有成功', true); else if (okMsg || (r && r.msg)) toast(okMsg || r.msg); }); }
+  function onInput(e) {
+    if (e.target.id === 'f-owner') S.form.owner = e.target.value;
+    else if (e.target.id === 'f-name') S.form.name = e.target.value;
+  }
+  function onClick(e) {
+    var b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
+    var a = b.getAttribute('data-act'), me = S.me;
+    if (a === 'tab') { S.tab = b.getAttribute('data-tab'); if (S.tab === 'map' && me) { S.zone = S.zone || me.hex; focusHex(G.byId[me.hex], 2.6); } render(); }
+    else if (a === 'pick') {
+      var id = b.getAttribute('data-t'), c = G.centroid[id], h = Geo.nearestHex(c[0], c[1]);
+      var list = G.regions[id].map(function (x) { return G.byId[x]; }).sort(function (p, q) { return Math.hypot(p.x - c[0], p.y - c[1]) - Math.hypot(q.x - c[0], q.y - c[1]); });
+      h = list[0]; S.zone = h.id; focusHex(h, 1.8); render();
+    }
+    else if (a === 'join') {
+      S.joining = true; render();
+      Net.join({ owner: S.form.owner, name: S.form.name, tribe: G.byId[S.zone].tribe, hex: S.zone }, function (r) {
+        S.joining = false;
+        if (!r.ok) { toast(r.msg, true); render(); return; }
+        S.tab = 'build'; S.selTile = null; toast('部落建立了。先蓋幾間家屋，讓更多族人住進來。'); render();
+      });
+    }
+    else if (a === 'zoom') { var r = el.msvg.getBoundingClientRect(); zoomAt(+b.getAttribute('data-f'), r.left + r.width / 2, r.top + r.height / 2); }
+    else if (a === 'whole') { MV.k = 1; MV.cx = Geo.MAP_W / 2; MV.cy = Geo.MAP_H / 2; mapApply(); }
+    else if (a === 'upgrade') act({ type: 'upgrade', tile: +b.getAttribute('data-tile') }, '開始施工');
+    else if (a === 'build') act({ type: 'build', tile: +b.getAttribute('data-tile'), type2: b.getAttribute('data-type') }, '開始興建');
+    else if (a === 'auto') act({ type: 'auto', on: b.checked });
+    else if (a === 'job') {
+      var j = { type: 'jobs', food: me.jobs.food, mat: me.jobs.mat, special: me.jobs.special };
+      j[b.getAttribute('data-k')] += +b.getAttribute('data-d'); act(j);
+    }
+    else if (a === 'reset') {
+      if (Date.now() < S.resetAt) { S.resetAt = 0; Net.reset(); toast('已重新開始'); }
+      else { S.resetAt = Date.now() + 4000; render(); setTimeout(render, 4100); }
+    }
+  }
+
+  if (window.claude && window.claude.hot && window.claude.hot.ready) window.claude.hot.ready(boot);
+  else if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
 })();
 </script>

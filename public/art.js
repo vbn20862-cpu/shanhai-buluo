@@ -188,20 +188,72 @@ window.Art = (function () {
     return s;
   }
 
-  // ---------- 世界地圖 ----------
-  function mapBase() {
-    var G = Geo.build(), s = '<path d="' + Geo.outlinePath(Geo.ISLETS.ludao) + '" fill="#3A4B53" opacity=".6"/>';
-    G.hexes.forEach(function (h) {
-      var t = h.tribe && Tribes.get(h.tribe);
-      s += '<polygon class="hex' + (t ? (t.playable ? ' play' : ' soon') : ' none') + '" data-hex="' + h.id + '" points="' +
-        Geo.hexCorners(h.x, h.y).map(function (q) { return q[0].toFixed(2) + ',' + q[1].toFixed(2); }).join(' ') + '" fill="' + (t ? t.color : '#3A4B53') + '"/>';
+  // ---------- 世界地圖（自然風格：平滑海岸線、暈染的區域色塊、山脈起伏） ----------
+  function rgba(hex, al) { var n = parseInt(hex.slice(1), 16); return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + al + ')'; }
+  function tracePath(c, poly) {
+    var sp = Geo.smoothPoints(poly), last = sp[sp.length - 1].m;
+    c.beginPath(); c.moveTo(last[0], last[1]);
+    sp.forEach(function (q) { c.quadraticCurveTo(q.c[0], q.c[1], q.m[0], q.m[1]); });
+    c.closePath();
+  }
+  function blob(c, x, y, r, color, a0) {
+    var g = c.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, rgba(color, a0)); g.addColorStop(0.55, rgba(color, a0 * 0.6)); g.addColorStop(1, rgba(color, 0));
+    c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, 6.3); c.fill();
+  }
+  /* 把底圖畫在畫布上（scale = 每個地圖單位幾個像素），之後當成一張圖來縮放平移。 */
+  function paintMap(scale) {
+    var G = Geo.build(), W = Geo.MAP_W, H = Geo.MAP_H, cv = document.createElement('canvas');
+    cv.width = Math.round(W * scale); cv.height = Math.round(H * scale);
+    var c = cv.getContext('2d'); c.scale(scale, scale); c.lineJoin = 'round'; c.lineCap = 'round';
+    // 海面不畫在底圖上，由場景的背景色呈現，縮放平移時才不會看到底圖的邊界
+    var lands = [Geo.OUTLINE, Geo.ISLETS.lanyu, Geo.ISLETS.ludao];
+    lands.forEach(function (p) {   // 近岸的淺水
+      tracePath(c, p); c.strokeStyle = 'rgba(120,195,205,.10)'; c.lineWidth = 15; c.stroke();
+      c.strokeStyle = 'rgba(150,215,215,.13)'; c.lineWidth = 7; c.stroke();
     });
+    c.save(); tracePath(c, Geo.OUTLINE); c.fillStyle = '#93A97C'; c.fill(); c.clip();
+    G.hexes.forEach(function (h) {
+      if (h.islet) return;
+      if (h.tribe) blob(c, h.x, h.y, Geo.HEX_SIZE * 2, Tribes.get(h.tribe).color, 0.66);
+      else blob(c, h.x, h.y, Geo.HEX_SIZE * 1.8, '#D8CB93', 0.5);   // 野地：平原的草色
+    });
+    Geo.RANGES.forEach(function (line) {   // 山脈的陰影
+      [[17, .07], [10, .08], [4.5, .10]].forEach(function (wv) {
+        c.beginPath(); line.forEach(function (p, i) { var q = Geo.project(p[0], p[1]); if (i) c.lineTo(q[0], q[1]); else c.moveTo(q[0], q[1]); });
+        c.strokeStyle = 'rgba(18,40,40,' + wv[1] + ')'; c.lineWidth = wv[0]; c.stroke();
+      });
+    });
+    Geo.RANGES.forEach(function (line, li) {   // 沿著稜線畫小山峰
+      for (var i = 0; i < line.length - 1; i++) {
+        var a = Geo.project(line[i][0], line[i][1]), b = Geo.project(line[i + 1][0], line[i + 1][1]);
+        var n = Math.max(2, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / 6.5));
+        for (var j = 0; j < n; j++) {
+          var f = j / n, off = ((i * 7 + j * 13 + li * 5) % 9 - 4) * 0.9, sz = 2.6 + ((i + j * 3) % 4) * 0.5;
+          var x = a[0] + (b[0] - a[0]) * f + off, y = a[1] + (b[1] - a[1]) * f + off * 0.4;
+          c.fillStyle = 'rgba(255,255,255,.34)'; c.beginPath(); c.moveTo(x - sz, y + sz * 0.7); c.lineTo(x, y - sz * 0.8); c.lineTo(x, y + sz * 0.7); c.fill();
+          c.fillStyle = 'rgba(16,38,40,.36)'; c.beginPath(); c.moveTo(x, y - sz * 0.8); c.lineTo(x + sz, y + sz * 0.7); c.lineTo(x, y + sz * 0.7); c.fill();
+        }
+      }
+    });
+    var lake = Geo.project(120.91, 23.86);   // 日月潭
+    c.fillStyle = '#5FB4D6'; c.beginPath(); c.ellipse(lake[0], lake[1], 1.5, 1.1, 0.5, 0, 6.3); c.fill();
+    c.restore();
+    tracePath(c, Geo.OUTLINE); c.strokeStyle = 'rgba(244,232,196,.9)'; c.lineWidth = 0.7; c.stroke();
+    [['lanyu', Tribes.get('tao').color], ['ludao', '#93A97C']].forEach(function (it) {
+      tracePath(c, Geo.ISLETS[it[0]]); c.fillStyle = it[1]; c.fill(); c.strokeStyle = 'rgba(244,232,196,.9)'; c.lineWidth = 0.6; c.stroke();
+    });
+    return cv;
+  }
+  function mapLabels() {
+    var G = Geo.build(), s = '';
     Tribes.LIST.forEach(function (t) {
       var c = G.centroid[t.id]; if (!c) return;
-      s += '<text class="rlabel" x="' + c[0] + '" y="' + (c[1] + 2) + '">' + t.zh.replace('族', '').replace('（達悟）', '') + '</text>';
+      var small = (G.regions[t.id] || []).length < 10, y = t.id === 'tao' ? c[1] + 9 : c[1];
+      s += '<text class="rlabel' + (small ? ' minor' : '') + (t.playable ? ' play' : '') + '" x="' + c[0] + '" y="' + y + '">' + t.zh.replace('族', '').replace('（達悟）', '') + '</text>';
     });
     return s;
   }
 
-  return { icon: icon, village: village, mapBase: mapBase, tileXY: tileXY, shade: shade, VW: VW, VH: VH, TS: TS };
+  return { icon: icon, village: village, paintMap: paintMap, mapLabels: mapLabels, tileXY: tileXY, shade: shade, VW: VW, VH: VH, TS: TS };
 })();
