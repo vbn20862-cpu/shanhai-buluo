@@ -149,3 +149,36 @@ test('拓荒：只能從已開墾的地往外拓，完成後多一塊建地並�
   const outer = R.SITES[ring1].near.find(j => R.SITES[j].ring === 2);
   assert.equal(w.act(v.id, { type: 'clear', tile: outer }, now).ok, false, '最外圈要部落中心等級 2');
 });
+
+test('掛機：採集重點、離線自動升級與離線報告', () => {
+  const w = new World({ rng: seeded(21) });
+  let now = 1e6;
+  const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'amis' }, now).id];
+  w.setOnline(v.id, true, now);
+  assert.ok(w.act(v.id, { type: 'idle', focus: 'mat', upgrade: true }, now).ok);
+  assert.equal(v.jobs.mat, 2); assert.equal(v.jobs.food, 2, '重點排滿後，其餘的人照常分配');
+  v.pop = 3; w.autoJobs(v);
+  assert.deepEqual([v.jobs.mat, v.jobs.food], [2, 1], '人手不夠時先顧重點');
+  v.pop = 4;
+  w.setOnline(v.id, false, now);
+  const before = { food: v.res.food, lv: v.tiles.filter(Boolean).reduce((s, b) => s + b.level, 0) };
+  now += 30 * 60000;                       // 離線 30 分鐘
+  w.tick(now);
+  assert.equal(v.last, 1e6, '離線的部落不會每秒計算');
+  w.setOnline(v.id, true, now);
+  assert.ok(v.report, '回來要有離線報告');
+  assert.ok(v.report.food > 0 || v.report.mat > 0);
+  assert.ok(v.report.ups.length > 0, '離線時有自動升級');
+  assert.ok(v.tiles.filter(Boolean).reduce((s, b) => s + b.level, 0) > before.lv);
+  assert.ok(v.res.food <= World.rules.derived(v, 1).cap + 1 && v.res.food >= 0);
+  assert.ok(w.act(v.id, { type: 'ack' }, now).ok); assert.equal(v.report, undefined);
+  // 短暫斷線不出報告
+  w.setOnline(v.id, false, now); now += 20000; w.setOnline(v.id, true, now);
+  assert.equal(v.report, undefined);
+  // 離線超過 8 小時只算 8 小時
+  w.act(v.id, { type: 'idle', upgrade: false }, now);
+  w.setOnline(v.id, false, now); const t0 = now; now += 20 * 3600000; w.setOnline(v.id, true, now);
+  assert.equal(v.report.capped, true);
+  const adm = w.adminState(now);
+  assert.equal(adm.villages.length, 1); assert.equal(adm.tribes.amis.players, 1);
+});

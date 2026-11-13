@@ -1,10 +1,10 @@
-/* 山海部落 — 操作介面（階段 1：選區域落腳、拓荒與部落經營、圖鑑） */
+/* 山海部落 — 操作介面（選區域落腳、拓荒與部落經營、掛機、拜訪、圖鑑） */
 (function () {
   'use strict';
   var R = World.rules, G = Geo.build();
   var STAGE_TYPES = ['house', 'farm', 'mat', 'special', 'storage'];   // 這個階段開放的建築；軍事建築在對戰階段加入
   var JOBS = ['food', 'mat', 'special'], WILD = { fish: '漁場', hunt: '獵場', wood: '林地' };
-  var S = { me: null, pubs: [], tab: 'build', zone: null, selTile: null, form: { owner: '', name: '' }, mode: '', online: false, resetAt: 0, joining: false };
+  var S = { me: null, pubs: [], tab: 'build', zone: null, selTile: null, visit: null, form: { owner: '', name: '' }, mode: '', online: false, resetAt: 0, joining: false };
   var el = {}, MV = null, VV = null;
 
   // ---------- 小工具 ----------
@@ -16,7 +16,9 @@
     var d = document.createElement('div'); d.className = 'toast' + (bad ? ' bad' : ''); d.textContent = msg;
     el.toast.appendChild(d); setTimeout(function () { d.remove(); }, 2600);
   }
-  function scene() { return S.me && S.tab !== 'map' ? 'village' : 'map'; }
+  function scene() { return S.visit || (S.me && S.tab !== 'map') ? 'village' : 'map'; }
+  function shown() { return S.visit ? S.visit.v : S.me; }   // 目前畫面上的部落：自己的，或正在拜訪的
+  function ago(ms) { var m = Math.round(ms / 60000); return m < 1 ? '不到 1 分鐘' : m < 60 ? m + ' 分鐘' : Math.floor(m / 60) + ' 小時 ' + (m % 60) + ' 分鐘'; }
   function myTribe() { return Tribes.get(S.me.tribe); }
 
   /* 可以拖曳、縮放的畫面。cover=true 時畫面一定被場景填滿（部落）；false 時整張圖都看得到（地圖）。 */
@@ -81,8 +83,8 @@
     app.innerHTML = '<header id="hud"></header><main id="stage"><section id="scene">' +
       '<svg id="vsvg" role="img" aria-label="部落畫面">' + Art.DEFS + '<g id="vcam"><image id="vimg" width="' + Art.SW + '" height="' + Art.SH + '" preserveAspectRatio="none"/><g id="vdecor"></g><g id="vobjs"></g><g id="folk"></g></g></svg>' +
       '<svg id="msvg" role="img" aria-label="臺灣全島地圖"></svg><div id="tools"></div></section>' +
-      '<aside id="panel"><nav id="tabs"></nav><div id="pbody"></div></aside></main><div id="toast" role="status" aria-live="polite"></div>';
-    ['hud', 'stage', 'scene', 'vsvg', 'vcam', 'vimg', 'vdecor', 'vobjs', 'folk', 'msvg', 'tools', 'panel', 'tabs', 'pbody', 'toast'].forEach(function (id) { el[id] = document.getElementById(id); });
+      '<aside id="panel"><nav id="tabs"></nav><div id="pbody"></div></aside></main><div id="modal"></div><div id="toast" role="status" aria-live="polite"></div>';
+    ['hud', 'stage', 'scene', 'vsvg', 'vcam', 'vimg', 'vdecor', 'vobjs', 'folk', 'msvg', 'tools', 'panel', 'tabs', 'pbody', 'toast', 'modal'].forEach(function (id) { el[id] = document.getElementById(id); });
     document.addEventListener('click', onClick);
     document.addEventListener('input', onInput);
     el.msvg.innerHTML = '<g id="cam"><image width="' + Geo.MAP_W + '" height="' + Geo.MAP_H + '" href="' + Art.paintMap(4).toDataURL('image/png') + '" preserveAspectRatio="none"/>' +
@@ -95,8 +97,9 @@
     window.addEventListener('resize', function () { MV.resize(); VV.resize(); });
     setInterval(tickTimers, 250);
     setInterval(moveFolk, 2400);
+    setInterval(function () { if (S.visit) Net.view(S.visit.id, function (d) { if (d && S.visit && S.visit.id === d.id) { S.visit.v = d; render(); } }); }, 3000);
     Net.on('status', function (s) { S.online = s.online; S.mode = s.mode; render(); });
-    Net.on('hello', function (h) { S.pubs = h.villages || S.pubs; if (h.reset) { S.me = null; S.zone = null; S.selTile = null; S.tab = 'build'; el.vobjs._sig = null; } render(); });
+    Net.on('hello', function (h) { S.pubs = h.villages || S.pubs; if (h.reset) { S.me = null; S.zone = null; S.selTile = null; S.visit = null; S.tab = 'build'; el.vobjs._sig = null; } render(); });
     Net.on('state', function (st) { S.me = st.me; S.pubs = st.villages; render(); });
     Net.start();
     render();
@@ -130,7 +133,7 @@
   // ---------- 部落畫面 ----------
   var folkN = -1;
   function siteTap(x, y) {
-    if (!S.me) return;
+    if (!S.me || S.visit) return;   // 拜訪別人時只能看
     var best = null, bd = 78;
     for (var i = 0; i < R.TILE_N; i++) {
       var p = Art.sitePos(i), lift = S.me.tiles[i] || !S.me.land[i] ? 22 : 0, d = Math.hypot(p[0] - x, (p[1] - lift - y) * 1.25);
@@ -139,14 +142,14 @@
     S.selTile = best === S.selTile ? null : best; S.tab = 'build'; render();
   }
   function renderVillage() {
-    var v = S.me; if (!v) return;
-    var t = Tribes.get(v.tribe);
+    var v = shown(); if (!v) return;
+    var t = Tribes.get(v.tribe), sel = S.visit ? null : S.selTile;
     if (el.vimg._t !== t.id) { el.vimg.setAttribute('href', Art.groundURL(t)); el.vdecor.innerHTML = Art.decor(t); el.vimg._t = t.id; }
     if (!VV.sized || el.vimg._focus !== v.id) {
       if (VV.resize()) { var c = Art.sitePos(R.CENTER_TILE); VV.focus(c[0], c[1] - 10, Math.max(1, Math.min(3.2, VV.vw / 1040))); el.vimg._focus = v.id; }
     }
-    var sig = v.tribe + '|' + S.selTile + '|' + JSON.stringify(v.tiles) + v.land.join('') + JSON.stringify(v.queue);
-    if (el.vobjs._sig !== sig) { el.vobjs.innerHTML = Art.scene(v, S.selTile); el.vobjs._sig = sig; tickTimers(); }
+    var sig = v.id + '|' + sel + '|' + JSON.stringify(v.tiles) + v.land.join('') + JSON.stringify(v.queue);
+    if (el.vobjs._sig !== sig) { el.vobjs.innerHTML = Art.scene(v, sel); el.vobjs._sig = sig; tickTimers(); }
     var want = Math.min(v.pop, 14);
     if (folkN !== want || el.folk._t !== v.id) {
       var s = '';
@@ -160,9 +163,9 @@
     return [Math.round(p[0] - 44 + Math.random() * 88), Math.round(p[1] + 24 + Math.random() * 16)];
   }
   function moveFolk() {
-    if (!S.me || scene() !== 'village' || document.hidden) return;
+    if (!shown() || scene() !== 'village' || document.hidden) return;
     var nodes = el.folk.children;
-    for (var i = 0; i < nodes.length; i++) if (Math.random() < 0.55) { var p = spot(S.me); nodes[i].style.transform = 'translate(' + p[0] + 'px,' + p[1] + 'px)'; }
+    for (var i = 0; i < nodes.length; i++) if (Math.random() < 0.55) { var p = spot(shown()); nodes[i].style.transform = 'translate(' + p[0] + 'px,' + p[1] + 'px)'; }
   }
   function tickTimers() {
     var now = Date.now(), list = document.querySelectorAll('[data-until]');
@@ -174,14 +177,15 @@
     return '<div class="chip" title="' + label + '">' + Art.icon(ic) + '<span class="lbl">' + label + '</span><b>' + val + '</b>' + (cap != null ? '<span class="cap">/' + cap + '</span>' : '') + '</div>';
   }
   function renderHud() {
-    var me = S.me, h, badge = '<div class="mode">' + (S.mode === 'solo' ? '單機試玩' : S.online ? '已連線' : '連線中') + '</div>';
+    var live = S.pubs.filter(function (v) { return v.online && !v.bot; }).length;
+    var me = S.me, h, badge = '<div class="mode' + (S.mode !== 'solo' && !S.online ? ' off' : '') + '">' + (S.mode === 'solo' ? '單機試玩' : S.online ? '已連線 · ' + live + ' 人在線' : '連線中斷，重新連線中') + '</div>';
     if (!me) h = '<div class="brand">山海部落</div><div class="spacer"></div><div class="turn">橫放手機，畫面更大</div>' + badge;
     else {
       var t = myTribe(), d = me.d;
       h = '<div class="vname"><span class="dot" style="background:' + t.color + '"></span><b>' + esc(me.name) + '</b><span class="sub">' + t.zh + '</span></div>' +
         chip('food', t.res.food, n0(me.res.food), d.cap) + chip('mat', t.res.mat, n0(me.res.mat), d.cap) +
         chip('sp', t.sp.zh, n0(me.sp[me.tribe]), d.spCap) + chip('pop', '族人', me.pop, d.popCap) + chip('star', '繁榮', d.prosperity) +
-        '<div class="spacer"></div>' + badge;
+        '<div class="spacer"></div>' + (S.visit ? '<div class="visiting">正在拜訪 ' + esc(S.visit.v.name) + '</div>' : '') + badge;
     }
     setHTML(el.hud, h);
   }
@@ -266,7 +270,30 @@
     var h = '', i = S.selTile;
     if (i != null) h += !me.land[i] ? wildCard(me, i) : me.tiles[i] ? buildingCard(me, i, me.tiles[i]) : emptyCard(me, i);
     else h += '<p class="hint">點建築可以升級，點有 ＋ 的空地可以蓋新建築，點外圍有斧頭記號的山林可以拓荒。畫面可以拖曳和縮放。</p>';
-    return h + jobsCard(me) + queueCard(me);
+    return h + jobsCard(me) + queueCard(me) + idleCard(me);
+  }
+  function idleCard(me) {
+    var t = myTribe(), opts = [['even', '平均'], ['food', t.res.food], ['mat', t.res.mat], ['special', t.sp.zh]];
+    var h = '<section class="card"><h3>掛機設定<span class="lv">離線時照這樣進行</span></h3><p class="label">採集重點</p><div class="seg">';
+    opts.forEach(function (o) { h += '<button data-act="focus" data-f="' + o[0] + '" aria-pressed="' + (me.idle.focus === o[0]) + '">' + o[1] + '</button>'; });
+    h += '</div><label class="switch wide" for="idleup"><input type="checkbox" id="idleup" data-act="idleup"' + (me.idle.upgrade ? ' checked' : '') + '>離線時自動升級建築</label>';
+    return h + '<p class="muted">離線最多累積 8 小時，回來時會看到這段時間的報告。' + (me.auto ? '' : '採集重點要開啟上面的「自動分配」才有作用。') + '</p></section>';
+  }
+  function visitPanel() {
+    var v = S.visit.v, t = Tribes.get(v.tribe);
+    return '<section class="card sel"><h3><span class="dot" style="background:' + t.color + '"></span>' + esc(v.name) + '<span class="lv">' + (v.bot ? '示範部落' : v.online ? '在線上' : '不在線上') + '</span></h3>' +
+      '<dl class="facts"><dt>族群</dt><dd>' + t.zh + '</dd><dt>主人</dt><dd>' + esc(v.owner) + '</dd><dt>' + esc(t.b.center.zh) + '</dt><dd>等級 ' + v.c + '</dd><dt>族人</dt><dd>' + v.pop + ' / ' + v.popCap + '</dd><dt>繁榮</dt><dd>' + v.pros + '</dd></dl>' +
+      '<p class="muted">拜訪時只能參觀。畫面可以拖曳和縮放。</p><button class="btn big" data-act="leave">回我的部落</button></section>';
+  }
+  function reportModal(me) {
+    var r = me.report; if (!r) return '';
+    var t = myTribe(), rows = [[t.res.food, r.food, 'food'], [t.res.mat, r.mat, 'mat'], [t.sp.zh, r.sp, 'sp'], ['族人', r.pop, 'pop']].filter(function (x) { return x[1] !== 0; });
+    var h = '<div class="veil"><div class="sheet" role="dialog" aria-label="離線報告"><h2>你不在的時候</h2><p class="muted">離開了 ' + ago(r.to - r.from) + (r.capped ? '，只計算最後 8 小時' : '') + '。</p><ul class="rep">';
+    rows.forEach(function (x) { h += '<li>' + Art.icon(x[2]) + '<span>' + x[0] + '</span><b class="' + (x[1] < 0 ? 'neg' : '') + '">' + (x[1] > 0 ? '+' : '') + x[1] + '</b></li>'; });
+    if (r.land) h += '<li><span>新開墾的地</span><b>+' + r.land + '</b></li>';
+    r.ups.forEach(function (u) { h += '<li><span>' + esc(t.b[u.type].zh) + '升級</span><b>等級 ' + u.to + '</b></li>'; });
+    if (!rows.length && !r.land && !r.ups.length) h += '<li><span>倉庫已經滿了，沒有新的收穫。</span></li>';
+    return h + '</ul><button class="btn big" data-act="ack">知道了</button></div></div>';
   }
   function tribeCard(t, cells) {
     var h = '<section class="card tribe"><h3><span class="dot" style="background:' + t.color + '"></span>' + t.zh + '<span class="chipst ' + (t.playable ? 'on' : '') + '">' + (t.playable ? '可以落腳' : '之後開放') + '</span></h3>' +
@@ -285,7 +312,8 @@
       h += '<section class="card"><h3>這裡的部落<span class="lv">' + here.length + '/' + Geo.SLOTS + '</span></h3>';
       here.forEach(function (v) {
         var mine = S.me && v.id === S.me.id;
-        h += '<div class="qrow"><span>' + esc(v.name) + (mine ? '（你）' : v.bot ? '（示範）' : '') + '</span><b>等級 ' + v.c + ' · 繁榮 ' + v.pros + '</b></div>';
+        h += '<div class="vrow"><div><b>' + esc(v.name) + '</b>' + (mine ? '（你）' : v.bot ? '（示範）' : v.online ? '（在線上）' : '') + '<span class="muted">等級 ' + v.c + ' · 繁榮 ' + v.pros + '</span></div>' +
+          (S.me ? '<button class="btn sm ghost" data-act="' + (mine ? 'tab" data-tab="build' : 'visit" data-id="' + v.id) + '">' + (mine ? '回部落' : '拜訪') + '</button>' : '') + '</div>';
       });
       h += '</section>';
     }
@@ -320,6 +348,7 @@
   function renderPanel() {
     var me = S.me;
     if (!me) { setHTML(el.tabs, ''); el.tabs.hidden = true; if (setHTML(el.pbody, startPanel())) restoreForm(); return; }
+    if (S.visit) { el.tabs.hidden = true; setHTML(el.pbody, visitPanel()); return; }
     el.tabs.hidden = false;
     setHTML(el.tabs, [['build', '部落'], ['map', '地圖'], ['codex', '圖鑑']].map(function (t) {
       return '<button data-act="tab" data-tab="' + t[0] + '" aria-pressed="' + (S.tab === t[0]) + '">' + t[1] + '</button>';
@@ -341,6 +370,7 @@
     if (el.scene.getAttribute('data-scene') !== sc) { el.scene.setAttribute('data-scene', sc); if (sc === 'map') MV.resize(); else VV.resize(); }
     if (sc === 'map' && !MV.sized) MV.resize();
     renderHud(); renderTools(); renderPanel();
+    setHTML(el.modal, S.me && !S.visit ? reportModal(S.me) : '');
     if (sc === 'village') renderVillage(); else renderMarks();
   }
 
@@ -354,7 +384,7 @@
     var b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
     var a = b.getAttribute('data-act'), me = S.me, tile = +b.getAttribute('data-tile');
     if (a === 'tab') {
-      S.tab = b.getAttribute('data-tab'); render();
+      S.visit = null; S.tab = b.getAttribute('data-tab'); render();
       if (S.tab === 'map' && me) { S.zone = S.zone || me.hex; var h = G.byId[me.hex]; MV.focus(h.x, h.y, Math.max(MV.k, 2.6)); render(); }
     }
     else if (a === 'pick') {
@@ -377,6 +407,11 @@
     else if (a === 'build') act({ type: 'build', tile: tile, type2: b.getAttribute('data-type') }, '開始興建');
     else if (a === 'clear') act({ type: 'clear', tile: tile }, '族人開始拓荒');
     else if (a === 'auto') act({ type: 'auto', on: b.checked });
+    else if (a === 'focus') act({ type: 'idle', focus: b.getAttribute('data-f') });
+    else if (a === 'idleup') act({ type: 'idle', upgrade: b.checked }, b.checked ? '離線時會自動升級' : '已關閉自動升級');
+    else if (a === 'ack') act({ type: 'ack' });
+    else if (a === 'visit') Net.view(b.getAttribute('data-id'), function (d) { if (!d) return toast('找不到這個部落', true); S.visit = { id: d.id, v: d }; el.vimg._focus = null; render(); });
+    else if (a === 'leave') { S.visit = null; el.vimg._focus = null; S.tab = 'map'; render(); }
     else if (a === 'job') {
       var j = { type: 'jobs', food: me.jobs.food, mat: me.jobs.mat, special: me.jobs.special };
       j[b.getAttribute('data-k')] += +b.getAttribute('data-d'); act(j);

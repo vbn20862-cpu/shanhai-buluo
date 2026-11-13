@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>山海部落後台</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* 後台：上面是總覽數字與全島地圖，下面是各族統計和所有部落的清單。只有檢視功能，調整功能之後再加。 */
+:root {
+  --bg: #14212A; --panel: #1C2E38; --raise: #24394A; --line: #30495A; --ink: #F2EAD6; --mute: #9DB0B8;
+  --gold: #E3B341; --good: #BFE3C4; --warn: #F0A48F;
+  --display: "LXGW WenKai TC", "Noto Serif TC", "PMingLiU", serif;
+  --body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  color-scheme: dark;
+}
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 14px; line-height: 1.5; }
+[hidden] { display: none !important; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-block: 16px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 16px; }
+header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+h1 { font-family: var(--display); font-size: 26px; margin: 0; letter-spacing: .06em; }
+h2 { font-family: var(--display); font-size: 18px; margin: 0 0 8px; }
+.muted { color: var(--mute); font-size: 12.5px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+button, input { font: inherit; color: inherit; }
+.btn { border: 0; border-radius: 8px; background: var(--gold); color: #2A1F05; font-weight: 700; padding: 7px 14px; cursor: pointer; }
+.btn.ghost { background: transparent; color: var(--mute); border: 1px solid var(--line); font-weight: 500; }
+input[type="password"] { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; min-width: 0; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+#login form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+#err { color: var(--warn); margin: 8px 0 0; }
+.top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 320px); gap: 16px; align-items: start; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.tile b { display: block; font-size: 26px; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.tile span { color: var(--mute); font-size: 12.5px; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 6px 9px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child, th.l, td.l { text-align: left; }
+th { color: var(--mute); font-weight: 500; font-size: 12.5px; position: sticky; top: 0; background: var(--panel); }
+th button { all: unset; cursor: pointer; }
+th button[aria-pressed="true"] { color: var(--gold); }
+tbody tr:hover { background: var(--raise); }
+.dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 6px; }
+.on { color: var(--good); } .off { color: var(--mute); } .bot { color: var(--mute); font-style: italic; }
+.bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.bar label { display: flex; align-items: center; gap: 6px; color: var(--mute); cursor: pointer; }
+.bar input { accent-color: var(--gold); }
+#map { width: 100%; height: auto; display: block; border-radius: 8px; background: linear-gradient(160deg, #15394B, #0E2633); }
+#map circle { stroke: var(--ink); stroke-width: .8; }
+#map circle.live { stroke: var(--gold); stroke-width: 1.6; }
+@media (max-width: 760px) { .top { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>山海部落後台</h1><span class="muted" id="stamp"></span><span style="flex:1"></span><button class="btn ghost" id="out" hidden>登出</button></header>
+
+  <section class="card" id="login">
+    <h2>登入</h2>
+    <p class="muted">輸入啟動伺服器時設定的後台密碼。</p>
+    <form id="form"><label for="key" class="muted">密碼</label><input type="password" id="key" autocomplete="current-password"><button class="btn" type="submit">登入</button></form>
+    <p id="err" role="alert" hidden></p>
+  </section>
+
+  <div id="dash" hidden>
+    <div class="top">
+      <div>
+        <div class="tiles" id="tiles"></div>
+        <section class="card"><h2>各族統計</h2><div class="scroll"><table><thead><tr><th>族群</th><th>玩家部落</th><th>在線上</th><th>示範部落</th><th>平均繁榮</th></tr></thead><tbody id="tribes"></tbody></table></div>
+          <p class="muted">平均繁榮只計算玩家的部落。對戰勝率會在對戰階段加入。</p></section>
+      </div>
+      <section class="card"><h2>全島總覽</h2><svg id="map" role="img" aria-label="全島地圖與所有部落的位置"></svg><p class="muted">金色外框是目前在線上的玩家。</p></section>
+    </div>
+    <section class="card">
+      <h2>所有部落</h2>
+      <div class="bar"><label for="bots"><input type="checkbox" id="bots">顯示示範部落</label><span class="muted" id="count"></span></div>
+      <div class="scroll"><table id="list"><thead><tr id="heads"></tr></thead><tbody id="rows"></tbody></table></div>
+    </section>
+  </div>
+</div>
+
+<script src="shared/geo.js"></script>
+<script src="shared/tribes.js"></script>
+<script src="shared/world.js"></script>
+<script src="art.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); }, key = '', data = null, sort = { k: 'prosperity', dir: -1 }, timer = null, mapReady = false;
+  var COLS = [['name', '部落', 'l'], ['owner', '主人', 'l'], ['tribe', '族群', 'l'], ['online', '狀態', 'l'], ['center', '中心等級'], ['pop', '族人'], ['food', '糧食'], ['mat', '建材'], ['sp', '特產'],
+    ['land', '開墾地'], ['buildings', '建築'], ['prosperity', '繁榮'], ['idle', '掛機', 'l'], ['seen', '最後上線', 'l']];
+  var FOCUS = { even: '平均', food: '糧食', mat: '建材', special: '特產' };
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function store(v) { try { if (v === undefined) return sessionStorage.getItem('shanhai_admin') || ''; if (v) sessionStorage.setItem('shanhai_admin', v); else sessionStorage.removeItem('shanhai_admin'); } catch (e) { return ''; } }
+  function when(t, now) { var m = Math.round((now - t) / 60000); return m < 1 ? '剛剛' : m < 60 ? m + ' 分鐘前' : m < 1440 ? Math.floor(m / 60) + ' 小時前' : Math.floor(m / 1440) + ' 天前'; }
+
+  function load() {
+    return fetch('admin/api/state', { headers: { 'x-admin-key': key }, cache: 'no-store' }).then(function (r) {
+      return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || '讀取失敗'); return j; });
+    });
+  }
+  function fail(msg) { clearInterval(timer); $('dash').hidden = true; $('out').hidden = true; $('login').hidden = false; $('err').textContent = msg; $('err').hidden = false; }
+  function start() {
+    load().then(function (j) {
+      store(key); data = j; $('login').hidden = true; $('dash').hidden = false; $('out').hidden = false; $('err').hidden = true; render();
+      clearInterval(timer);
+      timer = setInterval(function () { load().then(function (x) { data = x; render(); }).catch(function (e) { $('stamp').textContent = '更新失敗：' + e.message; }); }, 3000);
+    }).catch(function (e) { store(''); fail(e.message === 'Failed to fetch' ? '連不上伺服器' : e.message); });
+  }
+  function render() {
+    var v = data.villages, players = v.filter(function (x) { return !x.bot; }), live = players.filter(function (x) { return x.online; });
+    $('stamp').textContent = '每 3 秒更新 · ' + new Date(data.now).toLocaleTimeString('zh-TW') + (data.speed !== 1 ? ' · 遊戲速度 ' + data.speed + ' 倍' : '');
+    $('tiles').innerHTML = [['玩家部落', players.length], ['在線上', live.length], ['示範部落', v.length - players.length], ['出征中的隊伍', data.marches], ['市集掛單', data.offers]]
+      .map(function (t) { return '<div class="tile"><b>' + t[1] + '</b><span>' + t[0] + '</span></div>'; }).join('');
+    $('tribes').innerHTML = Tribes.playable().map(function (t) {
+      var s = data.tribes[t.id] || { players: 0, online: 0, bots: 0, avg: 0 };
+      return '<tr><td><span class="dot" style="background:' + t.color + '"></span>' + t.zh + '</td><td>' + s.players + '</td><td>' + s.online + '</td><td>' + s.bots + '</td><td>' + (s.players ? s.avg : '—') + '</td></tr>';
+    }).join('');
+    $('heads').innerHTML = COLS.map(function (c) { return '<th class="' + (c[2] || '') + '"><button data-k="' + c[0] + '" aria-pressed="' + (sort.k === c[0]) + '">' + c[1] + (sort.k === c[0] ? (sort.dir < 0 ? ' ▼' : ' ▲') : '') + '</button></th>'; }).join('');
+    var rows = v.filter(function (x) { return $('bots').checked || !x.bot; }).sort(function (a, b) {
+      var x = a[sort.k], y = b[sort.k]; if (sort.k === 'idle') { x = a.idle.focus; y = b.idle.focus; }
+      return (x > y ? 1 : x < y ? -1 : 0) * sort.dir;
+    });
+    $('count').textContent = '共 ' + rows.length + ' 個';
+    $('rows').innerHTML = rows.length ? rows.map(function (r) {
+      var t = Tribes.get(r.tribe);
+      return '<tr><td class="l">' + esc(r.name) + '</td><td class="l' + (r.bot ? ' bot' : '') + '">' + esc(r.owner) + '</td><td class="l"><span class="dot" style="background:' + t.color + '"></span>' + t.zh + '</td>' +
+        '<td class="l ' + (r.bot ? 'bot' : r.online ? 'on' : 'off') + '">' + (r.bot ? '示範' : r.online ? '在線上' : '離線') + '</td><td>' + r.center + '</td><td>' + r.pop + '/' + r.popCap + '</td><td>' + r.food + '</td><td>' + r.mat + '</td><td>' + r.sp + '</td>' +
+        '<td>' + r.land + '</td><td>' + r.buildings + '</td><td>' + r.prosperity + '</td><td class="l">' + FOCUS[r.idle.focus] + (r.idle.upgrade ? '・自動升級' : '') + '</td><td class="l">' + (r.online || r.bot ? '—' : when(r.seen, data.now)) + '</td></tr>';
+    }).join('') : '<tr><td class="l muted" colspan="' + COLS.length + '">還沒有玩家建立部落。勾選「顯示示範部落」可以看到電腦的示範部落。</td></tr>';
+    drawMap(v);
+  }
+  function drawMap(v) {
+    var svg = $('map');
+    if (!mapReady) {
+      svg.setAttribute('viewBox', '0 0 ' + Geo.MAP_W + ' ' + Geo.MAP_H);
+      svg.innerHTML = '<image width="' + Geo.MAP_W + '" height="' + Geo.MAP_H + '" href="' + Art.paintMap(3).toDataURL('image/png') + '" preserveAspectRatio="none"/><g id="marks"></g>';
+      mapReady = true;
+    }
+    $('marks').innerHTML = v.map(function (p) {
+      var live = p.online && !p.bot;
+      return '<circle cx="' + p.pos[0] + '" cy="' + p.pos[1] + '" r="' + (live ? 3.4 : 2.6) + '" fill="' + Tribes.get(p.tribe).color + '" class="' + (live ? 'live' : '') + '"><title>' + esc(p.name) + '</title></circle>';
+    }).join('');
+  }
+  $('form').addEventListener('submit', function (e) { e.preventDefault(); key = $('key').value; if (key) start(); });
+  $('out').addEventListener('click', function () { key = ''; store(''); $('key').value = ''; fail(''); $('err').hidden = true; });
+  $('bots').addEventListener('change', function () { if (data) render(); });
+  $('heads').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    var k = b.getAttribute('data-k'); sort = { k: k, dir: sort.k === k ? -sort.dir : (k === 'name' || k === 'owner' || k === 'tribe' ? 1 : -1) }; render();
+  });
+  key = store(); if (key) start();
+})();
+</script>
+</body>
+</html>

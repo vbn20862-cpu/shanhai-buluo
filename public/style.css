@@ -127,6 +127,25 @@ p { margin: 4px 0; }
 .toast { background: var(--ink); color: #1A262E; border-radius: 999px; padding: 6px 14px; font-weight: 500; box-shadow: 0 4px 14px rgba(0, 0, 0, .35); max-width: 86vw; }
 .toast.bad { background: #F4C7B8; }
 
+/* 掛機、拜訪、離線報告 */
+.seg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 4px 0 8px; }
+.seg button { border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 5px 2px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seg button[aria-pressed="true"] { background: var(--raise); color: var(--ink); border-color: var(--gold); font-weight: 700; }
+.switch.wide { margin: 0 0 4px; font-size: 13.5px; color: var(--ink); }
+.vrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 0; border-top: 1px dashed var(--line); }
+.vrow:first-of-type { border-top: 0; }
+.vrow .muted { display: block; }
+.visiting { font-size: 12px; font-weight: 700; color: #2A1F05; background: var(--gold); border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
+.mode.off { color: var(--warn); border-color: var(--warn); }
+.veil { position: fixed; inset: 0; z-index: 15; background: rgba(8, 16, 22, .72); display: flex; align-items: center; justify-content: center; padding: 12px max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px)); }
+.sheet { background: var(--panel); border: 1px solid var(--gold); border-radius: 12px; padding: 14px 16px; width: min(360px, 100%); max-height: 100%; overflow-y: auto; box-sizing: border-box; }
+.sheet h2 { font-family: var(--display); font-size: 21px; margin: 0; }
+.rep { list-style: none; margin: 8px 0 0; padding: 0; }
+.rep li { display: flex; align-items: center; gap: 7px; padding: 4px 0; border-top: 1px dashed var(--line); }
+.rep li span { flex: 1; }
+.rep b { color: var(--good); font-variant-numeric: tabular-nums; }
+.rep b.neg { color: var(--warn); }
+
 @media (max-width: 860px) { .chip .lbl { display: none; } }
 @media (max-width: 700px) { .chip .cap { display: none; } .vname .sub { display: none; } }
 @media (orientation: portrait) {

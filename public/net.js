@@ -27,7 +27,7 @@ window.Net = (function () {
     var now = Date.now();
     local.ensureBots(now);
     localId = local.tokens.solo && local.villages[local.tokens.solo] ? local.tokens.solo : null;
-    if (localId) local.villages[localId].online = true;
+    if (localId) local.setOnline(localId, true, now);   // 補算關掉網頁這段時間，並產生離線報告
     fire('status', { online: true, mode: mode });
     fire('hello', { villages: pubs(now), resumed: !!localId });
     var n = 0;
@@ -39,7 +39,7 @@ window.Net = (function () {
     }, 1000);
     if (window.claude && window.claude.hot && window.claude.hot.snapshot) window.claude.hot.snapshot(function () { return { world: JSON.stringify(local.toJSON()) }; });
   }
-  function pubs(now) { return Object.keys(local.villages).map(function (k) { return local.pub(local.villages[k], now); }); }
+  function pubs(now) { return local.pubs(now); }
   function save() { store(SAVE_KEY, JSON.stringify(local.toJSON())); }
 
   // ----- 連線 -----
@@ -48,7 +48,7 @@ window.Net = (function () {
     socket = window.io({ transports: ['websocket', 'polling'] });
     socket.on('connect', function () {
       fire('status', { online: true, mode: mode });
-      socket.emit('resume', { token: token() }, function (r) { fire('hello', r || { villages: [] }); });
+      socket.emit('resume', { token: token() }, function (r) { fire('hello', r || { villages: [] }); });   // 伺服器認得就會接著送出部落狀態
     });
     socket.on('disconnect', function () { fire('status', { online: false, mode: mode }); });
     socket.on('state', function (s) { fire('state', s); });
@@ -62,7 +62,7 @@ window.Net = (function () {
     join: function (o, cb) {
       if (mode === 'solo') {
         var now = Date.now(), r = local.join('solo', o, now);
-        if (r.ok) { localId = r.id; local.villages[localId].online = true; save(); fire('state', local.snapshot(localId, now)); }
+        if (r.ok) { localId = r.id; local.setOnline(localId, true, now); save(); fire('state', local.snapshot(localId, now)); }
         cb(r);
       } else { o.token = token(); socket.emit('join', o, cb); }
     },

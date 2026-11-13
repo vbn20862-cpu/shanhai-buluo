@@ -50,6 +50,7 @@
   };
   var RATE = { food: 0.35, mat: 0.35, special: 0.03 };   // 每位族人每秒
   var FOREIGN_SP = false;   // 階段 4 加入交易後改成 true：部落中心升級要用別族的特產
+  var OFFLINE_MAX = 8 * 3600000;
   var BUILDERS = 2, SHIELD_MS = 180000, NEWBIE_MS = 300000, OFFER_MS = 600000;
   var BOT_NAMES = {
     atayal: ['霧林部落', '溪谷部落'], bunun: ['雲海部落', '楓林部落'],
@@ -167,6 +168,7 @@
   function World(opts) {
     opts = opts || {};
     this.speed = opts.speed || 1;
+    this.reportAfter = opts.reportAfter == null ? 60000 : opts.reportAfter;   // 離開多久以上才顯示離線報告
     this.rng = opts.rng || Math.random;
     this.map = Geo.build();
     this.villages = {}; this.tokens = {}; this.marches = []; this.market = []; this.feed = []; this.alliances = {};
@@ -213,7 +215,7 @@
       jobs: { food: 2, mat: 2, special: 0 }, auto: true, tiles: tiles, land: land, wall: 0, queue: [],
       units: { w: 0, a: 0 }, away: { w: 0, a: 0 }, train: [], glory: 0, wins: 0, losses: 0, gifts: 0,
       shieldUntil: 0, newbieUntil: o.bot ? 0 : now + NEWBIE_MS, ally: null, reports: [], cool: {},
-      lastSay: 0, lastGift: 0, online: !!o.bot
+      lastSay: 0, lastGift: 0, online: !!o.bot, idle: { focus: 'even', upgrade: false }, offAt: 0
     };
     this.villages[v.id] = v;
     return v;
@@ -249,6 +251,8 @@
   // ---------- 單一部落的時間推進 ----------
   World.prototype.autoJobs = function (v) {
     var s = slots(v), j = { food: 0, mat: 0, special: 0 }, left = v.pop, order = ['food', 'mat', 'special'];
+    var f = v.idle && v.idle.focus;   // 採集重點：先把重點項目的位置排滿，剩下的人再平均分
+    if (f && f !== 'even' && s[f] > 0) { j[f] = Math.min(left, s[f]); left -= j[f]; }
     while (left > 0) {
       var best = null, bestR = 2;
       for (var i = 0; i < 3; i++) { var k = order[i]; if (j[k] < s[k]) { var r = j[k] / s[k]; if (r < bestR) { bestR = r; best = k; } } }
@@ -258,6 +262,30 @@
     v.jobs = j;
   };
   World.prototype.tickVillage = function (v, now) {
+    if (now <= v.last) return;
+    if (now - v.last > OFFLINE_MAX) v.last = now - OFFLINE_MAX;   // 離線最多累積 8 小時
+    if (now - v.last > 60000) {   // 離開一段時間：每 30 秒補算一次，掛機設定才會照著生效
+      for (var t = v.last + 30000; t < now; t += 30000) { this.advance(v, t); if (!v.online && !v.bot) this.idleStep(v, t); }
+    }
+    this.advance(v, now);
+  };
+  // 掛機時自動升級：挑等級最低、最便宜的建築
+  World.prototype.idleStep = function (v, t) {
+    if (!v.idle || !v.idle.upgrade || v.queue.length >= BUILDERS) return;
+    var C = centerLevel(v), best = null;
+    for (var i = 0; i < TILE_N; i++) {
+      var b = v.tiles[i];
+      if (!b || b.busy || b.level >= MAX_LEVEL) continue;
+      var c = cost(b.type, b.level + 1);
+      if (!can(v, c)) continue;
+      if (b.type === 'center') { var need = CENTER_UP[b.level + 1]; if (FOREIGN_SP ? need.kinds > 0 : (v.sp[v.tribe] || 0) < need.each * need.kinds) continue; }
+      else if (b.level >= C) continue;
+      var score = b.level * 100000 + c.food + c.mat;
+      if (!best || score < best.score) best = { i: i, score: score, type: b.type, to: b.level + 1 };
+    }
+    if (best && !ACTIONS.upgrade.call(this, v, { tile: best.i }, t)) (v.offLog = v.offLog || []).push({ type: best.type, to: best.to });
+  };
+  World.prototype.advance = function (v, now) {
     var dt = Math.min((now - v.last) / 1000, 8 * 3600);
     if (dt <= 0) return;
     v.last = now;
@@ -286,6 +314,29 @@
     if (rt.special > 0 && own < c.sp) v.sp[v.tribe] = Math.min(c.sp, own + rt.special * dt);
   };
 
+  // ---------- 上線、離線與離線報告 ----------
+  function snap(v) { return { food: v.res.food, mat: v.res.mat, sp: v.sp[v.tribe] || 0, pop: v.pop, land: v.land.filter(Boolean).length }; }
+  World.prototype.setOnline = function (id, on, now) {
+    var v = this.villages[id];
+    if (!v || v.bot) return;
+    if (!on) {
+      if (!v.online) return;
+      this.tickVillage(v, now);
+      v.online = false; v.offAt = now; v.offSnap = snap(v); v.offLog = [];
+      return;
+    }
+    if (v.online) return;
+    var since = v.offAt || v.last, before = v.offSnap || snap(v);
+    this.tickVillage(v, now);   // 這時還算離線，掛機設定會生效
+    v.online = true; v.offAt = 0;
+    if (now - since >= this.reportAfter) {
+      var a = snap(v);
+      v.report = { from: since, to: now, capped: now - since > OFFLINE_MAX, food: Math.floor(a.food - before.food), mat: Math.floor(a.mat - before.mat),
+        sp: Math.floor(a.sp - before.sp), pop: a.pop - before.pop, land: a.land - before.land, ups: v.offLog || [] };
+    }
+    delete v.offSnap; delete v.offLog;
+  };
+
   // ---------- 玩家動作 ----------
   World.prototype.act = function (id, a, now) {
     var v = this.villages[id];
@@ -297,6 +348,12 @@
   };
   var ACTIONS = {
     auto: function (v, a) { v.auto = !!a.on; if (v.auto) this.autoJobs(v); },
+    idle: function (v, a) {   // 掛機設定
+      if (['even', 'food', 'mat', 'special'].indexOf(a.focus) >= 0) v.idle.focus = a.focus;
+      if (a.upgrade != null) v.idle.upgrade = !!a.upgrade;
+      if (v.auto) this.autoJobs(v);
+    },
+    ack: function (v) { delete v.report; },
     jobs: function (v, a) {
       var s = slots(v), j = {}, sum = 0;
       ['food', 'mat', 'special'].forEach(function (k) { j[k] = Math.max(0, Math.min(s[k], int(a[k]))); sum += j[k]; });
@@ -576,12 +633,13 @@
       c: centerLevel(v), wall: v.wall, towers: levelsOf(v, 'tower').length, guard: guard === 0 ? 0 : guard <= 4 ? 1 : guard <= 10 ? 2 : 3,
       pros: prosperity(v), glory: v.glory, ally: v.ally, safe: Math.max(v.shieldUntil, v.newbieUntil) };
   };
+  World.prototype.pubs = function (now) { var self = this; return Object.keys(this.villages).map(function (k) { return self.pub(self.villages[k], now); }); };
   World.prototype.detail = function (id, now) {
     var v = this.villages[id]; if (!v) return null;
     this.tickVillage(v, now);
     var p = this.pub(v, now);
     p.tiles = v.tiles.map(function (b) { return b ? { type: b.type, level: b.level, busy: !!b.busy } : null; });
-    p.land = v.land.slice();
+    p.land = v.land.slice(); p.queue = []; p.popCap = popCap(v);
     p.pop = v.pop;
     return p;
   };
@@ -589,6 +647,7 @@
     var v = this.villages[id], self = this;
     if (!v) return null;
     var me = JSON.parse(JSON.stringify(v));
+    delete me.offSnap; delete me.offLog; delete me.cool;
     me.d = derived(v, this.speed);
     var al = {};
     for (var k in this.alliances) al[k] = { id: k, name: this.alliances[k].name, leader: this.alliances[k].leader, n: this.alliances[k].members.length };
@@ -600,6 +659,20 @@
       feed: this.feed.slice(-30), alliances: al
     };
   };
+  World.prototype.adminState = function (now) {
+    var self = this, tribes = {}, list = Object.keys(this.villages).map(function (id) {
+      var v = self.villages[id], d = derived(v, self.speed);
+      var row = { id: v.id, name: v.name, owner: v.owner, tribe: v.tribe, bot: v.bot, online: !!v.online, center: d.center, pop: v.pop, popCap: d.popCap,
+        food: Math.floor(v.res.food), mat: Math.floor(v.res.mat), sp: Math.floor(v.sp[v.tribe] || 0), cap: d.cap, land: v.land.filter(Boolean).length,
+        buildings: v.tiles.filter(Boolean).length, prosperity: d.prosperity, glory: v.glory, army: v.units.w + v.units.a, createdAt: v.createdAt,
+        seen: v.online || v.bot ? now : (v.offAt || v.last), idle: v.idle, pos: v.pos };
+      var t = tribes[v.tribe] = tribes[v.tribe] || { players: 0, bots: 0, online: 0, prosperity: 0 };
+      if (v.bot) t.bots++; else { t.players++; t.prosperity += d.prosperity; if (v.online) t.online++; }
+      return row;
+    });
+    for (var k in tribes) tribes[k].avg = tribes[k].players ? Math.round(tribes[k].prosperity / tribes[k].players) : 0;
+    return { now: now, speed: this.speed, villages: list, tribes: tribes, marches: this.marches.length, offers: this.market.length };
+  };
   World.prototype.toJSON = function () {
     return { villages: this.villages, tokens: this.tokens, marches: this.marches, market: this.market, feed: this.feed, alliances: this.alliances, seq: this.seq };
   };
@@ -609,7 +682,8 @@
     this.feed = d.feed || []; this.alliances = d.alliances || {}; this.seq = d.seq || 1;
     for (var id in this.villages) {
       var v = this.villages[id]; v.online = !!v.bot;
-      if (!v.land || v.tiles.length !== TILE_N) delete this.villages[id];   // 舊版的方格部落無法沿用
+      if (!v.land || v.tiles.length !== TILE_N) { delete this.villages[id]; continue; }   // 舊版的方格部落無法沿用
+      if (!v.idle) v.idle = { focus: 'even', upgrade: false };
     }
     for (var tk in this.tokens) if (!this.villages[this.tokens[tk]]) delete this.tokens[tk];
     return this;

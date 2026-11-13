@@ -22,7 +22,8 @@
 
 ## 指令
 
-- `npm start`：啟動本機伺服器，用瀏覽器開 http://localhost:3000 玩
+- `npm install`：第一次要先安裝套件
+- `npm start`：啟動遊戲伺服器，用瀏覽器開 http://localhost:3000 玩；加上 `ADMIN_PASSWORD=密碼` 才會開放後台（`/admin`）
 - `npm test`：跑規則核心的測試
 - `npm run build:solo`：打包成單一檔案 `dist/shanhai-buluo.html`（預覽頁用）
 
