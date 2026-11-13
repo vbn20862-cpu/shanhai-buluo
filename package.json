@@ -1,0 +1,14 @@
+{
+  "name": "shanhai-buluo",
+  "version": "0.1.0",
+  "description": "山海部落：以台灣全島為地圖的原住民族部落經營多人連線遊戲",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "socket.io": "^4.8.1"
+  }
+}
