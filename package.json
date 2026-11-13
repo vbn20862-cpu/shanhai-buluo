@@ -10,7 +10,7 @@
     "build:solo": "node scripts/build-solo.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": "22.x"
   },
   "dependencies": {
     "socket.io": "^4.8.4"

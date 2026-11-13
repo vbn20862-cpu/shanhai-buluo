@@ -30,6 +30,26 @@ ADMIN_PASSWORD=自己取的密碼 npm start
 
 每支手機會各自建立一個部落，在「地圖」分頁可以看到並拜訪對方。進度存在電腦的 `data/world.json`，想從頭來過就先停掉伺服器再刪掉這個檔案。
 
+## 放到網路上給朋友測試（Railway）
+
+遊戲需要一臺一直開著、存檔不會消失的主機。目前的做法是放在 [Railway](https://railway.com)，每月約 5 美元。
+
+1. 用 GitHub 帳號登入 Railway，New Project → Deploy from GitHub repo → 選 `shanhai-buluo`。
+2. 服務的 Settings → Scale → Regions 選 Southeast Asia（Singapore）。要在掛硬碟之前選。
+3. 服務的 Variables 分頁新增三個變數：
+
+   | 名稱 | 內容 |
+   |---|---|
+   | `ADMIN_PASSWORD` | 自己取的後台密碼 |
+   | `JOIN_CODE` | 自己取的邀請碼，給朋友用 |
+   | `DATA_FILE` | `/data/world.json` |
+
+4. 新增一個 Volume 掛到這個服務，Mount path 填 `/data`。
+5. 按 Deploy，等它變成成功。
+6. 服務的 Settings → Networking → Generate Domain，得到 `https://xxxx.up.railway.app`，這就是給朋友的網址；後台是網址後面加 `/admin`。
+
+之後每次把程式推上 GitHub 的 `main`，Railway 會自動更新，更新時會短暫斷線，存檔會保留。
+
 ## 其他指令
 
 ```bash

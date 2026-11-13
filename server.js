@@ -6,7 +6,7 @@
  *   ADMIN_PASSWORD  後台密碼；沒有設定時後台不開放
  *   JOIN_CODE       邀請碼；有設定時，要輸入邀請碼才能建立部落（公開測試用）
  *   MAX_VILLAGES    玩家部落的數量上限，預設 300
- *   DATA_FILE       存檔位置，預設 data/world.json
+ *   DATA_FILE       存檔位置，預設 data/world.json。放在主機服務上時，要指到不會被清掉的硬碟，例如 /data/world.json
  *   SPEED           遊戲速度倍率，測試用，預設 1 */
 const http = require('http');
 const fs = require('fs');
@@ -19,7 +19,8 @@ const PORT = process.env.PORT || 3000;
 const ADMIN = process.env.ADMIN_PASSWORD || '';
 const JOIN_CODE = (process.env.JOIN_CODE || '').trim();
 const MAX_VILLAGES = Number(process.env.MAX_VILLAGES) || 300;
-const DATA = process.env.DATA_FILE || path.join(__dirname, 'data', 'world.json');
+const DATA = process.env.DATA_FILE ||
+  (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'world.json') : path.join(__dirname, 'data', 'world.json'));
 const world = new World({
   speed: Number(process.env.SPEED) || 1,
   reportAfter: process.env.REPORT_AFTER_MS ? Number(process.env.REPORT_AFTER_MS) : undefined
