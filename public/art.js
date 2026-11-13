@@ -179,7 +179,7 @@ window.Art = (function () {
   }
 
   /* v: {tribe, tiles, land, queue, wall}；回傳放進 <svg> 的內容。倒數文字由外部依 data-until 更新。 */
-  function scene(v, sel) {
+  function scene(v, sel, plain) {   // plain：參觀別人的部落時，不顯示可以拓荒、可以興建的記號
     var t = Tribes.get(v.tribe), k = t.look, S = R.SITES, low = '', top = '', items = [], busy = {}, i;
     v.queue.forEach(function (w) { if (w.tile >= 0) busy[w.tile] = w; });
     function dist(j) { return Math.hypot(S[j].x - CX, S[j].y - CY); }
@@ -199,12 +199,12 @@ window.Art = (function () {
           items.push({ y: p[1] + c[1], s: use(rnd(i * 7 + n, 5) < (k.backdrop === 'coast' ? 0.15 : 0.6) ? 't-c' : 't-b', p[0] + c[0], p[1] + c[1], 0.95 + rnd(i * 7 + n, 6) * 0.3) });
         });
         if (clearing) top += pill(p[0], p[1] + 6, w.doneAt);
-        else if (S[i].near.some(function (j) { return v.land[j]; }))
+        else if (!plain && S[i].near.some(function (j) { return v.land[j]; }))
           top += badge(p[0], p[1] - 50, '<path d="M-5 6 4 -5" stroke="#F2EAD6" stroke-width="2.4" stroke-linecap="round"/><path d="M1 -8 8 -3 4 2 -1 -4z" fill="#F2EAD6"/>', '#F2EAD6');
       } else if (!b) {     // 開墾好的空地
         low += '<g' + tx + '>' + plot(1.2, 1.05, '#B79B6E', ' opacity=".85"') + '</g>';
         [[-1.2, -1.05], [1.2, -1.05], [1.2, 1.05], [-1.2, 1.05]].forEach(function (c) { var g = q(c[0], c[1]); low += seg([p[0] + g[0], p[1] + g[1]], [p[0] + g[0], p[1] + g[1] - 9], '#7A5636', 2.6); });
-        top += badge(p[0], p[1] - 2, '<path d="M-6 0H6M0 -6V6" stroke="#E3B341" stroke-width="2.6" stroke-linecap="round"/>', '#E3B341');
+        if (!plain) top += badge(p[0], p[1] - 2, '<path d="M-6 0H6M0 -6V6" stroke="#E3B341" stroke-width="2.6" stroke-linecap="round"/>', '#E3B341');
       } else {
         items.push({ y: p[1] + 8, s: '<g' + tx + (b.level === 0 ? ' opacity=".45"' : '') + '>' + ISO[b.type](k, t) + '</g>' });
         if (b.busy && w) top += pill(p[0], p[1] + 22, w.doneAt);

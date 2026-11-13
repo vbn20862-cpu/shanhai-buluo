@@ -149,7 +149,7 @@
       if (VV.resize()) { var c = Art.sitePos(R.CENTER_TILE); VV.focus(c[0], c[1] - 10, Math.max(1, Math.min(3.2, VV.vw / 1040))); el.vimg._focus = v.id; }
     }
     var sig = v.id + '|' + sel + '|' + JSON.stringify(v.tiles) + v.land.join('') + JSON.stringify(v.queue);
-    if (el.vobjs._sig !== sig) { el.vobjs.innerHTML = Art.scene(v, sel); el.vobjs._sig = sig; tickTimers(); }
+    if (el.vobjs._sig !== sig) { el.vobjs.innerHTML = Art.scene(v, sel, !!S.visit); el.vobjs._sig = sig; tickTimers(); }
     var want = Math.min(v.pop, 14);
     if (folkN !== want || el.folk._t !== v.id) {
       var s = '';
