@@ -381,3 +381,94 @@ test('人數加成：玩家少的族群產量較高', () => {
   const a = w.villages[ids[0]], c = w.villages[ids[6]];
   assert.ok(R.derived(c, 1).rates.food > R.derived(a, 1).rates.food * 0.95);
 });
+
+// ---------- 任務、器物、獨特建築與兵種、英雄、祝福 ----------
+test('任務主線：五章依序完成，獎勵是器物、器物、獨特建築、獨特兵種、英雄與祝福', () => {
+  const w = new World({ rng: seeded(61) });
+  let now = 1e6;
+  const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'amis' }, now).id];
+  w.setOnline(v.id, true, now);
+  assert.equal(w.act(v.id, { type: 'quest' }, now).ok, false, '目標沒達成不能領');
+  assert.equal(w.act(v.id, { type: 'build', tile: 1, type2: 'unique' }, now).ok, false, '第三章前不能蓋獨特建築');
+  const rate0 = R.derived(v, 1).rates.food;
+  v.land[7] = 1; v.land[8] = 1;                                    // 第一章：開墾到 9 塊地
+  assert.deepEqual([w.questProgress(v).cur, w.questProgress(v).done], [9, true]);
+  assert.ok(w.act(v.id, { type: 'quest' }, now).ok);
+  assert.ok(Math.abs(R.derived(v, 1).rates.food / rate0 - (1 + R.ITEM_BONUS)) < 1e-9, '第一件器物讓糧食產量增加');
+  v.res.food = 320; assert.ok(w.act(v.id, { type: 'quest' }, now).ok);      // 第二章：存糧
+  v.stat.trade = 2; assert.ok(w.act(v.id, { type: 'quest' }, now).ok);      // 第三章：交換
+  assert.equal(v.quest, 3);
+  v.res.food = 500; v.res.mat = 500;
+  assert.ok(w.act(v.id, { type: 'build', tile: 1, type2: 'unique' }, now).ok);
+  assert.equal(w.act(v.id, { type: 'build', tile: 3, type2: 'unique' }, now).ok, false, '只能蓋一座');
+  v.tiles[5] = { type: 'barracks', level: 2 };
+  assert.equal(w.act(v.id, { type: 'train', u: 'u' }, now).ok, false, '第四章前不能訓練獨特兵種');
+  v.jobs = { food: 0, mat: 0, special: 0 }; v.auto = false;
+  assert.equal(R.derived(v, 1).rates.special, 0);
+  now = run(w, now, 40);
+  assert.equal(v.tiles[1].level, 1);
+  assert.ok(Math.abs(R.derived(v, 1).rates.special - R.POND.special) < 1e-9 && R.derived(v, 1).rates.food >= R.POND.food, '阿美的獨特建築不用人手也有漁獲和糧食');
+  assert.equal(w.act(v.id, { type: 'upgrade', tile: 1 }, now).ok, false, '獨特建築不用升級');
+  v.units.w = 6; assert.ok(w.act(v.id, { type: 'quest' }, now).ok);         // 第四章：6 名戰士
+  v.res.food = 500; v.res.mat = 500;
+  assert.ok(w.act(v.id, { type: 'train', u: 'u' }, now).ok);
+  now = run(w, now, 8); assert.equal(v.units.u, 1);
+  assert.equal(w.act(v.id, { type: 'bless' }, now).ok, false, '主線沒完成不能舉行祭儀');
+  v.stat.point = 1; assert.ok(w.act(v.id, { type: 'quest' }, now).ok);      // 第五章：佔領資源點
+  assert.equal(v.quest, 5); assert.equal(w.questProgress(v), null);
+  now = run(w, now, 2);
+  assert.equal(v.blessed, true, '完成主線先得到一次祝福');
+  assert.equal(w.act(v.id, { type: 'bless' }, now).ok, false, '剛祝福過不能馬上再辦');
+  now += R.BLESS.again + 1000; w.tick(now);
+  assert.equal(v.blessed, false);
+  v.res.food = 300; v.jobs.mat = 1; const r1 = R.derived(v, 1).rates.mat;
+  assert.ok(w.act(v.id, { type: 'bless' }, now).ok);
+  assert.ok(Math.abs(R.derived(v, 1).rates.mat / r1 - R.BLESS.mult) < 1e-9); assert.equal(Math.round(v.res.food), 300 - R.BLESS.food);
+  check(w);
+});
+
+test('獨特建築的效果：望樓讓來襲變慢、石板建築保護量加倍、獵場建築多佔一處', () => {
+  const w = new World({ rng: seeded(67) });
+  let now = 1e6;
+  const mk = (tok, tribe) => { const v = w.villages[w.join(tok, { owner: tok, name: tok, tribe }, now).id]; v.newbieUntil = 0; return v; };
+  const a = mk('a', 'bunun'), t1 = mk('b', 'atayal'), p = mk('c', 'paiwan');
+  const prot0 = R.derived(p, 1).protect, cap0 = R.derived(p, 1).cap;
+  [a, t1, p].forEach(v => { v.quest = 3; v.tiles[1] = { type: 'unique', level: 1 }; });
+  assert.equal(R.derived(p, 1).protect, prot0 * 2); assert.equal(R.derived(p, 1).cap, cap0 + 300);
+  assert.equal(R.pointMax(a), R.POINT_MAX + 1);
+  a.units.w = 4; p.units.w = 0;
+  assert.ok(w.act(a.id, { type: 'attack', to: t1.id, w: 2, a: 0 }, now).ok);
+  const toWatch = w.marches[0].travel; w.marches = []; a.units.w = 4; a.away.w = 0; a.cool = {};
+  const d1 = require('../shared/geo.js').hexDist(w.map.byId[a.hex], w.map.byId[t1.hex]);
+  assert.ok(Math.abs(toWatch - Math.min(60, 6 + 2.5 * d1) * 1500) < 1, '出征有望樓的部落，路上多花一半時間');
+});
+
+test('獨特兵種：能上場；守方的山林獵手比進攻時更強；英雄能力一場只能用一次', () => {
+  const side = (u, tribe, def) => R.mkSide(0, 0, u, tribe, def);
+  const fight = (def) => { const b = { phase: 1, wall: 0, towers: 0, lanes: [{ a: side(6, def ? 'bunun' : 'atayal', false), d: side(6, def ? 'atayal' : 'bunun', true), broken: false }, { a: side(0, 'bunun'), d: side(0, 'bunun'), broken: true }, { a: side(0, 'bunun'), d: side(0, 'bunun'), broken: true }] }; R.fightPhase(b, 'charge', 'charge', seeded(5)); return b.lanes[0]; };
+  const asDef = fight(true), asAtk = fight(false);
+  assert.ok(asDef.d.u >= asAtk.a.u, '泰雅的山林獵手守在部落時損失不會比進攻時多');
+  const w = new World({ rng: seeded(71) });
+  let now = 1e6;
+  const a = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'bunun' }, now).id];
+  const b = w.villages[w.join('b', { owner: 'B', name: '乙', tribe: 'paiwan' }, now).id];
+  w.setOnline(a.id, true, now); b.newbieUntil = 0;
+  a.quest = 5; a.units.w = 3; a.units.a = 3; a.units.u = 4; b.units.w = 4; b.units.a = 4; b.units.u = 2; b.quest = 4;
+  assert.ok(w.act(a.id, { type: 'attack', to: b.id, w: 3, a: 3, u: 4 }, now).ok);
+  assert.equal(a.away.u, 4);
+  while (!a.battle) { now += 1000; w.tick(now); }
+  const bt = w.battles[a.battle];
+  assert.deepEqual(bt.hero, { a: true, d: false }, '守方還沒完成主線，沒有英雄');
+  assert.equal(bt.lanes.reduce((s, l) => s + l.a.u, 0), 4); assert.equal(bt.lanes.reduce((s, l) => s + l.d.u, 0), 2);
+  while (bt.state !== 'pick') { now += 1000; w.tick(now); }
+  assert.ok(w.act(a.id, { type: 'cmd', c: 'hero' }, now).ok);
+  assert.equal(bt.log[0].ha, 'volley2'); assert.equal(bt.log[0].a, 'volley', '射日一箭算作掩護射擊');
+  assert.equal(w.snapshot(a.id, now).battle.hero, false);
+  while (bt.state !== 'pick' && bt.state !== 'done') { now += 1000; w.tick(now); }
+  if (bt.state === 'pick') assert.equal(w.act(a.id, { type: 'cmd', c: 'hero' }, now).ok, false, '一場只能用一次');
+  while (bt.state !== 'done') { now += 1000; w.tick(now); }
+  assert.ok(a.heroRest > now, '用過之後英雄要休息');
+  now = run(w, now, 90);
+  assert.equal(a.away.u, 0); assert.ok(a.units.u <= 4 && a.units.u >= 0);
+  check(w);
+});

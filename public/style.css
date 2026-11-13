@@ -179,6 +179,22 @@ p { margin: 4px 0; }
 .seg.n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .ic-army { color: #E7B9A0; } .ic-shield { color: var(--good); }
 .chip.safe { border-color: var(--good); color: var(--good); }
+.chip.bless { border-color: var(--gold); color: var(--gold); }
+/* 任務主線與共聚 */
+.card.quest { border-color: rgba(227, 179, 65, .55); }
+.card.quest.ready { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
+.card.quest h3 .ic, .card h3 > .ic { width: 15px; height: 15px; color: var(--gold); margin-right: 5px; vertical-align: -2px; }
+.story { margin: 6px 0; line-height: 1.65; }
+.story b { display: block; font-family: var(--display); color: var(--gold); font-size: 15px; margin-bottom: 1px; }
+.goal { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; margin-top: 6px; }
+.goal b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bar { height: 6px; border-radius: 3px; background: var(--raise); overflow: hidden; margin: 4px 0 6px; }
+.bar i { display: block; height: 100%; background: var(--gold); border-radius: 3px; }
+.card.quest > .btn { width: 100%; margin-top: 4px; }
+.opts li.uq { border-color: rgba(227, 179, 65, .55); }
+.opts li.uq .cnt { color: var(--gold); }
+.units.n5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.units .uq b, .units .uq span { color: var(--gold); }
 .units { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 6px 0; text-align: center; }
 .units div { background: var(--raise); border-radius: 8px; padding: 5px 2px; }
 .units b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; line-height: 1.2; }
@@ -227,6 +243,9 @@ p { margin: 4px 0; }
 .cmds button:disabled { border-color: var(--line); opacity: .55; }
 .cmds button[aria-pressed="true"] { background: var(--gold); opacity: 1; }
 .cmds button[aria-pressed="true"] b, .cmds button[aria-pressed="true"] span { color: #2A1F05; }
+.cmds.h4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.cmds button.hero { border-style: double; border-width: 3px; background: rgba(227, 179, 65, .12); }
+.cmds button.hero:disabled { background: transparent; }
 .bres { border-radius: 9px; padding: 8px 12px; border: 1px solid var(--line); }
 .bres.win { border-color: var(--good); } .bres.lose { border-color: var(--warn); }
 .bres h3 { margin: 0; } .bres.win h3 { color: var(--good); } .bres.lose h3 { color: var(--warn); }
@@ -271,6 +290,10 @@ p { margin: 4px 0; }
 .shout text { font-family: var(--display); font-size: 20px; fill: var(--ink); }
 .shout.win rect { fill: var(--gold); stroke: #FFF3CF; }
 .shout.win text { fill: #2A1F05; }
+.shout.hero rect { stroke: var(--gold); stroke-width: 3.5; }
+.shout.hero:not(.win) text { fill: var(--gold); }
+.heroin { animation: b-hero 3.4s ease-out both; }
+@keyframes b-hero { 0% { opacity: 0; } 10%, 84% { opacity: 1; } 100% { opacity: 0; } }
 .post { transform-origin: 50% 100%; }
 .post.fall { animation: b-fall .7s ease-in .6s both; }
 .post.fall.r { animation-name: b-fall-r; }

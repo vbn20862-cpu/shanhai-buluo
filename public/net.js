@@ -92,9 +92,22 @@ window.Net = (function () {
       else if (kind === 'finish') { v.queue.forEach(function (q) { q.doneAt = now; }); v.train.forEach(function (q) { q.doneAt = now; }); }
       else if (kind === 'march') local.marches.forEach(function (m) { if (m.from === localId && m.phase !== 'fight') m.arriveAt = now; });
       else if (kind === 'army') {
-        var room = World.rules.armyCap(v) - (v.units.w + v.units.a + v.away.w + v.away.a + v.train.length);
-        if (room > 0) { v.units.w += Math.ceil(room / 2); v.units.a += Math.floor(room / 2); }
+        var room = World.rules.armyCap(v) - (v.units.w + v.units.a + v.units.u + v.away.w + v.away.a + v.away.u + v.train.length);
+        var nu = v.quest >= 4 ? Math.floor(room / 3) : 0;   // 已經解鎖獨特兵種的話，三種各補一些
+        if (room > 0) { v.units.u += nu; v.units.w += Math.ceil((room - nu) / 2); v.units.a += Math.floor((room - nu) / 2); }
       }
+      else if (kind === 'quest') {   // 把這一章的目標直接補到達成，再照正常規則領獎勵
+        var p = local.questProgress(v), q = p && World.rules.QUESTS[p.i];
+        if (q) {
+          if (q.type === 'land') { for (var i = 0; i < v.land.length && v.land.filter(Boolean).length < q.n; i++) v.land[i] = v.land[i] || 1; }
+          else if (q.type === 'have') v.res.food = Math.max(v.res.food, q.n);
+          else if (q.type === 'trade') v.stat.trade = Math.max(v.stat.trade, q.n);
+          else if (q.type === 'units') v.units.w = Math.max(v.units.w, q.n - v.units.a - v.units.u);
+          else v.stat.point = Math.max(v.stat.point, q.n);
+          local.act(localId, { type: 'quest' }, now);
+        }
+      }
+      else if (kind === 'rest') { v.heroRest = 0; v.blessNext = 0; }
       else if (kind === 'bots') Object.keys(local.villages).forEach(function (id) {   // 讓示範部落有守軍，對戰才有東西可以打
         var o = local.villages[id]; if (!o.bot || o.battle) return;
         o.units.w += 3; o.units.a += 3; o.wall = Math.max(o.wall, 1); o.res.food = Math.max(o.res.food, 400); o.res.mat = Math.max(o.res.mat, 400);
