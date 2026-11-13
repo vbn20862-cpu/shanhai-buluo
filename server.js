@@ -4,6 +4,8 @@
  * 可用的設定（環境變數）：
  *   PORT            連接埠，預設 3000
  *   ADMIN_PASSWORD  後台密碼；沒有設定時後台不開放
+ *   JOIN_CODE       邀請碼；有設定時，要輸入邀請碼才能建立部落（公開測試用）
+ *   MAX_VILLAGES    玩家部落的數量上限，預設 300
  *   DATA_FILE       存檔位置，預設 data/world.json
  *   SPEED           遊戲速度倍率，測試用，預設 1 */
 const http = require('http');
@@ -15,6 +17,8 @@ const World = require('./shared/world.js');
 
 const PORT = process.env.PORT || 3000;
 const ADMIN = process.env.ADMIN_PASSWORD || '';
+const JOIN_CODE = (process.env.JOIN_CODE || '').trim();
+const MAX_VILLAGES = Number(process.env.MAX_VILLAGES) || 300;
 const DATA = process.env.DATA_FILE || path.join(__dirname, 'data', 'world.json');
 const world = new World({
   speed: Number(process.env.SPEED) || 1,
@@ -56,6 +60,7 @@ const server = http.createServer((req, res) => {
     if (!sameKey(req.headers['x-admin-key'] || '', ADMIN)) return json(res, 401, { error: '密碼不對' });
     return json(res, 200, world.adminState(Date.now()));
   }
+  if (url === '/healthz') { res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end('ok'); }
   if (url === '/') url = '/index.html';
   if (url === '/admin') url = '/admin.html';
   const prefix = url.startsWith('/shared/') ? '/shared/' : '/';
@@ -69,7 +74,8 @@ const server = http.createServer((req, res) => {
 });
 
 // ---------- 連線 ----------
-const io = new Server(server, { serveClient: true });
+const io = new Server(server, { serveClient: true, maxHttpBufferSize: 16e3 });   // 訊息都很小，限制大小避免被灌爆
+function hello() { return { villages: world.pubs(Date.now()), needCode: !!JOIN_CODE }; }
 const conns = {};   // 部落 → 目前有幾個連線（同一個人可能開兩個分頁）
 function bind(socket, id) {
   socket.data.vid = id;
@@ -84,10 +90,17 @@ io.on('connection', socket => {
     if (typeof cb !== 'function') return;
     const id = o && typeof o.token === 'string' && world.tokens[o.token];
     if (id && world.villages[id] && !socket.data.vid) bind(socket, id);
-    cb({ resumed: !!socket.data.vid, villages: world.pubs(Date.now()) });
+    cb(Object.assign({ resumed: !!socket.data.vid }, hello()));
   });
   socket.on('join', (o, cb) => {
     if (typeof cb !== 'function' || socket.data.vid || !o) return;
+    if (--budget < 0) return cb({ ok: false, msg: '動作太快了，稍等一下' });
+    const known = typeof o.token === 'string' && world.tokens[o.token] && world.villages[world.tokens[o.token]];
+    if (!known) {   // 新玩家才檢查邀請碼與人數上限
+      if (JOIN_CODE && !sameKey(String(o.code || '').trim(), JOIN_CODE)) return cb({ ok: false, msg: '邀請碼不對' });
+      const players = Object.keys(world.villages).filter(id => !world.villages[id].bot).length;
+      if (players >= MAX_VILLAGES) return cb({ ok: false, msg: '測試名額已經滿了' });
+    }
     const r = world.join(o.token, o, Date.now());
     if (r.ok) bind(socket, r.id);
     cb(r);
@@ -113,10 +126,10 @@ setInterval(() => {
   const now = Date.now();
   world.tick(now);
   n++;
-  let pubs = null;
+  let h = null;
   for (const socket of io.sockets.sockets.values()) {
     if (socket.data.vid) socket.emit('state', world.snapshot(socket.data.vid, now));
-    else if (n % 3 === 0) socket.emit('hello', { villages: pubs || (pubs = world.pubs(now)) });
+    else if (n % 3 === 0) socket.emit('hello', h || (h = hello()));
   }
   if (n % 20 === 0) save();
 }, 1000);
@@ -126,4 +139,6 @@ process.on('SIGINT', quit); process.on('SIGTERM', quit);
 server.listen(PORT, () => {
   console.log('山海部落已啟動：http://localhost:' + PORT);
   console.log(ADMIN ? '後台：http://localhost:' + PORT + '/admin' : '後台沒有開放（啟動時設定 ADMIN_PASSWORD 才會開）');
+  console.log(JOIN_CODE ? '需要邀請碼才能建立部落' : '沒有設定邀請碼，任何人都能建立部落');
+  console.log('存檔位置：' + DATA);
 });

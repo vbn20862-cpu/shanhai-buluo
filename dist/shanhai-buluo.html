@@ -117,6 +117,7 @@ p { margin: 4px 0; }
 .lead { color: var(--mute); margin: 0; }
 .fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
 .fields label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--mute); }
+.fields label.wide { grid-column: 1 / -1; }
 .fields input { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; color: var(--ink); font-size: 14px; min-width: 0; }
 .picks { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
 .pick { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0 7px; text-align: left; border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 6px 9px; }
@@ -1658,7 +1659,7 @@ window.Net = (function () {
   var R = World.rules, G = Geo.build();
   var STAGE_TYPES = ['house', 'farm', 'mat', 'special', 'storage'];   // 這個階段開放的建築；軍事建築在對戰階段加入
   var JOBS = ['food', 'mat', 'special'], WILD = { fish: '漁場', hunt: '獵場', wood: '林地' };
-  var S = { me: null, pubs: [], tab: 'build', zone: null, selTile: null, visit: null, form: { owner: '', name: '' }, mode: '', online: false, resetAt: 0, joining: false };
+  var S = { me: null, pubs: [], tab: 'build', zone: null, selTile: null, visit: null, needCode: false, form: { owner: '', name: '', code: '' }, mode: '', online: false, resetAt: 0, joining: false };
   var el = {}, MV = null, VV = null;
 
   // ---------- 小工具 ----------
@@ -1753,7 +1754,7 @@ window.Net = (function () {
     setInterval(moveFolk, 2400);
     setInterval(function () { if (S.visit) Net.view(S.visit.id, function (d) { if (d && S.visit && S.visit.id === d.id) { S.visit.v = d; render(); } }); }, 3000);
     Net.on('status', function (s) { S.online = s.online; S.mode = s.mode; render(); });
-    Net.on('hello', function (h) { S.pubs = h.villages || S.pubs; if (h.reset) { S.me = null; S.zone = null; S.selTile = null; S.visit = null; S.tab = 'build'; el.vobjs._sig = null; } render(); });
+    Net.on('hello', function (h) { S.pubs = h.villages || S.pubs; if (h.needCode != null) S.needCode = !!h.needCode; if (h.reset) { S.me = null; S.zone = null; S.selTile = null; S.visit = null; S.tab = 'build'; el.vobjs._sig = null; } render(); });
     Net.on('state', function (st) { S.me = st.me; S.pubs = st.villages; render(); });
     Net.start();
     render();
@@ -1977,7 +1978,8 @@ window.Net = (function () {
     var z = S.zone && G.byId[S.zone], t = z && z.tribe && Tribes.get(z.tribe), ok = t && t.playable;
     var h = '<div class="start"><h1>山海部落</h1><p class="lead">很久以前，島上的山與海之間住著許多族群。選一個地方，建立你的部落。</p>' +
       '<div class="fields"><label for="f-owner">你的名字<input id="f-owner" maxlength="10" autocomplete="off" placeholder="例如：小米"></label>' +
-      '<label for="f-name">部落名稱<input id="f-name" maxlength="10" autocomplete="off" placeholder="例如：晨霧部落"></label></div>' +
+      '<label for="f-name">部落名稱<input id="f-name" maxlength="10" autocomplete="off" placeholder="例如：晨霧部落"></label>' +
+      (S.needCode ? '<label for="f-code" class="wide">邀請碼<input id="f-code" maxlength="40" autocomplete="off" autocapitalize="off" placeholder="這是封閉測試，請輸入邀請你的人給的邀請碼"></label>' : '') + '</div>' +
       '<p class="label">第一版開放的族群</p><div class="picks">';
     Tribes.playable().forEach(function (p) {
       h += '<button class="pick" data-act="pick" data-t="' + p.id + '" aria-pressed="' + (t && t.id === p.id) + '"><span class="dot" style="background:' + p.color + '"></span><b>' + p.zh + '</b><span>' + p.terrain + '</span></button>';
@@ -2011,8 +2013,8 @@ window.Net = (function () {
     if (setHTML(el.pbody, S.tab === 'build' ? buildPanel(me) : S.tab === 'map' ? zonePanel() : codexPanel(me))) { el.pbody.scrollTop = keep; tickTimers(); }
   }
   function restoreForm() {
-    var a = document.getElementById('f-owner'), b = document.getElementById('f-name');
-    if (a) a.value = S.form.owner; if (b) b.value = S.form.name;
+    var a = document.getElementById('f-owner'), b = document.getElementById('f-name'), c = document.getElementById('f-code');
+    if (a) a.value = S.form.owner; if (b) b.value = S.form.name; if (c) c.value = S.form.code;
   }
   function renderTools() {
     setHTML(el.tools, '<div class="zoom"><button data-act="zoom" data-f="1.4" aria-label="放大">＋</button><button data-act="zoom" data-f="0.714" aria-label="縮小">−</button>' +
@@ -2033,6 +2035,7 @@ window.Net = (function () {
   function onInput(e) {
     if (e.target.id === 'f-owner') S.form.owner = e.target.value;
     else if (e.target.id === 'f-name') S.form.name = e.target.value;
+    else if (e.target.id === 'f-code') S.form.code = e.target.value;
   }
   function onClick(e) {
     var b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
@@ -2048,7 +2051,7 @@ window.Net = (function () {
     }
     else if (a === 'join') {
       S.joining = true; render();
-      Net.join({ owner: S.form.owner, name: S.form.name, tribe: G.byId[S.zone].tribe, hex: S.zone }, function (r) {
+      Net.join({ owner: S.form.owner, name: S.form.name, code: S.form.code, tribe: G.byId[S.zone].tribe, hex: S.zone }, function (r) {
         S.joining = false;
         if (!r.ok) { toast(r.msg, true); render(); return; }
         S.tab = 'build'; S.selTile = null; toast('部落建立了。先蓋家屋讓族人住進來，空地不夠就往外拓荒。'); render();
