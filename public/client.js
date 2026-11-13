@@ -365,7 +365,6 @@
     h += '<p class="label">島上的 17 族</p><ul class="tlist">';
     Tribes.LIST.forEach(function (o) { h += '<li><span class="dot" style="background:' + o.color + '"></span><div><b>' + o.zh + '</b><span class="muted"> ' + o.area + '</span><p>' + o.intro + '</p></div></li>'; });
     h += '</ul><p class="muted">' + Tribes.SOURCE_NOTE + '</p>';
-    if (S.mode === 'solo') h += '<button class="btn ghost" data-act="reset">' + (Date.now() < S.resetAt ? '再按一次，確定重新開始' : '重新開始（清除單機存檔）') + '</button>';
     return h;
   }
   // ---------- 軍事 ----------
@@ -494,16 +493,26 @@
     else return false;
     return true;
   }
+  function testPanel(me) {
+    var T = Net.testing(), cap = me.d.armyCap, room = cap - (me.units.w + me.units.a + me.away.w + me.away.a + me.train.length);
+    return '<section class="card"><h3>測試工具<span class="lv">只有單機試玩有</span></h3><p class="muted">方便快速試玩用。連線版沒有這些功能，所有人都照正常規則。</p>' +
+      '<label class="switch wide" for="t-rich"><input type="checkbox" id="t-rich" data-act="t-rich"' + (T.rich ? ' checked' : '') + '>無限資源（糧食、建材、特產隨時補滿）</label>' +
+      '<div class="tbtns"><button class="btn sm" data-act="t-finish"' + (me.queue.length + me.train.length ? '' : ' disabled') + '>工程和訓練立刻完成</button>' +
+      '<button class="btn sm" data-act="t-army"' + (room > 0 ? '' : ' disabled') + '>戰士補滿' + (cap ? '' : '（要先有訓練場）') + '</button>' +
+      '<button class="btn sm" data-act="t-march"' + (S.marches.some(function (m) { return m.from === me.id && m.phase !== 'fight'; }) ? '' : ' disabled') + '>出征的隊伍立刻抵達</button>' +
+      '<button class="btn sm" data-act="t-bots">讓示範部落有守軍和物資（各加 6 人）</button></div></section>' +
+      '<section class="card"><h3>重新開始</h3><p class="muted">清除單機存檔，回到選區域的畫面。</p><button class="btn ghost" data-act="reset">' + (Date.now() < S.resetAt ? '再按一次，確定重新開始' : '重新開始') + '</button></section>';
+  }
   function renderPanel() {
     var me = S.me;
     if (!me) { setHTML(el.tabs, ''); el.tabs.hidden = true; if (setHTML(el.pbody, startPanel())) restoreForm(); return; }
     if (S.visit) { el.tabs.hidden = true; setHTML(el.pbody, visitPanel()); return; }
     el.tabs.hidden = false;
-    setHTML(el.tabs, [['build', '部落'], ['army', '軍事'], ['map', '地圖'], ['codex', '圖鑑']].map(function (t) {
+    setHTML(el.tabs, [['build', '部落'], ['army', '軍事'], ['map', '地圖'], ['codex', '圖鑑']].concat(Net.testing() ? [['test', '測試']] : []).map(function (t) {
       return '<button data-act="tab" data-tab="' + t[0] + '" aria-pressed="' + (S.tab === t[0]) + '">' + t[1] + '</button>';
     }).join(''));
     var keep = el.pbody.scrollTop;
-    if (setHTML(el.pbody, S.tab === 'build' ? buildPanel(me) : S.tab === 'army' ? armyPanel(me) : S.tab === 'map' ? zonePanel() : codexPanel(me))) { el.pbody.scrollTop = keep; tickTimers(); }
+    if (setHTML(el.pbody, S.tab === 'build' ? buildPanel(me) : S.tab === 'army' ? armyPanel(me) : S.tab === 'map' ? zonePanel() : S.tab === 'test' ? testPanel(me) : codexPanel(me))) { el.pbody.scrollTop = keep; tickTimers(); }
   }
   function restoreForm() {
     var a = document.getElementById('f-owner'), b = document.getElementById('f-name'), c = document.getElementById('f-code');
@@ -560,6 +569,11 @@
     else if (a === 'focus') act({ type: 'idle', focus: b.getAttribute('data-f') });
     else if (a === 'idleup') act({ type: 'idle', upgrade: b.checked }, b.checked ? '離線時會自動升級' : '已關閉自動升級');
     else if (a === 'ack') act({ type: 'ack' });
+    else if (a === 't-rich') { Net.test('rich', b.checked); toast(b.checked ? '已開啟無限資源' : '已關閉無限資源'); }
+    else if (a === 't-finish') Net.test('finish');
+    else if (a === 't-army') Net.test('army');
+    else if (a === 't-march') Net.test('march');
+    else if (a === 't-bots') { Net.test('bots'); toast('示範部落都多了 6 名守軍'); }
     else if (a === 'idletr') act({ type: 'idle', train: b.checked }, b.checked ? '離線時會自動補訓守軍' : '已關閉自動補訓');
     else if (armyClick(a, b, me)) { /* 軍事與對戰的操作 */ }
     else if (a === 'visit') Net.view(b.getAttribute('data-id'), function (d) { if (!d) return toast('找不到這個部落', true); S.visit = { id: d.id, v: d }; el.vimg._focus = null; render(); });

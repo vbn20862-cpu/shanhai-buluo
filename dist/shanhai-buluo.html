@@ -173,6 +173,8 @@ p { margin: 4px 0; }
 .act.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); margin-top: 10px; }
 .act.two .btn { padding: 9px; }
 .sheet.wide { width: min(420px, 100%); }
+.tbtns { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.tbtns .btn { padding: 7px 12px; text-align: left; }
 .scout { background: var(--raise); border-radius: 8px; padding: 5px 9px; margin: 6px 0 2px; }
 .sheet.battle { width: min(680px, 100%); display: flex; flex-direction: column; gap: 8px; }
 .bhead { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; }
@@ -1764,7 +1766,7 @@ window.Art = (function () {
 window.Net = (function () {
   'use strict';
   var handlers = {}, mode = null, socket = null, local = null, localId = null, memToken = null;
-  var SAVE_KEY = 'shanhai_solo_v2', TOKEN_KEY = 'shanhai_token';
+  var SAVE_KEY = 'shanhai_solo_v2', TOKEN_KEY = 'shanhai_token', RICH_KEY = 'shanhai_test_rich', rich = false;
 
   function on(ev, fn) { handlers[ev] = fn; }
   function fire(ev, d) { if (handlers[ev]) handlers[ev](d); }
@@ -1786,6 +1788,7 @@ window.Net = (function () {
     if (!saved && window.claude && window.claude.hot && window.claude.hot.data && window.claude.hot.data.world) saved = window.claude.hot.data.world;
     if (saved) { try { local.load(JSON.parse(saved)); } catch (e) { /* 壞掉的存檔就重新開始 */ } }
     var now = Date.now();
+    rich = store(RICH_KEY) === '1';
     local.ensureBots(now);
     localId = local.tokens.solo && local.villages[local.tokens.solo] ? local.tokens.solo : null;
     if (localId) local.setOnline(localId, true, now);   // 補算關掉網頁這段時間，並產生離線報告
@@ -1794,7 +1797,7 @@ window.Net = (function () {
     var n = 0;
     setInterval(function () {
       var t = Date.now();
-      local.tick(t);
+      fill(); local.tick(t); fill();
       if (localId) fire('state', local.snapshot(localId, t)); else fire('hello', { villages: pubs(t), resumed: false });
       if (++n % 10 === 0) save();
     }, 1000);
@@ -1802,6 +1805,11 @@ window.Net = (function () {
   }
   function pubs(now) { return local.pubs(now); }
   function save() { store(SAVE_KEY, JSON.stringify(local.toJSON())); }
+  // 測試工具（只有單機試玩有）：無限資源就是每次都把倉庫補滿
+  function fill() {
+    var v = rich && localId && local.villages[localId]; if (!v) return;
+    var d = World.rules.derived(v, 1); v.res.food = d.cap; v.res.mat = d.cap; v.sp[v.tribe] = d.spCap;
+  }
 
   // ----- 連線 -----
   function startOnline() {
@@ -1830,12 +1838,30 @@ window.Net = (function () {
     act: function (a, cb) {
       cb = cb || function () {};
       if (mode === 'solo') {
+        fill();
         var now = Date.now(), r = local.act(localId, a, now);
-        fire('state', local.snapshot(localId, now)); cb(r);
+        fill(); fire('state', local.snapshot(localId, now)); cb(r);
       } else socket.emit('act', a, cb);
     },
     view: function (id, cb) {
       if (mode === 'solo') cb(local.detail(id, Date.now())); else socket.emit('view', id, cb);
+    },
+    testing: function () { return mode === 'solo' ? { rich: rich } : null; },
+    test: function (kind, on) {   // 單機試玩的測試工具；連線版沒有這條路，伺服器不接受
+      if (mode !== 'solo' || !localId) return;
+      var v = local.villages[localId], now = Date.now();
+      if (kind === 'rich') { rich = !!on; store(RICH_KEY, rich ? '1' : '0'); }
+      else if (kind === 'finish') { v.queue.forEach(function (q) { q.doneAt = now; }); v.train.forEach(function (q) { q.doneAt = now; }); }
+      else if (kind === 'march') local.marches.forEach(function (m) { if (m.from === localId && m.phase !== 'fight') m.arriveAt = now; });
+      else if (kind === 'army') {
+        var room = World.rules.armyCap(v) - (v.units.w + v.units.a + v.away.w + v.away.a + v.train.length);
+        if (room > 0) { v.units.w += Math.ceil(room / 2); v.units.a += Math.floor(room / 2); }
+      }
+      else if (kind === 'bots') Object.keys(local.villages).forEach(function (id) {   // 讓示範部落有守軍，對戰才有東西可以打
+        var o = local.villages[id]; if (!o.bot || o.battle) return;
+        o.units.w += 3; o.units.a += 3; o.wall = Math.max(o.wall, 1); o.res.food = Math.max(o.res.food, 400); o.res.mat = Math.max(o.res.mat, 400);
+      });
+      fill(); local.tick(now); fill(); save(); fire('state', local.snapshot(localId, now));
     },
     reset: function () {   // 只有單機試玩可以重來
       if (mode !== 'solo') return;
@@ -2214,7 +2240,6 @@ window.Net = (function () {
     h += '<p class="label">島上的 17 族</p><ul class="tlist">';
     Tribes.LIST.forEach(function (o) { h += '<li><span class="dot" style="background:' + o.color + '"></span><div><b>' + o.zh + '</b><span class="muted"> ' + o.area + '</span><p>' + o.intro + '</p></div></li>'; });
     h += '</ul><p class="muted">' + Tribes.SOURCE_NOTE + '</p>';
-    if (S.mode === 'solo') h += '<button class="btn ghost" data-act="reset">' + (Date.now() < S.resetAt ? '再按一次，確定重新開始' : '重新開始（清除單機存檔）') + '</button>';
     return h;
   }
   // ---------- 軍事 ----------
@@ -2343,16 +2368,26 @@ window.Net = (function () {
     else return false;
     return true;
   }
+  function testPanel(me) {
+    var T = Net.testing(), cap = me.d.armyCap, room = cap - (me.units.w + me.units.a + me.away.w + me.away.a + me.train.length);
+    return '<section class="card"><h3>測試工具<span class="lv">只有單機試玩有</span></h3><p class="muted">方便快速試玩用。連線版沒有這些功能，所有人都照正常規則。</p>' +
+      '<label class="switch wide" for="t-rich"><input type="checkbox" id="t-rich" data-act="t-rich"' + (T.rich ? ' checked' : '') + '>無限資源（糧食、建材、特產隨時補滿）</label>' +
+      '<div class="tbtns"><button class="btn sm" data-act="t-finish"' + (me.queue.length + me.train.length ? '' : ' disabled') + '>工程和訓練立刻完成</button>' +
+      '<button class="btn sm" data-act="t-army"' + (room > 0 ? '' : ' disabled') + '>戰士補滿' + (cap ? '' : '（要先有訓練場）') + '</button>' +
+      '<button class="btn sm" data-act="t-march"' + (S.marches.some(function (m) { return m.from === me.id && m.phase !== 'fight'; }) ? '' : ' disabled') + '>出征的隊伍立刻抵達</button>' +
+      '<button class="btn sm" data-act="t-bots">讓示範部落有守軍和物資（各加 6 人）</button></div></section>' +
+      '<section class="card"><h3>重新開始</h3><p class="muted">清除單機存檔，回到選區域的畫面。</p><button class="btn ghost" data-act="reset">' + (Date.now() < S.resetAt ? '再按一次，確定重新開始' : '重新開始') + '</button></section>';
+  }
   function renderPanel() {
     var me = S.me;
     if (!me) { setHTML(el.tabs, ''); el.tabs.hidden = true; if (setHTML(el.pbody, startPanel())) restoreForm(); return; }
     if (S.visit) { el.tabs.hidden = true; setHTML(el.pbody, visitPanel()); return; }
     el.tabs.hidden = false;
-    setHTML(el.tabs, [['build', '部落'], ['army', '軍事'], ['map', '地圖'], ['codex', '圖鑑']].map(function (t) {
+    setHTML(el.tabs, [['build', '部落'], ['army', '軍事'], ['map', '地圖'], ['codex', '圖鑑']].concat(Net.testing() ? [['test', '測試']] : []).map(function (t) {
       return '<button data-act="tab" data-tab="' + t[0] + '" aria-pressed="' + (S.tab === t[0]) + '">' + t[1] + '</button>';
     }).join(''));
     var keep = el.pbody.scrollTop;
-    if (setHTML(el.pbody, S.tab === 'build' ? buildPanel(me) : S.tab === 'army' ? armyPanel(me) : S.tab === 'map' ? zonePanel() : codexPanel(me))) { el.pbody.scrollTop = keep; tickTimers(); }
+    if (setHTML(el.pbody, S.tab === 'build' ? buildPanel(me) : S.tab === 'army' ? armyPanel(me) : S.tab === 'map' ? zonePanel() : S.tab === 'test' ? testPanel(me) : codexPanel(me))) { el.pbody.scrollTop = keep; tickTimers(); }
   }
   function restoreForm() {
     var a = document.getElementById('f-owner'), b = document.getElementById('f-name'), c = document.getElementById('f-code');
@@ -2409,6 +2444,11 @@ window.Net = (function () {
     else if (a === 'focus') act({ type: 'idle', focus: b.getAttribute('data-f') });
     else if (a === 'idleup') act({ type: 'idle', upgrade: b.checked }, b.checked ? '離線時會自動升級' : '已關閉自動升級');
     else if (a === 'ack') act({ type: 'ack' });
+    else if (a === 't-rich') { Net.test('rich', b.checked); toast(b.checked ? '已開啟無限資源' : '已關閉無限資源'); }
+    else if (a === 't-finish') Net.test('finish');
+    else if (a === 't-army') Net.test('army');
+    else if (a === 't-march') Net.test('march');
+    else if (a === 't-bots') { Net.test('bots'); toast('示範部落都多了 6 名守軍'); }
     else if (a === 'idletr') act({ type: 'idle', train: b.checked }, b.checked ? '離線時會自動補訓守軍' : '已關閉自動補訓');
     else if (armyClick(a, b, me)) { /* 軍事與對戰的操作 */ }
     else if (a === 'visit') Net.view(b.getAttribute('data-id'), function (d) { if (!d) return toast('找不到這個部落', true); S.visit = { id: d.id, v: d }; el.vimg._focus = null; render(); });
