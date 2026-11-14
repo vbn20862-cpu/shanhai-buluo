@@ -18,6 +18,10 @@ window.Art = (function () {
     army: '<path d="M2.5 14 11 5.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"/><path d="M14.6 1.4 13.7 6.9 9.1 2.3z" fill="currentColor"/>',
     star: '<path d="M8 1l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" fill="currentColor"/>',
     power: '<path d="M8 1.5 14 6 11.6 14H4.4L2 6z" fill="currentColor"/>',
+    build: '<path d="M3 13.5 9.5 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M8 3.2 12.8 8l1.6-1.6L9.6 1.6z" fill="currentColor"/>',
+    alliance: '<path d="M3 15V2M9 15V4" stroke="currentColor" stroke-width="1.4"/><path d="M3.6 2.4h5v3.6h-5zM9.6 4.4h5v3.6h-5z" fill="currentColor"/>',
+    map: '<path d="M1.5 3.5 6 2l4 1.6 4.5-1.6v10.5L10 14l-4-1.6-4.5 1.6z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6 2v10.4M10 3.6V14" stroke="currentColor" stroke-width="1.2"/>',
+    level: '<path d="M2 14h12V3h-3.5v3.5H7V10H2z" fill="currentColor"/>',
     flag: '<path d="M3.2 15V1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/><path d="M4.2 2.4h9.3l-2.6 3 2.6 3H4.2z" fill="currentColor"/>',
     shield: '<path d="M8 1.2 14 3.5v4.3c0 3.4-2.4 5.9-6 7-3.6-1.1-6-3.6-6-7V3.5z" fill="currentColor"/>',
     fire: '<path d="M8 1.2c3.4 3 4.6 5.6 4.6 8a4.6 4.6 0 0 1-9.2 0c0-1.5.6-2.8 1.7-3.9.2 1.3.8 2.1 1.6 2.4C6.4 5.4 6.8 3.2 8 1.2z" fill="currentColor"/><path d="M2.5 14.6h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
@@ -27,7 +31,14 @@ window.Art = (function () {
    * 有載入、而且沒有被玩家切回「原本的畫法」時，建築和圖示用素材；否則用這個檔案裡程式畫的版本。 */
   var AS = window.ShanhaiArt || null, newArt = !!AS;
   try { if (localStorage.getItem('shanhai_art') === 'old') newArt = false; } catch (e) { /* 讀不到設定就用預設 */ }
-  var ICON_AS = { power: 'power', food: 'food', mat: 'material', pop: 'people', army: 'warrior', star: 'prosperity', shield: 'protect', fire: 'gather', book: 'quest', charge: 'charge', volley: 'volley', hold: 'regroup' };   // 遊戲裡的圖示名稱 → 素材的檔名
+  var ICON_AS = { power: 'power', build: 'build', march: 'march', alliance: 'alliance', trade: 'specialty', craft: 'craft', map: 'map', level: 'level', food: 'food', mat: 'material', pop: 'people', army: 'warrior', star: 'prosperity', shield: 'protect', fire: 'gather', book: 'quest', charge: 'charge', volley: 'volley', hold: 'regroup' };   // 遊戲裡的圖示名稱 → 素材的檔名
+  [['march', 'flag'], ['trade', 'sp'], ['craft', 'book']].forEach(function (p) { ICONS[p[0]] = ICONS[p[1]]; });   // 沒有素材時借用相近的圖示
+  /* 地圖上的資源點用的圖示（24 格）：素材裡沒有竹子和石板，這兩個是程式畫的 */
+  var ICON24 = {
+    bamboo: '<g fill="currentColor"><rect x="5" y="3" width="3.2" height="18" rx="1.2"/><rect x="10.4" y="1.5" width="3.2" height="19.5" rx="1.2"/><rect x="15.8" y="4" width="3.2" height="17" rx="1.2"/></g><path d="M5 9h3.2M5 15h3.2M10.4 7h3.2M10.4 13.5h3.2M15.8 10h3.2M15.8 16h3.2" stroke="#14212A" stroke-width="1.2"/><path d="M13.6 5.5c3-2 5-2 6.5-1.5-1.4 1.6-3.6 2.2-6.5 1.5z" fill="currentColor"/>',
+    stone: '<g fill="currentColor"><path d="M3 18.5 5 15h14l2 3.5z"/><path d="M4.5 13.5 6.5 10h11l2 3.5z"/><path d="M7 8.5 8.8 5h6.4l1.8 3.5z"/></g>'
+  };
+  function iconBody(name) { return (AS && newArt && AS.icon[name]) || ICON24[name] || (AS && AS.icon[name]) || ''; }
   function icon(name, cls) {
     var n = newArt && ICON_AS[name] && AS.icon[ICON_AS[name]];
     if (n) return '<svg class="ic ' + (cls || 'ic-' + name) + '" viewBox="0 0 24 24" aria-hidden="true">' + n + '</svg>';
@@ -295,7 +306,7 @@ window.Art = (function () {
   }
 
   /* v: {tribe, tiles, land, queue, wall}；回傳放進 <svg> 的內容。倒數文字由外部依 data-until 更新。 */
-  function scene(v, sel, plain) {   // plain：參觀別人的部落時，不顯示可以拓荒、可以興建的記號
+  function scene(v, sel, plain, bub) {   // plain：參觀別人的部落時，不顯示可以拓荒、可以興建的記號；bub：產量的泡泡（建築種類 → 文字）
     var t = Tribes.get(v.tribe), k = t.look, S = R.SITES, low = '', top = '', items = [], busy = {}, i;
     v.queue.forEach(function (w) { if (w.tile >= 0) busy[w.tile] = w; });
     function dist(j) { return Math.hypot(S[j].x - CX, S[j].y - CY); }
@@ -340,6 +351,15 @@ window.Art = (function () {
         else if (b.level > 0) top += '<g transform="translate(' + f1(p[0] + 34) + ' ' + f1(p[1] - topOf(b.type, t, b.level)) + ')"><circle r="12" fill="rgba(20,33,42,.88)"/><text y="6" text-anchor="middle" font-size="17" font-weight="700" fill="#F2EAD6">' + b.level + '</text></g>';
       }
     }
+    if (bub) Object.keys(bub).forEach(function (ty) {   // 每一種生產建築，在第一棟上方浮出整個部落的產量
+      for (var j = 0; j < S.length; j++) {
+        var bj = v.tiles[j]; if (!bj || bj.type !== ty || !bj.level || bj.busy) continue;
+        var pj = sitePos(j), txt = bub[ty], w = 30 + txt.length * 9.5, ic = ty === 'farm' ? 'food' : ty === 'mat' ? 'mat' : 'sp';
+        top += '<g class="bubble" transform="translate(' + f1(pj[0] - 6) + ' ' + f1(pj[1] - topOf(ty, t, bj.level) + 6) + ')"><rect x="' + f1(-w / 2) + '" y="-15" width="' + f1(w) + '" height="28" rx="14" fill="#BFE3C4" stroke="#fff" stroke-width="2.5"/>' +
+          '<g transform="translate(' + f1(-w / 2 + 8) + ' -9) scale(1.05)" style="color:#14212A">' + (ICONS[ic] || '') + '</g><text x="' + f1(-w / 2 + 28) + '" y="6" font-size="16" font-weight="700" fill="#14212A">' + txt + '</text></g>';
+        break;
+      }
+    });
     items.sort(function (a, c) { return a.y - c.y; });
     return low + items.map(function (it) { return it.s; }).join('') + top;
   }
@@ -782,7 +802,7 @@ window.Art = (function () {
     return s;
   }
 
-  return { icon: icon, scene: scene, battleShow: battleShow, building: function (type, t) { return bld(type, t.look, t); },
+  return { icon: icon, iconBody: iconBody, scene: scene, battleShow: battleShow, building: function (type, t, level) { return bld(type, t.look, t, level); },
     hasNewArt: function () { return !!AS; }, newArt: function () { return newArt; },
     setNewArt: function (on) { newArt = !!AS && !!on; try { localStorage.setItem('shanhai_art', newArt ? 'new' : 'old'); } catch (e) { /* 記不住就只在這次有效 */ } }, BW: BW, BH: BH, decor: decor, groundURL: groundURL, sitePos: sitePos, person: person, DEFS: DEFS, SW: SW, SH: SH,
     paintMap: paintMap, mapLabels: mapLabels, shade: shade };
