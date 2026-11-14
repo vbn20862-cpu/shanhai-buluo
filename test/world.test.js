@@ -799,3 +799,65 @@ test('建築升到 25 級：花費與時間的曲線、中心的前置條件、�
   assert.equal(w2.devProgress(w2.villages[u.id]).type, 'barracks');
   check(w);
 });
+
+test('第二批的建築：靶場才能訓練弓手、工寮多一個工人、芋頭田有耕作位置、引水道讓糧食變多、交易亭多掛單、迎賓亭可以多送', () => {
+  const w = new World({ rng: seeded(111) });
+  let now = 1e6;
+  const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'amis' }, now).id];
+  w.setOnline(v.id, true, now);
+  v.res.food = 5000; v.res.mat = 5000; v.tiles[3] = { type: 'barracks', level: 3 };
+  assert.equal(R.limit('archery', 1, v), 0, '中心 2 級才能蓋靶場'); assert.equal(R.limit('archery', 2, v), 1); assert.equal(R.limit('guest', 7, v), 0); assert.equal(R.limit('taro', 9, v), 3);
+  assert.equal(w.act(v.id, { type: 'train', u: 'a' }, now).msg, '要先蓋靶場才能訓練弓手');
+  assert.ok(w.act(v.id, { type: 'train', u: 'w' }, now).ok, '勇士照樣在訓練場練');
+  v.tiles[1] = { type: 'archery', level: 1 };
+  assert.ok(w.act(v.id, { type: 'train', u: 'a' }, now).ok, '有靶場就可以練弓手');
+  assert.ok(R.battleMod(v, false).a > 1, '靶場讓弓手強一點');
+  assert.equal(R.derived(v, 1).builders, 2); v.tiles[5] = { type: 'hut', level: 1 }; assert.equal(R.derived(v, 1).builders, 3, '工寮：多一個工人');
+  const f0 = R.derived(v, 1).slots.food; v.tiles[7] = { type: 'taro', level: 2 }; v.land[7] = 1;
+  assert.equal(R.derived(v, 1).slots.food, f0 + 4, '芋頭田也有耕作的位置');
+  const p0 = R.perWorker(v, 'food', 1); v.tiles[8] = { type: 'water', level: 5 }; v.land[8] = 1;
+  assert.ok(Math.abs(R.perWorker(v, 'food', 1) / p0 - 1.1) < 1e-9, '引水道 5 級：糧食 +10%');
+  assert.equal(R.derived(v, 1).offerMax, 3); v.tiles[9] = { type: 'market', level: 10 }; v.land[9] = 1; assert.equal(R.derived(v, 1).offerMax, 5);
+  assert.equal(R.derived(v, 1).giftMax, 100); v.tiles[10] = { type: 'guest', level: 2 }; v.land[10] = 1; assert.equal(R.derived(v, 1).giftMax, 140);
+  check(w);
+});
+
+test('技藝：技藝屋的等級決定上限，同時學一項，學會之後有加成；療養：負傷的人進療養屋，好了就歸隊', () => {
+  const w = new World({ rng: seeded(113) });
+  let now = 1e6;
+  const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'bunun' }, now).id];
+  const t = w.villages[w.join('b', { owner: 'B', name: '乙', tribe: 'paiwan' }, now).id];
+  w.setOnline(v.id, true, now); w.setOnline(t.id, true, now);
+  v.res.food = 9000; v.res.mat = 9000;
+  assert.equal(w.act(v.id, { type: 'research', id: 'spear' }, now).msg, '要先蓋技藝屋');
+  v.tiles[1] = { type: 'craft', level: 1 };
+  assert.equal(R.techMax(v), 1); assert.equal(w.act(v.id, { type: 'research', id: 'toString' }, now).ok, false);
+  assert.ok(w.act(v.id, { type: 'research', id: 'farming' }, now).ok);
+  assert.equal(w.act(v.id, { type: 'research', id: 'spear' }, now).msg, '同時只能學一項技藝');
+  const p0 = R.perWorker(v, 'food', 1);
+  now = v.research.doneAt + 1; w.tick(now);
+  assert.equal(v.tech.farming, 1); assert.equal(v.research, null);
+  assert.ok(Math.abs(R.perWorker(v, 'food', 1) / p0 - 1.04) < 1e-9, '農耕 1 級：糧食 +4%');
+  assert.equal(w.act(v.id, { type: 'research', id: 'farming' }, now).msg, '技藝屋升級之後才能學更高級');
+  v.tiles[1].level = 6; assert.equal(R.techMax(v), 2);
+  ['spear', 'archery', 'guard'].forEach(id => { v.tech[id] = 5; });
+  const m = R.battleMod(v, true);
+  assert.ok(Math.abs(m.w - 1.15) < 1e-9 && Math.abs(m.a - 1.15) < 1e-9 && Math.abs(m.def - 1.15) < 1e-9, '矛術、射箭、守備各 5 級：+15%');
+  assert.ok(R.power({ tribe: 'bunun', w: 5, a: 5, u: 0, mod: m, def: true }) > R.power({ tribe: 'bunun', w: 5, a: 5, u: 0, def: true }));
+  // 療養：乙蓋了療養屋，被打下來時負傷的人進去休養，之後歸隊
+  t.newbieUntil = 0; t.units = { w: 6, a: 0, u: 0 }; t.tiles[3] = { type: 'barracks', level: 2 }; t.tiles[5] = { type: 'heal', level: 2 }; t.land[5] = 1;
+  assert.equal(R.healCap(t), 14);
+  v.units = { w: 12, a: 8, u: 0 }; v.tiles[3] = { type: 'barracks', level: 5 };
+  assert.ok(w.act(v.id, { type: 'attack', to: t.id, w: 12, a: 8 }, now).ok);
+  while (!t.reports.length) { now += 1000; w.tick(now); }
+  const rep = t.reports[0];
+  assert.ok(rep.lost > 0 && rep.care === Math.min(rep.lost, 14), '負傷的人進療養屋：' + rep.lost + ' 人負傷，' + rep.care + ' 人休養');
+  assert.equal(t.hurt.w, rep.care); assert.equal(w.snapshot(t.id, now).me.healAcc, undefined);
+  const home0 = t.units.w;
+  for (let i = 0; i < 600 && t.hurt.w > 0; i++) { now += 1000; w.tick(now); }
+  assert.equal(t.hurt.w, 0, '休養好了'); assert.equal(t.units.w, home0 + rep.care, '都回到隊伍');
+  // 舊存檔沒有這些欄位也讀得進來
+  const old = JSON.parse(JSON.stringify(w.toJSON())); delete old.villages[v.id].tech; delete old.villages[v.id].hurt; delete old.villages[v.id].research;
+  const w2 = new World().load(old); assert.deepEqual(w2.villages[v.id].hurt, { w: 0, a: 0, u: 0 }); assert.equal(w2.villages[v.id].research, null);
+  check(w);
+});

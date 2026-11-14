@@ -22,6 +22,7 @@ window.Art = (function () {
     alliance: '<path d="M3 15V2M9 15V4" stroke="currentColor" stroke-width="1.4"/><path d="M3.6 2.4h5v3.6h-5zM9.6 4.4h5v3.6h-5z" fill="currentColor"/>',
     map: '<path d="M1.5 3.5 6 2l4 1.6 4.5-1.6v10.5L10 14l-4-1.6-4.5 1.6z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6 2v10.4M10 3.6V14" stroke="currentColor" stroke-width="1.2"/>',
     level: '<path d="M2 14h12V3h-3.5v3.5H7V10H2z" fill="currentColor"/>',
+    heal: '<path d="M3 14C2 8 5 3 13.5 2c.4 7-3.4 11.6-9.4 12.2z" fill="currentColor"/><path d="M3 14 1.6 15.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
     flag: '<path d="M3.2 15V1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/><path d="M4.2 2.4h9.3l-2.6 3 2.6 3H4.2z" fill="currentColor"/>',
     shield: '<path d="M8 1.2 14 3.5v4.3c0 3.4-2.4 5.9-6 7-3.6-1.1-6-3.6-6-7V3.5z" fill="currentColor"/>',
     fire: '<path d="M8 1.2c3.4 3 4.6 5.6 4.6 8a4.6 4.6 0 0 1-9.2 0c0-1.5.6-2.8 1.7-3.9.2 1.3.8 2.1 1.6 2.4C6.4 5.4 6.8 3.2 8 1.2z" fill="currentColor"/><path d="M2.5 14.6h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
@@ -67,7 +68,7 @@ window.Art = (function () {
   (window.ShanhaiArtQueue || []).forEach(function (p) { preDefs += merge(p); }); window.ShanhaiArtQueue = [];
   try { if (localStorage.getItem('shanhai_art') === 'old') newArt = false; } catch (e) { /* 讀不到設定就用預設 */ }
   function decorCacheReset() { if (typeof decorCache !== 'undefined') { decorCache = {}; groundCache = {}; } }
-  var ICON_AS = { power: 'power', build: 'build', march: 'march', alliance: 'alliance', trade: 'specialty', craft: 'craft', map: 'map', level: 'level', food: 'food', mat: 'material', pop: 'people', army: 'warrior', star: 'prosperity', shield: 'protect', fire: 'gather', book: 'quest', charge: 'charge', volley: 'volley', hold: 'regroup' };   // 遊戲裡的圖示名稱 → 素材的檔名
+  var ICON_AS = { heal: 'heal', power: 'power', build: 'build', march: 'march', alliance: 'alliance', trade: 'specialty', craft: 'craft', map: 'map', level: 'level', food: 'food', mat: 'material', pop: 'people', army: 'warrior', star: 'prosperity', shield: 'protect', fire: 'gather', book: 'quest', charge: 'charge', volley: 'volley', hold: 'regroup' };   // 遊戲裡的圖示名稱 → 素材的檔名
   [['march', 'flag'], ['trade', 'sp'], ['craft', 'book']].forEach(function (p) { ICONS[p[0]] = ICONS[p[1]]; });   // 沒有素材時借用相近的圖示
   /* 地圖上的資源點用的圖示（24 格）：素材裡沒有竹子和石板，這兩個是程式畫的 */
   var ICON24 = {
@@ -275,7 +276,30 @@ window.Art = (function () {
     return n ? useB(n) : ISO[type](k, t);   // 素材的地基比建地略大，縮一點相鄰的建築才不會疊在一起
   }
   function topOf(type, t, level) { var n = asset(t, type, level); return n ? AS.height[n] * ASSET_SCALE + 18 : type === 'unique' && t.id === 'atayal' ? 128 : TOP[type]; }   // 等級標記放多高
-  var TOP = { center: 82, house: 58, farm: 26, mat: 36, special: 48, storage: 64, barracks: 56, tower: 104, unique: 56 };   // 各建築大約多高，用來放等級標記
+  var TOP = { center: 82, house: 58, farm: 26, mat: 36, special: 48, storage: 64, barracks: 56, tower: 104, unique: 56, hut: 46, archery: 40, taro: 26, water: 34, heal: 56, craft: 60, market: 50, plaza: 30, guest: 52 };
+  /* 第二批的 9 種建築：程式畫的簡單版本（美術素材還沒載好、或是切回原本的畫法時用） */
+  function sign(color, p) { return '<circle cx="' + f1(p[0]) + '" cy="' + f1(p[1]) + '" r="7" fill="' + color + '" stroke="#F2EAD6" stroke-width="2"/>'; }
+  ISO.hut = function (k) { return house(k, { w: 1.3, d: 1.0, h: 14, rh: 12, open: true }) + seg(q(0.9, 0.7), q(1.1, 0.4, 24), '#7A5636', 2.6); };
+  ISO.archery = function (k) {
+    var s = plot(1.2, 1.05, '#B79B6E', ' opacity=".85"');
+    [[-0.5, -0.3], [0.4, -0.5], [0.1, 0.4]].forEach(function (c) { var p = q(c[0], c[1]); s += seg(p, [p[0], p[1] - 18], '#7A5636', 2.4) + '<circle cx="' + f1(p[0]) + '" cy="' + f1(p[1] - 22) + '" r="7" fill="#E3D3A6" stroke="#B5483A" stroke-width="2.4"/>'; });
+    return s;
+  };
+  ISO.taro = function (k) {
+    var s = plot(1.2, 1.05, '#6E5A3E');
+    for (var i = 0; i < 9; i++) { var p = q(-0.8 + (i % 3) * 0.8, -0.7 + Math.floor(i / 3) * 0.7); s += '<path d="M' + f1(p[0]) + ' ' + f1(p[1]) + 'q-9 -14 0 -18q9 4 0 18z" fill="#5E9A4E"/>'; }
+    return s;
+  };
+  ISO.water = function (k) { return plot(1.2, 1.05, '#B79B6E', ' opacity=".7"') + plot(0.5, 0.5, '#4C93B5') + seg(q(-1.1, -0.9, 16), q(-0.3, -0.3, 10), '#8FB56A', 5) + seg(q(-1.1, -0.9), q(-1.1, -0.9, 16), '#7A5636', 2.4); };
+  ISO.heal = function (k) { return house(k, { w: 1.4, d: 1.2, h: 18, rh: 16 }) + sign('#BFE3C4', q(0.9, 0.9, 26)); };
+  ISO.craft = function (k) { return house(k, { w: 1.6, d: 1.3, h: 18, rh: 18, open: true }) + sign('#E3B341', q(1.0, 1.0, 26)); };
+  ISO.market = function (k) { return house(k, { w: 1.4, d: 1.4, h: 16, rh: 14, open: true }) + box(0.5, 0.3, 0, 8, '#8D6642', '#74553A', '#A57A50'); };
+  ISO.plaza = function (k) {
+    var p = q(0, 0), s = plot(1.25, 1.1, '#C4AB7C');
+    [[-0.8, 0], [0.8, 0], [0, -0.7], [0, 0.7]].forEach(function (c) { var r = q(c[0], c[1]); s += '<ellipse cx="' + f1(r[0]) + '" cy="' + f1(r[1]) + '" rx="10" ry="4" fill="#7A5636"/>'; });
+    return s + '<path d="M' + f1(p[0]) + ' ' + f1(p[1] - 16) + 'c6 6 7 11 4 16h-8c-3 -5 -2 -10 4 -16z" fill="#F0A13A"/>';
+  };
+  ISO.guest = function (k) { return house(k, { w: 1.2, d: 1.0, h: 16, rh: 14, open: true }) + seg(q(1.0, 1.0), q(1.0, 1.0, 40), '#7A5636', 2.4) + seg(q(-1.0, 1.0), q(-1.0, 1.0, 40), '#7A5636', 2.4); };   // 各建築大約多高，用來放等級標記
 
   // 樹、石頭、草叢：定義一次，用 <use> 重複放
   var DEFS = '<defs>' +
