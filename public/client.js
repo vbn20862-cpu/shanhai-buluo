@@ -304,11 +304,11 @@
     else h += '<div class="trk"><button class="tt" data-act="tab" data-tab="quest"><span class="th">' + Art.icon('fire') + esc(t.bless.zh) + '</span>' + (me.blessUntil > Date.now() ? '同心中，還有 <b data-until="' + me.blessUntil + '"></b>' : me.blessNext > Date.now() ? '下次可以舉辦：<b data-until="' + me.blessNext + '"></b>' : '可以舉辦了') + '</button></div>';
     if (me.research) { var rt = R.TECH[me.research.id]; h += '<button class="q" data-act="tab" data-tab="tech">' + Art.icon('craft') + '<span>學「' + rt.zh + '」→ ' + me.research.to + ' 級</span><b data-until="' + me.research.doneAt + '"></b></button>'; }
     if (me.hurt && all3(me.hurt)) h += '<button class="q" data-act="tab" data-tab="army">' + Art.icon('heal') + '<span>療養中 ' + all3(me.hurt) + ' 位</span></button>';
-    for (var i = 0; i < me.d.builders; i++) {
-      var w = me.queue[i];
-      h += w ? '<button class="q" data-act="go-tile" data-tile="' + w.tile + '">' + Art.icon('build') + '<span>' + (w.type === 'clear' ? '拓荒' : w.type === 'wall' ? esc(t.b.wall.zh) + ' → ' + w.to + ' 級' : esc(bdef(t, w.type).zh) + (w.type === 'unique' ? '' : ' → ' + w.to + ' 級')) + '</span><b data-until="' + w.doneAt + '"></b></button>'
-        : '<div class="q idle">' + Art.icon('build') + '<span>工人閒著，點建築升級</span></div>';
-    }
+    me.queue.forEach(function (w) {
+      h += '<button class="q" data-act="go-tile" data-tile="' + w.tile + '">' + Art.icon('build') + '<span>' + (w.type === 'clear' ? '拓荒' : w.type === 'wall' ? esc(t.b.wall.zh) + ' → ' + w.to + ' 級' : esc(bdef(t, w.type).zh) + (w.type === 'unique' ? '' : ' → ' + w.to + ' 級')) + '</span><b data-until="' + w.doneAt + '"></b></button>';
+    });
+    var idle = me.d.builders - me.queue.length;   // 閒著的工人合成一行，不要一人一行佔掉畫面
+    if (idle > 0) h += '<div class="q idle">' + Art.icon('build') + '<span>' + (idle > 1 ? idle + ' 位工人閒著' : '工人閒著') + '，點建築升級</span></div>';
     if (me.train.length) h += '<button class="q" data-act="tab" data-tab="army">' + Art.icon('army') + '<span>訓練 ' + me.train.length + ' 位</span><b data-until="' + me.train[me.train.length - 1].doneAt + '"></b></button>';
     S.marches.filter(function (m) { return m.from === me.id; }).forEach(function (m) {
       var n = m.node && S.nodes.filter(function (x) { return x.id === m.node; })[0], tv = m.to && S.pubs.filter(function (v) { return v.id === m.to; })[0];
@@ -388,22 +388,35 @@
   }
   function renderPop() {
     var c = popContent();
-    if (!c) { setHTML(el.pop, ''); el.pop._at = null; return; }
+    if (!c) { setHTML(el.pop, ''); el.pop._at = null; el.pop._pan = null; return; }
     el.pop._at = c.at;
-    if (setHTML(el.pop, '<div class="pcard' + (c.tall ? ' tall' : '') + '"><button class="x" data-act="pop-close" aria-label="關閉">×</button>' + c.html + '</div>' + (c.ring || ''))) tickTimers();
-    placePop();
+    if (setHTML(el.pop, '<div class="pcard' + (c.tall ? ' tall' : '') + '" role="dialog" aria-label="說明"><button class="x" data-act="pop-close" aria-label="關閉">×</button>' + c.html + '</div>' + (c.ring || ''))) tickTimers();
+    placePop(true);
   }
-  /* 把小視窗放在點的東西旁邊（畫面拖曳、縮放時跟著移動），圓形按鈕排在建築下方 */
-  function placePop() {
+  /* 把小視窗放在點的東西旁邊（畫面拖曳、縮放時跟著移動），圓形按鈕排在建築下方。
+     旁邊放不下（直式或很窄的螢幕）就放在上方或下方；上下也放不下，剛打開時把畫面挪一點，讓旁邊空出位置 */
+  function placePop(open) {
     var at = el.pop && el.pop._at, card = at && el.pop.querySelector('.pcard'); if (!card) return;
-    var st = el.stage.getBoundingClientRect(), m, q;
-    if (at.tile != null) { q = Art.sitePos(at.tile); m = el.vcam.getScreenCTM(); } else { q = [at.x, at.y]; m = document.getElementById('cam').getScreenCTM(); }
+    var st = el.stage.getBoundingClientRect(), m, q, bld = at.tile != null;
+    if (bld) { q = Art.sitePos(at.tile); m = el.vcam.getScreenCTM(); } else { q = [at.x, at.y]; m = document.getElementById('cam').getScreenCTM(); }
     if (!m) return;
     var x = m.a * q[0] + m.c * q[1] + m.e - st.left, y = m.b * q[0] + m.d * q[1] + m.f - st.top, W = st.width, H = st.height, w = card.offsetWidth, h = card.offsetHeight;
     var ring = el.pop.querySelectorAll('.rb'), n = ring.length, half = n ? (n - 1) / 2 * 60 + 30 : 0;
-    var gap = at.tile != null ? Math.max(76, half + 14) : 26, left = x + gap + w < W - 8 ? x + gap : x - gap - w;   // 小視窗放在建築旁邊，不要蓋到圓形按鈕
+    var gap = bld ? Math.max(76, half + 14) : 26, top0 = 46, left, top;
+    if (x + gap + w <= W - 8 || x - gap - w >= 8) { left = x + gap + w <= W - 8 ? x + gap : x - gap - w; top = y - h / 2 - (bld ? 30 : 0); }
+    else if (y + (bld ? 104 : 30) + h <= H - 8) { left = x - w / 2; top = y + (bld ? 104 : 30); }
+    else if (y - (bld ? 96 : 30) - h >= top0) { left = x - w / 2; top = y - (bld ? 96 : 30) - h; }
+    else {
+      var key = bld ? 't' + at.tile : at.x + ',' + at.y, pz = bld ? VV : MV;
+      if (open && el.pop._pan !== key) {   // 每次點新的東西只挪一次，不跟玩家拖曳畫面搶
+        el.pop._pan = key;
+        var toL = x - (W - 8 - gap - w), toR = 8 + gap + w - x, d = toL < toR ? -toL : toR;
+        pz.focus(pz.cx - d / (pz.s0 * pz.k), pz.cy); return;   // 畫面移動後會再呼叫一次 placePop
+      }
+      left = x < W / 2 ? x + gap : x - gap - w; top = y - h / 2 - (bld ? 30 : 0);
+    }
     left = Math.max(8, Math.min(W - w - 8, left));
-    var top = Math.max(46, Math.min(H - h - 8, y - h / 2 - (at.tile != null ? 30 : 0)));
+    top = Math.max(top0, Math.min(H - h - 8, top));
     card.style.left = left + 'px'; card.style.top = top + 'px';
     for (var i = 0; i < n; i++) {   // 圓形按鈕在建築下方排成一道弧
       var o = n > 1 ? (i - (n - 1) / 2) / ((n - 1) / 2) : 0, dx = o * (half - 30), dy = 50 + 16 * (1 - o * o);
@@ -1063,9 +1076,43 @@
     if (el.scene.getAttribute('data-scene') !== sc) { el.scene.setAttribute('data-scene', sc); if (sc === 'map') MV.resize(); else VV.resize(); }
     if (sc === 'map' && !MV.sized) MV.resize();
     renderHud(); renderTools(); renderLeft(); renderDock(); renderBanner(); renderFeed(); renderDrawer(); renderPop();
-    if (setHTML(el.modal, !S.me ? '' : S.show ? showModal(S.me) : S.attack ? attackModal(S.me) : S.gift ? giftModal(S.me) : S.report ? battleReport(S.me) : S.visit ? '' : reportModal(S.me))) { tickTimers(); if (S.show) startShow(); }
+    var mod = setHTML(el.modal, !S.me ? '' : S.show ? showModal(S.me) : S.attack ? attackModal(S.me) : S.gift ? giftModal(S.me) : S.report ? battleReport(S.me) : S.visit ? '' : reportModal(S.me));
+    if (mod) { tickTimers(); if (S.show) startShow(); }
+    var sheet = el.modal.querySelector('.sheet');   // 視窗打開時：後面的畫面不能按、不能用 Tab 跳過去，焦點移到視窗上
+    el.stage.inert = !!sheet;
+    if (sheet && mod && !sheet.contains(document.activeElement)) { sheet.tabIndex = -1; try { sheet.focus({ preventScroll: true }); } catch (x) { sheet.focus(); } }
     if (sc === 'village') renderVillage(); else renderMarks();
+    syncBack();
   }
+
+  /* 返回鍵（手機）與 Esc（電腦）：一次關掉最上面的一層。
+     順序：對戰演出（先跳到結果）→ 視窗 → 點出來的小視窗 → 功能面板 → 拜訪別人 → 大地圖回部落 */
+  function backStep() {
+    var q = function (s) { return document.querySelector(s); };
+    var b = q('#modal [data-act="show-skip"]') || q('#modal [data-act="show-close"]') || q('#modal [data-act="atk-cancel"]') || q('#modal [data-act="gift-cancel"]') ||
+      q('#modal [data-act="rep-close"]') || q('#modal [data-act="ack"]') || q('#pop [data-act="pop-close"]') || q('#drawer:not([hidden]) #dhead .x');
+    if (b) return function () { b.click(); };
+    if (!S.me) return null;
+    if (S.visit) return function () { S.visit = null; el.vimg._focus = null; S.tab = 'map'; S.view = 'map'; render(); };
+    if (S.view === 'map') return function () { S.view = 'village'; S.tab = 'build'; S.node = null; S.zone = null; render(); };
+    return null;
+  }
+  // 有東西可以關的時候，先在瀏覽器的上一頁紀錄裡墊一筆；按返回鍵只會關掉一層，不會直接離開遊戲
+  var backGuard = false;
+  function syncBack() {
+    if (backGuard || !backStep()) return;
+    try { history.pushState({ shanhai: 1 }, ''); backGuard = true; } catch (x) { /* 預覽頁不一定允許，返回鍵就照瀏覽器原本的做法 */ }
+  }
+  window.addEventListener('popstate', function () {
+    if (!backGuard) return;
+    backGuard = false;
+    var f = backStep();
+    if (f) f(); else try { history.back(); } catch (x) { /* 沒有東西可以關：照原本的上一頁 */ }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    var f = backStep(); if (f) { e.preventDefault(); f(); }
+  });
 
   // ---------- 操作 ----------
   function act(a, okMsg) { Net.act(a, function (r) { if (r && !r.ok) toast(r.msg || '沒有成功', true); else if (okMsg || (r && r.msg)) toast(okMsg || r.msg); }); }

@@ -11,16 +11,17 @@
   color-scheme: dark;
 }
 html, body { height: 100%; }
-body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 13.5px; line-height: 1.5; overflow: hidden; -webkit-tap-highlight-color: transparent; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 13.5px; line-height: 1.5; overflow: hidden; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 button, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: default; }
 :focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 
-#app { height: 100%; --sl: max(8px, env(safe-area-inset-left, 0px)); --sr: max(8px, env(safe-area-inset-right, 0px)); }
+#app { height: 100%; --sl: max(8px, env(safe-area-inset-left, 0px)); --sr: max(8px, env(safe-area-inset-right, 0px)); --st: env(safe-area-inset-top, 0px); --sb: env(safe-area-inset-bottom, 0px); }
+.sheet:focus-visible { outline: none; }
 
 /* 上方資訊列 */
-#hud { position: absolute; z-index: 5; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 5px; padding: 5px var(--sr) 16px var(--sl); background: linear-gradient(rgba(14, 26, 33, .88), rgba(14, 26, 33, 0)); pointer-events: none; overflow: hidden; }
+#hud { position: absolute; z-index: 5; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 5px; padding: calc(5px + var(--st)) var(--sr) 16px var(--sl); background: linear-gradient(rgba(14, 26, 33, .88), rgba(14, 26, 33, 0)); pointer-events: none; overflow: hidden; }
 #hud > * { pointer-events: auto; }
 .mecard { display: flex; align-items: center; gap: 6px; background: rgba(28, 46, 56, .94); border: 1.5px solid var(--gold); border-radius: 999px; padding: 2px 12px 2px 3px; min-width: 0; }
 .av { width: 28px; height: 28px; flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 14px; color: #fff; border: 2px solid var(--ink); }
@@ -30,7 +31,7 @@ button:disabled { cursor: default; }
 .mi .pw .ic { width: 12px; height: 12px; }
 .pill { display: flex; align-items: center; gap: 3px; background: rgba(20, 33, 42, .86); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px 2px 6px; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; }
 .pill .cap { color: var(--mute); font-size: 11px; font-weight: 500; }
-.pill small { color: var(--good); font-size: 10.5px; font-weight: 500; margin-left: 2px; }
+.pill small { color: var(--good); font-size: 11px; font-weight: 500; margin-left: 2px; }
 .pill.warn { border-color: var(--warn); } .pill.warn b, .pill.warn small { color: var(--warn); }
 .pill.safe { border-color: var(--good); color: var(--good); }
 .pill.bless { color: var(--gold); border-color: var(--gold); }
@@ -66,11 +67,11 @@ button:disabled { cursor: default; }
 .far .vm:not(.me) text { display: none; }
 #tools { position: absolute; z-index: 4; right: var(--sr); top: 50%; transform: translateY(-50%); }
 .zoom { display: flex; flex-direction: column; gap: 4px; }
-.zoom button { width: 36px; height: 34px; border-radius: 8px; border: 1px solid var(--line); background: rgba(20, 33, 42, .82); color: var(--ink); font-size: 16px; padding: 0; }
+.zoom button { width: 40px; height: 38px; border-radius: 8px; border: 1px solid var(--line); background: rgba(20, 33, 42, .82); color: var(--ink); font-size: 16px; padding: 0; }
 .zoom button:last-child { font-size: 11.5px; }
 .drawer-open #tools, .drawer-open #dock, .drawer-open #feedbar { display: none; }
 /* 左邊的追蹤欄 */
-#left { position: absolute; z-index: 4; left: var(--sl); top: 48px; width: 200px; max-height: calc(100% - 96px); overflow-y: auto; display: flex; flex-direction: column; gap: 4px; pointer-events: none; scrollbar-width: none; }
+#left { position: absolute; z-index: 4; left: var(--sl); top: calc(48px + var(--st)); width: 200px; max-height: calc(100% - 100px - var(--st) - var(--sb)); overflow-y: auto; display: flex; flex-direction: column; gap: 4px; pointer-events: none; scrollbar-width: none; }
 #left > * { pointer-events: auto; }
 .trk { display: flex; align-items: center; gap: 4px; background: rgba(20, 33, 42, .88); border: 1px solid var(--line); border-radius: 10px; padding: 4px 6px 4px 8px; font-size: 12px; line-height: 1.35; }
 .trk.ready { border-color: var(--gold); }
@@ -78,16 +79,17 @@ button:disabled { cursor: default; }
 .trk .th { display: flex; align-items: center; gap: 3px; color: var(--gold); font-size: 11px; font-weight: 700; }
 .trk .th .ic { width: 12px; height: 12px; }
 .trk .bar { display: block; height: 4px; background: var(--line); border-radius: 3px; margin-top: 3px; } .trk .bar i { display: block; height: 100%; background: var(--gold); border-radius: 3px; }
-.trk .go { border: 0; border-radius: 8px; background: var(--gold); color: #2A1F05; font-weight: 700; font-size: 11.5px; padding: 3px 8px; flex: none; }
+.trk .go { position: relative; border: 0; border-radius: 8px; background: var(--gold); color: #2A1F05; font-weight: 700; font-size: 12px; padding: 5px 10px; flex: none; }
+.trk .go::after { content: ''; position: absolute; inset: -9px -6px; }
 .trk .go.ghost { background: transparent; color: var(--gold); border: 1px solid var(--gold); }
-.trk.mini { align-self: flex-start; color: var(--mute); padding: 2px 10px; font-size: 11.5px; }
-.q { display: flex; align-items: center; gap: 5px; background: rgba(20, 33, 42, .84); border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; font-size: 12px; color: var(--ink); text-align: left; }
+.trk.mini { align-self: flex-start; color: var(--mute); padding: 6px 12px; font-size: 12px; }
+.q { display: flex; align-items: center; gap: 5px; background: rgba(20, 33, 42, .84); border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; font-size: 12px; color: var(--ink); text-align: left; }
 .q span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .q b { color: var(--gold); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .q .ic { color: var(--gold); width: 14px; height: 14px; }
 .q.idle { color: var(--mute); } .q.idle .ic { color: var(--mute); }
 /* 下方的按鈕列 */
-#dock { position: absolute; z-index: 5; right: var(--sr); bottom: 6px; display: flex; gap: 3px; align-items: flex-end; }
+#dock { position: absolute; z-index: 5; right: var(--sr); bottom: max(6px, var(--sb)); display: flex; gap: 3px; align-items: flex-end; }
 .db { width: 48px; border: 0; background: none; padding: 0; font-size: 11px; font-weight: 700; color: var(--ink); text-shadow: 0 1px 3px #000, 0 0 2px #000; display: flex; flex-direction: column; align-items: center; gap: 1px; }
 .db span { position: relative; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: rgba(28, 46, 56, .94); border: 2px solid var(--line); }
 .db span .ic { width: 21px; height: 21px; color: var(--ink); }
@@ -97,13 +99,13 @@ button:disabled { cursor: default; }
 .db .bico { width: 46px; height: 48px; margin-top: -6px; overflow: visible; }
 .rdot { position: absolute; right: -1px; top: -1px; width: 11px; height: 11px; border-radius: 50%; background: #E5574A; border: 2px solid var(--bg); }
 /* 左下的消息、上方的提醒橫幅 */
-#feedbar { position: absolute; z-index: 4; left: var(--sl); bottom: 8px; max-width: calc(100% - 470px); }
-#feedbar button { max-width: 100%; border: 0; background: rgba(20, 33, 42, .82); color: var(--mute); border-radius: 999px; padding: 3px 12px; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#banner { position: absolute; z-index: 6; left: 50%; top: 46px; transform: translateX(-50%); max-width: calc(100% - 440px); min-width: 300px; }
+#feedbar { position: absolute; z-index: 4; left: var(--sl); bottom: max(8px, var(--sb)); max-width: calc(100% - 470px); }
+#feedbar button { max-width: 100%; border: 0; background: rgba(20, 33, 42, .82); color: var(--mute); border-radius: 999px; padding: 6px 12px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#banner { position: absolute; z-index: 6; left: 50%; top: calc(46px + var(--st)); transform: translateX(-50%); max-width: calc(100% - 440px); min-width: 300px; }
 .bn { display: flex; align-items: center; gap: 8px; background: rgba(90, 42, 38, .95); border: 1.5px solid var(--warn); border-radius: 12px; padding: 5px 6px 5px 12px; font-size: 12.5px; box-shadow: 0 4px 12px rgba(0, 0, 0, .4); }
 .bn b { color: var(--warn); }
 .bn.info { background: rgba(28, 46, 56, .95); border-color: var(--gold); } .bn.info b { color: var(--gold); }
-.bbtn { margin-left: auto; flex: none; border: 0; border-radius: 8px; background: var(--warn); color: #2A1F05; font-weight: 700; padding: 3px 10px; }
+.bbtn { margin-left: auto; flex: none; border: 0; border-radius: 8px; background: var(--warn); color: #2A1F05; font-weight: 700; padding: 6px 12px; }
 .bn.info .bbtn { background: var(--gold); }
 /* 點了東西跳出的小視窗與圓形按鈕 */
 #pop { position: absolute; inset: 0; z-index: 7; pointer-events: none; }
@@ -111,16 +113,17 @@ button:disabled { cursor: default; }
 .pcard.tall { width: min(340px, 52vw); }
 .pcard .card { background: none; border: 0; padding: 0; border-radius: 0; }
 .pcard .card + .card { border-top: 1px dashed var(--line); padding-top: 8px; margin-top: 8px; }
-.pcard h3 { padding-right: 22px; }
-.pcard .x, #dhead .x { position: absolute; right: 6px; top: 4px; width: 26px; height: 26px; border: 0; border-radius: 50%; background: transparent; color: var(--mute); font-size: 20px; line-height: 1; padding: 0; }
+.pcard h3 { padding-right: 30px; }
+.pcard .x, #dhead .x { position: absolute; right: 3px; top: 2px; width: 32px; height: 32px; border: 0; border-radius: 50%; background: transparent; color: var(--mute); font-size: 22px; line-height: 1; padding: 0; }
+.pcard .x::after, #dhead .x::after { content: ''; position: absolute; inset: -6px; }
 .rb { position: absolute; transform: translate(-50%, -50%); pointer-events: auto; width: 56px; border: 0; background: none; padding: 0; font-size: 11px; font-weight: 700; color: var(--ink); text-shadow: 0 1px 3px #000, 0 0 2px #000; display: flex; flex-direction: column; align-items: center; gap: 1px; }
 .rb span { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; background: var(--panel); border: 2px solid var(--gold); box-shadow: 0 2px 8px rgba(0, 0, 0, .55); }
 .rb span .ic { width: 21px; height: 21px; color: var(--ink); }
 .rb.up span { background: var(--gold); } .rb.up span .ic { color: #2A1F05; }
 .rb:disabled { opacity: 1; color: var(--mute); } .rb:disabled span { background: #3A4650; border-color: #6B7A84; } .rb:disabled span .ic { color: #9DB0B8; }
 /* 蓋在畫面上的視窗 */
-#drawer { position: absolute; z-index: 8; top: 46px; right: var(--sr); bottom: 8px; width: min(400px, 52%); display: flex; flex-direction: column; background: rgba(20, 33, 42, .97); border: 1.5px solid var(--gold); border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, .55); overflow: hidden; }
-#drawer[data-d="start"] { top: 8px; border-color: var(--line); width: min(380px, 46%); }
+#drawer { position: absolute; z-index: 8; top: calc(46px + var(--st)); right: var(--sr); bottom: max(8px, var(--sb)); width: min(400px, 52%); display: flex; flex-direction: column; background: rgba(20, 33, 42, .97); border: 1.5px solid var(--gold); border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, .55); overflow: hidden; }
+#drawer[data-d="start"] { top: calc(8px + var(--st)); border-color: var(--line); width: min(380px, 46%); }
 #dhead { position: relative; padding: 7px 40px 5px 14px; border-bottom: 1px solid var(--line); font-family: var(--display); font-size: 17px; }
 #dhead:empty { display: none; }
 #drawer[hidden], #left:empty, #banner:empty, #feedbar:empty { display: none; }
@@ -142,7 +145,7 @@ p { margin: 4px 0; }
 .label { font-size: 11.5px; letter-spacing: .12em; color: var(--mute); margin: 6px 0 0; }
 .act { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 .btn { border: 0; border-radius: 8px; background: var(--gold); color: #2A1F05; font-weight: 700; padding: 6px 13px; }
-.btn.sm { padding: 4px 12px; }
+.btn.sm { padding: 6px 12px; }
 .btn.big { width: 100%; padding: 10px; font-size: 15px; margin-top: 8px; }
 .start .btn.big { position: sticky; bottom: 0; box-shadow: 0 -10px 12px 4px var(--bg); }
 .start .btn.big:disabled { opacity: 1; background: #5B5340; color: #1F1A0C; }
@@ -150,7 +153,8 @@ p { margin: 4px 0; }
 .btn:disabled { opacity: .42; }
 .costs { display: flex; gap: 9px; flex-wrap: wrap; }
 .cost { display: inline-flex; align-items: center; gap: 3px; font-variant-numeric: tabular-nums; }
-.cost.lack { color: var(--warn); }
+.cost.lack { color: var(--warn); font-weight: 700; }
+.cost.lack::after { content: '不足'; font-size: 11px; margin-left: 2px; }   /* 不只靠顏色：色盲的玩家也看得出來 */
 .gain { display: inline-flex; align-items: center; gap: 3px; color: var(--good); font-variant-numeric: tabular-nums; }
 .time { margin-left: auto; color: var(--mute); font-size: 12px; white-space: nowrap; }
 .opts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -161,12 +165,12 @@ p { margin: 4px 0; }
 .job { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
 .jn { flex: 1; min-width: 0; }
 .stepper { display: flex; align-items: center; gap: 5px; }
-.stepper button { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--raise); font-size: 17px; line-height: 1; padding: 0; }
+.stepper button { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--raise); font-size: 17px; line-height: 1; padding: 0; }
 .stepper button:disabled { opacity: .4; }
 .stepper b { min-width: 2.8em; text-align: center; font-variant-numeric: tabular-nums; }
 .rate { color: var(--good); font-size: 12px; min-width: 3.8em; text-align: right; font-variant-numeric: tabular-nums; }
 .switch { margin-left: auto; font-family: var(--body); font-size: 12px; font-weight: 500; color: var(--mute); display: flex; align-items: center; gap: 5px; cursor: pointer; }
-.switch input { accent-color: var(--gold); width: 15px; height: 15px; margin: 0; }
+.switch input { accent-color: var(--gold); width: 20px; height: 20px; margin: 0; }
 .qrow { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; }
 .qrow b { color: var(--gold); font-weight: 500; white-space: nowrap; }
 .chipst { margin-left: auto; font-family: var(--body); font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--mute); white-space: nowrap; }
@@ -206,7 +210,7 @@ p { margin: 4px 0; }
 .vrow .muted { display: block; }
 .visiting { font-size: 12px; font-weight: 700; color: #2A1F05; background: var(--gold); border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
 .mode.off { color: var(--warn); border-color: var(--warn); }
-.veil { position: fixed; inset: 0; z-index: 15; background: rgba(8, 16, 22, .72); display: flex; align-items: center; justify-content: center; padding: 12px max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px)); }
+.veil { position: fixed; inset: 0; z-index: 15; background: rgba(8, 16, 22, .72); display: flex; align-items: center; justify-content: center; padding: max(12px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
 .sheet { background: var(--panel); border: 1px solid var(--gold); border-radius: 12px; padding: 14px 16px; width: min(360px, 100%); max-height: 100%; overflow-y: auto; box-sizing: border-box; }
 .sheet h2 { font-family: var(--display); font-size: 21px; margin: 0; }
 .rep { list-style: none; margin: 8px 0 0; padding: 0; }
@@ -216,7 +220,6 @@ p { margin: 4px 0; }
 .rep b.neg { color: var(--warn); }
 
 /* 交流：聯盟、市集、族群關係、資源點、中立聚落 */
-#tabs button { letter-spacing: .04em; white-space: nowrap; min-width: 0; }
 #pbody select, #pbody input[type="number"], #pbody input:not([type]), .sheet select { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 7px; color: var(--ink); font-size: 13.5px; min-width: 0; }
 .inrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; margin: 6px 0; }
 .splist { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 2px 0 6px; }
@@ -401,12 +404,12 @@ p { margin: 4px 0; }
 
 /* 手機橫放時高度很矮：對戰畫面要一眼看完，不用捲動就按得到指令 */
 @media (max-height: 460px) {
-  .veil { padding-block: 6px; }
+  .veil { padding-block: max(6px, env(safe-area-inset-top, 0px)) max(6px, env(safe-area-inset-bottom, 0px)); }
   .sheet.battle { padding: 8px 12px; gap: 5px; }
   .side b { font-size: 15px; }
   .bmid b { font-size: 17px; line-height: 1.1; }
-  .bscene { max-height: calc(100vh - 128px); width: auto; max-width: 100%; margin: 0 auto; }
-  .sheet.battle.show .bscene { max-height: calc(100vh - 86px); }
+  .bscene { max-height: calc(100vh - 128px); max-height: calc(100dvh - 128px); width: auto; max-width: 100%; margin: 0 auto; }
+  .sheet.battle.show .bscene { max-height: calc(100vh - 86px); max-height: calc(100dvh - 86px); }
   .bfoot { min-height: 44px; gap: 3px; }
   .bbtns .btn { padding: 6px 12px; }
   .bfoot .btn { padding: 6px 12px; }
@@ -417,20 +420,22 @@ p { margin: 4px 0; }
   .sheet.wide { padding: 9px 14px; }
   .sheet.wide h2 { font-size: 18px; }
 }
-@media (max-width: 700px) { .chip .cap { display: none; } .vname .sub { display: none; } }
+@media (max-width: 700px) { .chip .cap { display: none; } .vname .sub { display: none; } #hud .mode:not(.off) { display: none; } }   /* 很窄的螢幕：連線正常時不顯示狀態，把位置留給部落名稱 */
 @media (orientation: portrait) {   /* 直式：按鈕列排滿下方，視窗從下方升起 */
   #hud { flex-wrap: wrap; row-gap: 3px; }
   .pill { padding: 1px 7px 1px 5px; font-size: 12px; } .pill small { display: none; }
   .turn { display: block; }
-  #left { top: 92px; width: 158px; max-height: calc(100% - 170px); }
+  #left { top: calc(92px + var(--st)); width: 158px; max-height: calc(100% - 170px - var(--st) - var(--sb)); }
   #dock { left: 4px; right: 4px; justify-content: space-between; }
   .db { width: 42px; } .db span { width: 36px; height: 36px; } .db.big { width: 52px; } .db.big span { width: 46px; height: 46px; }
   #feedbar { display: none; }
-  #banner { top: 92px; min-width: 0; max-width: calc(100% - 16px); }
-  #drawer, #drawer[data-d="start"] { left: 6px; right: 6px; top: auto; bottom: 6px; width: auto; height: 64%; }
+  #banner { top: calc(92px + var(--st)); min-width: 0; max-width: calc(100% - 16px); }
+  #drawer, #drawer[data-d="start"] { left: 6px; right: 6px; top: auto; bottom: max(6px, var(--sb)); width: auto; height: 64%; }
   .pcard, .pcard.tall { width: min(300px, calc(100vw - 20px)); }
 }
-@media (prefers-reduced-motion: reduce) { .person { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .person { transition: none; } .chip.raid { animation: none; } }
+/* 手機上輸入框的字小於 16px，iPhone 一點下去整頁會放大、回不來 */
+@media (pointer: coarse) { #app input:not([type="checkbox"]), #app select { font-size: 16px; } }
 </style>
 <div id="app"></div>
 <script>
@@ -3745,11 +3750,11 @@ window.Net = (function () {
     else h += '<div class="trk"><button class="tt" data-act="tab" data-tab="quest"><span class="th">' + Art.icon('fire') + esc(t.bless.zh) + '</span>' + (me.blessUntil > Date.now() ? '同心中，還有 <b data-until="' + me.blessUntil + '"></b>' : me.blessNext > Date.now() ? '下次可以舉辦：<b data-until="' + me.blessNext + '"></b>' : '可以舉辦了') + '</button></div>';
     if (me.research) { var rt = R.TECH[me.research.id]; h += '<button class="q" data-act="tab" data-tab="tech">' + Art.icon('craft') + '<span>學「' + rt.zh + '」→ ' + me.research.to + ' 級</span><b data-until="' + me.research.doneAt + '"></b></button>'; }
     if (me.hurt && all3(me.hurt)) h += '<button class="q" data-act="tab" data-tab="army">' + Art.icon('heal') + '<span>療養中 ' + all3(me.hurt) + ' 位</span></button>';
-    for (var i = 0; i < me.d.builders; i++) {
-      var w = me.queue[i];
-      h += w ? '<button class="q" data-act="go-tile" data-tile="' + w.tile + '">' + Art.icon('build') + '<span>' + (w.type === 'clear' ? '拓荒' : w.type === 'wall' ? esc(t.b.wall.zh) + ' → ' + w.to + ' 級' : esc(bdef(t, w.type).zh) + (w.type === 'unique' ? '' : ' → ' + w.to + ' 級')) + '</span><b data-until="' + w.doneAt + '"></b></button>'
-        : '<div class="q idle">' + Art.icon('build') + '<span>工人閒著，點建築升級</span></div>';
-    }
+    me.queue.forEach(function (w) {
+      h += '<button class="q" data-act="go-tile" data-tile="' + w.tile + '">' + Art.icon('build') + '<span>' + (w.type === 'clear' ? '拓荒' : w.type === 'wall' ? esc(t.b.wall.zh) + ' → ' + w.to + ' 級' : esc(bdef(t, w.type).zh) + (w.type === 'unique' ? '' : ' → ' + w.to + ' 級')) + '</span><b data-until="' + w.doneAt + '"></b></button>';
+    });
+    var idle = me.d.builders - me.queue.length;   // 閒著的工人合成一行，不要一人一行佔掉畫面
+    if (idle > 0) h += '<div class="q idle">' + Art.icon('build') + '<span>' + (idle > 1 ? idle + ' 位工人閒著' : '工人閒著') + '，點建築升級</span></div>';
     if (me.train.length) h += '<button class="q" data-act="tab" data-tab="army">' + Art.icon('army') + '<span>訓練 ' + me.train.length + ' 位</span><b data-until="' + me.train[me.train.length - 1].doneAt + '"></b></button>';
     S.marches.filter(function (m) { return m.from === me.id; }).forEach(function (m) {
       var n = m.node && S.nodes.filter(function (x) { return x.id === m.node; })[0], tv = m.to && S.pubs.filter(function (v) { return v.id === m.to; })[0];
@@ -3829,22 +3834,35 @@ window.Net = (function () {
   }
   function renderPop() {
     var c = popContent();
-    if (!c) { setHTML(el.pop, ''); el.pop._at = null; return; }
+    if (!c) { setHTML(el.pop, ''); el.pop._at = null; el.pop._pan = null; return; }
     el.pop._at = c.at;
-    if (setHTML(el.pop, '<div class="pcard' + (c.tall ? ' tall' : '') + '"><button class="x" data-act="pop-close" aria-label="關閉">×</button>' + c.html + '</div>' + (c.ring || ''))) tickTimers();
-    placePop();
+    if (setHTML(el.pop, '<div class="pcard' + (c.tall ? ' tall' : '') + '" role="dialog" aria-label="說明"><button class="x" data-act="pop-close" aria-label="關閉">×</button>' + c.html + '</div>' + (c.ring || ''))) tickTimers();
+    placePop(true);
   }
-  /* 把小視窗放在點的東西旁邊（畫面拖曳、縮放時跟著移動），圓形按鈕排在建築下方 */
-  function placePop() {
+  /* 把小視窗放在點的東西旁邊（畫面拖曳、縮放時跟著移動），圓形按鈕排在建築下方。
+     旁邊放不下（直式或很窄的螢幕）就放在上方或下方；上下也放不下，剛打開時把畫面挪一點，讓旁邊空出位置 */
+  function placePop(open) {
     var at = el.pop && el.pop._at, card = at && el.pop.querySelector('.pcard'); if (!card) return;
-    var st = el.stage.getBoundingClientRect(), m, q;
-    if (at.tile != null) { q = Art.sitePos(at.tile); m = el.vcam.getScreenCTM(); } else { q = [at.x, at.y]; m = document.getElementById('cam').getScreenCTM(); }
+    var st = el.stage.getBoundingClientRect(), m, q, bld = at.tile != null;
+    if (bld) { q = Art.sitePos(at.tile); m = el.vcam.getScreenCTM(); } else { q = [at.x, at.y]; m = document.getElementById('cam').getScreenCTM(); }
     if (!m) return;
     var x = m.a * q[0] + m.c * q[1] + m.e - st.left, y = m.b * q[0] + m.d * q[1] + m.f - st.top, W = st.width, H = st.height, w = card.offsetWidth, h = card.offsetHeight;
     var ring = el.pop.querySelectorAll('.rb'), n = ring.length, half = n ? (n - 1) / 2 * 60 + 30 : 0;
-    var gap = at.tile != null ? Math.max(76, half + 14) : 26, left = x + gap + w < W - 8 ? x + gap : x - gap - w;   // 小視窗放在建築旁邊，不要蓋到圓形按鈕
+    var gap = bld ? Math.max(76, half + 14) : 26, top0 = 46, left, top;
+    if (x + gap + w <= W - 8 || x - gap - w >= 8) { left = x + gap + w <= W - 8 ? x + gap : x - gap - w; top = y - h / 2 - (bld ? 30 : 0); }
+    else if (y + (bld ? 104 : 30) + h <= H - 8) { left = x - w / 2; top = y + (bld ? 104 : 30); }
+    else if (y - (bld ? 96 : 30) - h >= top0) { left = x - w / 2; top = y - (bld ? 96 : 30) - h; }
+    else {
+      var key = bld ? 't' + at.tile : at.x + ',' + at.y, pz = bld ? VV : MV;
+      if (open && el.pop._pan !== key) {   // 每次點新的東西只挪一次，不跟玩家拖曳畫面搶
+        el.pop._pan = key;
+        var toL = x - (W - 8 - gap - w), toR = 8 + gap + w - x, d = toL < toR ? -toL : toR;
+        pz.focus(pz.cx - d / (pz.s0 * pz.k), pz.cy); return;   // 畫面移動後會再呼叫一次 placePop
+      }
+      left = x < W / 2 ? x + gap : x - gap - w; top = y - h / 2 - (bld ? 30 : 0);
+    }
     left = Math.max(8, Math.min(W - w - 8, left));
-    var top = Math.max(46, Math.min(H - h - 8, y - h / 2 - (at.tile != null ? 30 : 0)));
+    top = Math.max(top0, Math.min(H - h - 8, top));
     card.style.left = left + 'px'; card.style.top = top + 'px';
     for (var i = 0; i < n; i++) {   // 圓形按鈕在建築下方排成一道弧
       var o = n > 1 ? (i - (n - 1) / 2) / ((n - 1) / 2) : 0, dx = o * (half - 30), dy = 50 + 16 * (1 - o * o);
@@ -4504,9 +4522,43 @@ window.Net = (function () {
     if (el.scene.getAttribute('data-scene') !== sc) { el.scene.setAttribute('data-scene', sc); if (sc === 'map') MV.resize(); else VV.resize(); }
     if (sc === 'map' && !MV.sized) MV.resize();
     renderHud(); renderTools(); renderLeft(); renderDock(); renderBanner(); renderFeed(); renderDrawer(); renderPop();
-    if (setHTML(el.modal, !S.me ? '' : S.show ? showModal(S.me) : S.attack ? attackModal(S.me) : S.gift ? giftModal(S.me) : S.report ? battleReport(S.me) : S.visit ? '' : reportModal(S.me))) { tickTimers(); if (S.show) startShow(); }
+    var mod = setHTML(el.modal, !S.me ? '' : S.show ? showModal(S.me) : S.attack ? attackModal(S.me) : S.gift ? giftModal(S.me) : S.report ? battleReport(S.me) : S.visit ? '' : reportModal(S.me));
+    if (mod) { tickTimers(); if (S.show) startShow(); }
+    var sheet = el.modal.querySelector('.sheet');   // 視窗打開時：後面的畫面不能按、不能用 Tab 跳過去，焦點移到視窗上
+    el.stage.inert = !!sheet;
+    if (sheet && mod && !sheet.contains(document.activeElement)) { sheet.tabIndex = -1; try { sheet.focus({ preventScroll: true }); } catch (x) { sheet.focus(); } }
     if (sc === 'village') renderVillage(); else renderMarks();
+    syncBack();
   }
+
+  /* 返回鍵（手機）與 Esc（電腦）：一次關掉最上面的一層。
+     順序：對戰演出（先跳到結果）→ 視窗 → 點出來的小視窗 → 功能面板 → 拜訪別人 → 大地圖回部落 */
+  function backStep() {
+    var q = function (s) { return document.querySelector(s); };
+    var b = q('#modal [data-act="show-skip"]') || q('#modal [data-act="show-close"]') || q('#modal [data-act="atk-cancel"]') || q('#modal [data-act="gift-cancel"]') ||
+      q('#modal [data-act="rep-close"]') || q('#modal [data-act="ack"]') || q('#pop [data-act="pop-close"]') || q('#drawer:not([hidden]) #dhead .x');
+    if (b) return function () { b.click(); };
+    if (!S.me) return null;
+    if (S.visit) return function () { S.visit = null; el.vimg._focus = null; S.tab = 'map'; S.view = 'map'; render(); };
+    if (S.view === 'map') return function () { S.view = 'village'; S.tab = 'build'; S.node = null; S.zone = null; render(); };
+    return null;
+  }
+  // 有東西可以關的時候，先在瀏覽器的上一頁紀錄裡墊一筆；按返回鍵只會關掉一層，不會直接離開遊戲
+  var backGuard = false;
+  function syncBack() {
+    if (backGuard || !backStep()) return;
+    try { history.pushState({ shanhai: 1 }, ''); backGuard = true; } catch (x) { /* 預覽頁不一定允許，返回鍵就照瀏覽器原本的做法 */ }
+  }
+  window.addEventListener('popstate', function () {
+    if (!backGuard) return;
+    backGuard = false;
+    var f = backStep();
+    if (f) f(); else try { history.back(); } catch (x) { /* 沒有東西可以關：照原本的上一頁 */ }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    var f = backStep(); if (f) { e.preventDefault(); f(); }
+  });
 
   // ---------- 操作 ----------
   function act(a, okMsg) { Net.act(a, function (r) { if (r && !r.ok) toast(r.msg || '沒有成功', true); else if (okMsg || (r && r.msg)) toast(okMsg || r.msg); }); }
