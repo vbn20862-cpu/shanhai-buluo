@@ -79,6 +79,7 @@ button:disabled { cursor: default; }
 .trk .go::after { content: ''; position: absolute; inset: -9px -6px; }
 .trk .go.ghost { background: transparent; color: var(--gold); border: 1px solid var(--gold); }
 .trk.mini { align-self: flex-start; color: var(--mute); padding: 6px 12px; font-size: 12px; }
+.lfoot { display: flex; gap: 4px; align-self: flex-start; } .trk.mini.more { color: var(--gold); }
 .q { display: flex; align-items: center; gap: 5px; background: rgba(20, 33, 42, .84); border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; font-size: 12px; color: var(--ink); text-align: left; }
 .q span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .q b { color: var(--gold); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -432,3 +433,7 @@ p { margin: 4px 0; }
 @media (prefers-reduced-motion: reduce) { .person { transition: none; } .chip.raid { animation: none; } }
 /* 手機上輸入框的字小於 16px，iPhone 一點下去整頁會放大、回不來 */
 @media (pointer: coarse) { #app input:not([type="checkbox"]), #app select { font-size: 16px; } }
+/* 設定：字放大（只放大視窗與小視窗裡的內容，框的大小不變）、減少動畫 */
+.big #pbody > *, .big #dhead, .big .sheet:not(.battle) > *, .big .pcard > :not(.x) { zoom: 1.15; }
+@media (orientation: landscape) { .big .pcard { width: min(330px, 52vw); } .big .pcard.tall { width: min(380px, 58vw); } }
+.calm .person { transition: none; } .calm .bscene * { animation: none !important; } .calm .leaf { display: none; } .calm .chip.raid { animation: none; }

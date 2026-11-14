@@ -49,6 +49,12 @@
   }
   function scene() { return S.visit ? 'village' : (!S.me || S.view === 'map') ? 'map' : 'village'; }   // 畫面是部落還是大地圖
   var DRAWERS = { tech: '技藝', army: '軍事', social: '聯盟', trade: '交易', reports: '戰報', codex: '圖鑑', test: '測試工具', tribe: '族人', quest: '任務' };
+  /* 設定（只存在這臺裝置）：字放大、減少動畫。手機有開「減少動態效果」時，預設就減少動畫 */
+  var P = { big: false, calm: false };
+  try { P.calm = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); var sp = JSON.parse(localStorage.getItem('shanhai_prefs') || 'null'); if (sp) { P.big = !!sp.big; P.calm = !!sp.calm; } } catch (e) { /* 讀不到就用預設 */ }
+  function applyPrefs() { var c = document.documentElement.classList; c.toggle('big', P.big); c.toggle('calm', P.calm); }
+  function savePrefs() { applyPrefs(); try { localStorage.setItem('shanhai_prefs', JSON.stringify(P)); } catch (e) { /* 記不住就只在這次有效 */ } }
+  applyPrefs();
   function drawer() { return !S.me ? 'start' : S.visit ? null : DRAWERS[S.tab] ? S.tab : null; }   // 打開的視窗（蓋在畫面上）
   function shown() { return S.visit ? S.visit.v : S.me; }   // 目前畫面上的部落：自己的，或正在拜訪的
   function ago(ms) { var m = Math.round(ms / 60000); return m < 1 ? '不到 1 分鐘' : m < 60 ? m + ' 分鐘' : Math.floor(m / 60) + ' 小時 ' + (m % 60) + ' 分鐘'; }
@@ -261,7 +267,7 @@
     return [Math.round(p[0] - 44 + Math.random() * 88), Math.round(p[1] + 24 + Math.random() * 16)];
   }
   function moveFolk() {
-    if (!shown() || scene() !== 'village' || document.hidden) return;
+    if (!shown() || scene() !== 'village' || document.hidden || P.calm) return;   // 減少動畫：族人站著不走動
     var nodes = el.folk.children;
     for (var i = 0; i < nodes.length; i++) if (Math.random() < 0.55) { var p = spot(shown()); nodes[i].style.transform = 'translate(' + p[0] + 'px,' + p[1] + 'px)'; }
   }
@@ -302,20 +308,25 @@
       '<button class="go' + (q.done ? '' : ' ghost') + '" data-act="' + (q.done ? 'dev' : 'dev-go') + '">' + (q.done ? '領取' : '前往') + '</button></div>';
     if (p) h += '<div class="trk' + (p.done ? ' ready' : '') + '"><button class="tt" data-act="tab" data-tab="quest"><span class="th">' + Art.icon('book') + esc(t.story.t) + ' · 第 ' + (p.i + 1) + ' 章</span>' + p.text + ' <b>' + p.cur + '/' + p.n + '</b></button>' + (p.done ? '<button class="go" data-act="quest">完成</button>' : '') + '</div>';
     else h += '<div class="trk"><button class="tt" data-act="tab" data-tab="quest"><span class="th">' + Art.icon('fire') + esc(t.bless.zh) + '</span>' + (me.blessUntil > Date.now() ? '同心中，還有 <b data-until="' + me.blessUntil + '"></b>' : me.blessNext > Date.now() ? '下次可以舉辦：<b data-until="' + me.blessNext + '"></b>' : '可以舉辦了') + '</button></div>';
-    if (me.research) { var rt = R.TECH[me.research.id]; h += '<button class="q" data-act="tab" data-tab="tech">' + Art.icon('craft') + '<span>學「' + rt.zh + '」→ ' + me.research.to + ' 級</span><b data-until="' + me.research.doneAt + '"></b></button>'; }
-    if (me.hurt && all3(me.hurt)) h += '<button class="q" data-act="tab" data-tab="army">' + Art.icon('heal') + '<span>療養中 ' + all3(me.hurt) + ' 位</span></button>';
+    var rows = [], idle = me.d.builders - me.queue.length;   // 進行中的事：閒著的工人排第一（提醒去升級），其次是工程、隊伍、訓練、技藝、療養
+    if (idle > 0) rows.push('<div class="q idle">' + Art.icon('build') + '<span>' + (idle > 1 ? idle + ' 位工人閒著' : '工人閒著') + '，點建築升級</span></div>');   // 閒著的工人合成一行
     me.queue.forEach(function (w) {
-      h += '<button class="q" data-act="go-tile" data-tile="' + w.tile + '">' + Art.icon('build') + '<span>' + (w.type === 'clear' ? '拓荒' : w.type === 'wall' ? esc(t.b.wall.zh) + ' → ' + w.to + ' 級' : esc(bdef(t, w.type).zh) + (w.type === 'unique' ? '' : ' → ' + w.to + ' 級')) + '</span><b data-until="' + w.doneAt + '"></b></button>';
+      rows.push('<button class="q" data-act="go-tile" data-tile="' + w.tile + '">' + Art.icon('build') + '<span>' + (w.type === 'clear' ? '拓荒' : w.type === 'wall' ? esc(t.b.wall.zh) + ' → ' + w.to + ' 級' : esc(bdef(t, w.type).zh) + (w.type === 'unique' ? '' : ' → ' + w.to + ' 級')) + '</span><b data-until="' + w.doneAt + '"></b></button>');
     });
-    var idle = me.d.builders - me.queue.length;   // 閒著的工人合成一行，不要一人一行佔掉畫面
-    if (idle > 0) h += '<div class="q idle">' + Art.icon('build') + '<span>' + (idle > 1 ? idle + ' 位工人閒著' : '工人閒著') + '，點建築升級</span></div>';
-    if (me.train.length) h += '<button class="q" data-act="tab" data-tab="army">' + Art.icon('army') + '<span>訓練 ' + me.train.length + ' 位</span><b data-until="' + me.train[me.train.length - 1].doneAt + '"></b></button>';
     S.marches.filter(function (m) { return m.from === me.id; }).forEach(function (m) {
       var n = m.node && S.nodes.filter(function (x) { return x.id === m.node; })[0], tv = m.to && S.pubs.filter(function (v) { return v.id === m.to; })[0];
       var where = m.node ? (n ? R.NODE[n.k].zh + ' ' + n.lv + ' 級' : '資源點') : esc(tv ? tv.name : '出征');
-      h += '<button class="q" data-act="go-march" data-id="' + m.id + '">' + Art.icon('march') + '<span>' + where + ' · ' + (m.phase === 'back' ? '回程' : m.phase === 'gather' ? '採集中' : m.node ? '前往' : '出征') + '</span><b data-until="' + m.arriveAt + '"></b></button>';
+      rows.push('<button class="q" data-act="go-march" data-id="' + m.id + '">' + Art.icon('march') + '<span>' + where + ' · ' + (m.phase === 'back' ? '回程' : m.phase === 'gather' ? '採集中' : m.node ? '前往' : '出征') + '</span><b data-until="' + m.arriveAt + '"></b></button>');
     });
-    setHTML(el.left, h + '<button class="trk mini" data-act="left-toggle" aria-label="收起追蹤欄">‹ 收起</button>');
+    if (me.train.length) rows.push('<button class="q" data-act="tab" data-tab="army">' + Art.icon('army') + '<span>訓練 ' + me.train.length + ' 位</span><b data-until="' + me.train[me.train.length - 1].doneAt + '"></b></button>');
+    if (me.research) { var rt = R.TECH[me.research.id]; rows.push('<button class="q" data-act="tab" data-tab="tech">' + Art.icon('craft') + '<span>學「' + rt.zh + '」→ ' + me.research.to + ' 級</span><b data-until="' + me.research.doneAt + '"></b></button>'); }
+    if (me.hurt && all3(me.hurt)) rows.push('<button class="q" data-act="tab" data-tab="army">' + Art.icon('heal') + '<span>療養中 ' + all3(me.hurt) + ' 位</span></button>');
+    var cap = innerHeight < 500 ? 2 : 5, more = '';   // 矮的螢幕（手機橫放）只顯示兩行，其他收成「還有幾項」放在最下面那一行，不要蓋住太多畫面
+    if (rows.length > cap) {
+      more = '<button class="trk mini more" data-act="left-all">' + (S.leftAll ? '只顯示 ' + cap + ' 項 ▴' : '還有 ' + (rows.length - cap) + ' 項 ▾') + '</button>';
+      if (!S.leftAll) rows = rows.slice(0, cap);
+    }
+    setHTML(el.left, h + rows.join('') + '<div class="lfoot"><button class="trk mini" data-act="left-toggle" aria-label="收起追蹤欄">‹ 收起</button>' + more + '</div>');
   }
   /* 下方的按鈕列；最右邊的大按鈕切換大地圖與部落 */
   function renderDock() {
@@ -361,7 +372,7 @@
     else if (dn === 'reports') html = reportsCard(me);
     else if (dn === 'social') html = socialPanel(me, 'social');
     else if (dn === 'trade') html = socialPanel(me, 'trade');
-    else if (dn === 'tribe') html = hungryCard(me) + jobsCard(me) + queueCard(me) + idleCard(me) + codeCard();
+    else if (dn === 'tribe') html = hungryCard(me) + jobsCard(me) + queueCard(me) + idleCard(me) + codeCard() + prefsCard();
     else if (dn === 'quest') html = devCard(me) + questCard(me);
     else if (dn === 'tech') html = techPanel(me);
     else if (dn === 'test') html = testPanel(me);
@@ -620,6 +631,13 @@
     else h += '<p class="hint">點建築可以升級，點有 ＋ 的空地可以蓋新建築，點外圍有斧頭記號的山林可以拓荒。畫面可以拖曳和縮放。</p>';
     return h + hungryCard(me) + devCard(me) + questCard(me) + jobsCard(me) + queueCard(me) + idleCard(me) + codeCard();
   }
+  function prefsCard() {   // 設定：只影響這臺裝置的畫面
+    return '<section class="card"><h3>設定<span class="lv">只存在這臺裝置</span></h3>' +
+      '<p class="label">字的大小</p>' + seg('pref-big', P.big ? 'on' : 'off', [['off', '標準'], ['on', '大']]) +
+      '<p class="label">動畫</p>' + seg('pref-calm', P.calm ? 'on' : 'off', [['off', '一般'], ['on', '減少']]) +
+      (Art.hasNewArt() ? '<p class="label">畫面風格</p>' + seg('art-style', Art.newArt() ? 'new' : 'old', [['new', '新的美術'], ['old', '原本的畫法']]) : '') +
+      '<p class="muted">字放大會放大視窗、小視窗裡的字。減少動畫：族人不走動、樹葉不飄、閃爍停止（對戰的演出照常）。</p></section>';
+  }
   function codeCard() {   // 換裝置繼續玩：部落代碼。只有連線版有（單機試玩的進度存在這個瀏覽器裡）
     if (S.mode !== 'online') return '';
     var h = '<section class="card"><h3>換裝置繼續玩<span class="lv">部落代碼</span></h3>';
@@ -712,7 +730,6 @@
   function codexPanel(me) {
     var t = myTribe(), h = '<section class="card"><h3><span class="dot" style="background:' + t.color + '"></span>' + t.zh + '<span class="lv">' + esc(t.en) + '</span></h3><p>' + t.intro + '</p>' +
       '<dl class="facts"><dt>問候</dt><dd><i class="nat">' + esc(t.hello) + '</i></dd><dt>謝謝</dt><dd><i class="nat">' + esc(t.thanks) + '</i></dd><dt>語別</dt><dd>' + t.lang + '</dd><dt>特長</dt><dd>' + t.bonus.text + '</dd></dl></section>';
-    if (Art.hasNewArt()) h += '<section class="card"><h3>畫面風格<span class="lv">建築與圖示</span></h3>' + seg('art-style', Art.newArt() ? 'new' : 'old', [['new', '新的美術'], ['old', '原本的畫法']]) + '<p class="muted">新的美術是設計稿做成的素材；原本的畫法是程式直接畫的。兩種可以隨時切換比較。</p></section>';
     h += '<section class="card"><h3>' + Art.icon('book') + '神話故事：' + esc(t.story.t) + '<span class="lv">' + Math.min(me.quest, R.QUESTS.length) + ' / ' + R.QUESTS.length + ' 章</span></h3>';
     t.quests.forEach(function (q, i) {
       h += i <= me.quest ? '<p class="story"><b>' + (i + 1) + '. ' + esc(q.t) + '</b>' + esc(q.x) + '</p>' : '<p class="muted">' + (i + 1) + '. 完成前面的章節後就能讀到。</p>';
@@ -1158,7 +1175,9 @@
     else if (a === 'zoom') (scene() === 'map' ? MV : VV).zoomCenter(+b.getAttribute('data-f'));
     else if (a === 'pop-close') { S.selTile = null; S.node = null; S.zone = null; render(); }
     else if (a === 'pop-more') { S.popMore = !S.popMore; render(); }
-    else if (a === 'left-toggle') { S.leftMin = !S.leftMin; render(); }
+    else if (a === 'left-toggle') { S.leftMin = !S.leftMin; S.leftAll = false; render(); }
+    else if (a === 'left-all') { S.leftAll = !S.leftAll; render(); }
+    else if (a === 'pref-big' || a === 'pref-calm') { P[a === 'pref-big' ? 'big' : 'calm'] = b.getAttribute('data-v') === 'on'; savePrefs(); render(); placePop(); }
     else if (a === 'go-tile') { var gt = +b.getAttribute('data-tile'); S.view = 'village'; S.tab = 'build'; if (gt >= 0) { S.selTile = gt; var gp = Art.sitePos(gt); VV.focus(gp[0], gp[1], VV.k); } else S.tab = 'army'; render(); }
     else if (a === 'go-march') {   // 追蹤欄的隊伍：到地圖上看
       var gm = S.marches.filter(function (x) { return x.id === b.getAttribute('data-id'); })[0], gn = gm && gm.node && S.nodes.filter(function (x) { return x.id === gm.node; })[0], gv = gm && gm.to && S.pubs.filter(function (x) { return x.id === gm.to; })[0];
