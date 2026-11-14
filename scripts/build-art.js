@@ -73,8 +73,6 @@ function splitFront(body, name) {
 function files(dir) { const d = path.join(root, 'art', dir); return fs.existsSync(d) ? fs.readdirSync(d).filter(f => f.endsWith('.svg')).sort().map(f => path.join(d, f)) : []; }
 
 const BLD = '-80 -140 160 180';
-// 兵種的第 2、3 階是第三批（兵種階級）才會用到，先不打包，玩家才不用多下載
-const LATER = /-t[23]\.svg$/;
 const TRIBES = ['atayal', 'bunun', 'amis', 'paiwan'];
 function tribeOf(name) { const t = name.split('-')[0]; return TRIBES.indexOf(t) >= 0 ? t : null; }
 const core = { building: {}, height: {}, icon: {}, people: {}, nature: {}, field: {}, fx: {}, logo: {} };
@@ -85,7 +83,7 @@ files('buildings').concat(files('site')).forEach(f => {
   into.building[b.name] = b.body; into.height[b.name] = b.h; count.building++;
 });
 files('icons').forEach(f => { const b = convert(f, ['0 0 24 24']); core.icon[b.name.replace(/^icon-/, '')] = b.body; });
-files('people').filter(f => !LATER.test(f)).forEach(f => { const b = convert(f, ['-30 -70 60 80', '-50 -70 100 80']); packs[tribeOf(b.name)].people[b.name] = b.body; count.people++; });
+files('people').forEach(f => { const b = convert(f, ['-30 -70 60 80', '-50 -70 100 80']); packs[tribeOf(b.name)].people[b.name] = b.body; count.people++; });
 files('nature').forEach(f => { const b = convert(f, ['-40 -100 80 110', '-70 -170 140 180']); packs[tribeOf(b.name)].nature[b.name] = b.body; count.nature++; });
 files('battlefield').forEach(f => { const b = convert(f, ['0 0 1000 420']), t = b.name.replace(/-battlefield$/, ''); packs[t].field[t] = splitFront(b.body, b.name); count.field++; });
 files('fx').forEach(f => { const b = convert(f, ['-16 -16 32 32']); core.fx[b.name.replace(/^fx-/, '')] = b.body; });

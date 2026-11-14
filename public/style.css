@@ -437,3 +437,21 @@ p { margin: 4px 0; }
 .big #pbody > *, .big #dhead, .big .sheet:not(.battle) > *, .big .pcard > :not(.x) { zoom: 1.15; }
 @media (orientation: landscape) { .big .pcard { width: min(330px, 52vw); } .big .pcard.tall { width: min(380px, 58vw); } }
 .calm .person { transition: none; } .calm .bscene * { animation: none !important; } .calm .leaf { display: none; } .calm .chip.raid { animation: none; }
+/* 第三批：加速、互助、兵種階級、排行 */
+.qrow .spd { flex: none; display: inline-flex; align-items: center; gap: 3px; padding: 4px 9px; }
+.qrow .spd .ic { width: 13px; height: 13px; }
+.qrow.busyline { align-items: center; }
+.hn { font-style: normal; font-size: 11.5px; color: var(--good); margin-left: 6px; white-space: nowrap; }
+.q.help { border-color: var(--good); } .q.help .ic, .q.help b { color: var(--good); }
+.helpbox { border: 1px solid var(--good); border-radius: 9px; padding: 4px 10px 8px; margin: 2px 0 8px; }
+.helpbox .btn { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; }
+.tierrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.tierrow b { display: inline-flex; align-items: center; gap: 4px; } .tierrow b .ic { color: var(--gold); }
+.card h3 > .ic { color: var(--gold); }
+.rk { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-top: 1px dashed var(--line); cursor: pointer; font-variant-numeric: tabular-nums; }
+.rk .no { width: 1.8em; text-align: right; color: var(--mute); }
+.rk span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rk em { font-style: normal; font-size: 11px; color: var(--mute); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; margin-left: 6px; }
+.rk.me { background: rgba(227, 179, 65, .14); border-radius: 8px; } .rk.me .no, .rk.me > b:last-child { color: var(--gold); }
+.rk:focus-visible { outline: 2px solid var(--gold); }
+.sumbar { height: 8px; border-radius: 4px; background: var(--raise); overflow: hidden; } .sumbar i { display: block; height: 100%; border-radius: 4px; }

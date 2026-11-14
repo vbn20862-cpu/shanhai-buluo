@@ -48,7 +48,7 @@
     el.toast.appendChild(d); setTimeout(function () { d.remove(); }, 2600);
   }
   function scene() { return S.visit ? 'village' : (!S.me || S.view === 'map') ? 'map' : 'village'; }   // 畫面是部落還是大地圖
-  var DRAWERS = { tech: '技藝', army: '軍事', social: '聯盟', trade: '交易', reports: '戰報', codex: '圖鑑', test: '測試工具', tribe: '族人', quest: '任務' };
+  var DRAWERS = { tech: '技藝', army: '軍事', social: '聯盟', trade: '交易', reports: '戰報', codex: '圖鑑', test: '測試工具', tribe: '族人', quest: '任務', rank: '排行' };
   /* 設定（只存在這臺裝置）：字放大、減少動畫。手機有開「減少動態效果」時，預設就減少動畫 */
   var P = { big: false, calm: false };
   try { P.calm = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); var sp = JSON.parse(localStorage.getItem('shanhai_prefs') || 'null'); if (sp) { P.big = !!sp.big; P.calm = !!sp.calm; } } catch (e) { /* 讀不到就用預設 */ }
@@ -79,6 +79,13 @@
       : i === 3 ? '可以訓練獨特兵種「' + t.uniq.unit.zh + '」'
       : '「' + t.hero.zh + '」成為部落的傳說英雄，並且可以舉辦「' + t.bless.zh + '」';
   }
+  function rewardText2(t, i) { return rewardText(t, i) + '；另外 ' + R.BOOST_QUEST + ' 個加速'; }   // 每一章都送加速
+  /* 加速：一個縮短多少時間（照目前的節奏）；按鈕一次用一個 */
+  function boostSecs() { return R.TUNE.boostMin * 3 * R.TUNE.pace; }
+  function speedBtn(me, what, id) {
+    return '<button class="btn sm ghost spd" data-act="speed" data-what="' + what + '"' + (id ? ' data-id="' + esc(id) + '"' : '') + (me.boosts > 0 ? '' : ' disabled') + ' aria-label="用一個加速，縮短 ' + dur(boostSecs()) + '">' + Art.icon('speed') + '加速</button>';
+  }
+  function boostLine(me) { return '<p class="muted">' + Art.icon('speed') + ' 加速道具還有 ' + (me.boosts || 0) + ' 個，每個縮短 ' + dur(boostSecs()) + '。完成部落發展、神話主線可以拿到（不用花錢）。</p>'; }
 
   /* 可以拖曳、縮放的畫面。cover=true 時畫面一定被場景填滿（部落）；false 時整張圖都看得到（地圖）。 */
   function PanZoom(svg, cam, W, H, o) {
@@ -288,7 +295,7 @@
     else {
       var t = myTribe(), d = me.d, net = d.net, safe = Math.max(me.shieldUntil, me.newbieUntil);
       var pill = function (ic, val, cap, sub, cls, label) { return '<div class="pill' + (cls ? ' ' + cls : '') + '" title="' + label + '">' + Art.icon(ic) + '<b>' + val + '</b>' + (cap != null ? '<span class="cap">/' + cap + '</span>' : '') + (sub ? '<small>' + sub + '</small>' : '') + '</div>'; };
-      h = '<button class="mecard" data-act="tab" data-tab="codex" aria-label="' + esc(me.name) + '，' + t.zh + '，戰力 ' + d.power + '"><span class="av" style="background:' + t.color + '">' + esc(me.name.slice(0, 1)) + '</span><span class="mi"><b>' + esc(me.name) + '</b><span class="pw">' + Art.icon('power') + ' 戰力 ' + d.power + '</span></span></button>' +
+      h = '<button class="mecard" data-act="tab" data-tab="rank" aria-label="' + esc(me.name) + '，' + t.zh + '，戰力 ' + d.power + '，看排行"><span class="av" style="background:' + t.color + '">' + esc(me.name.slice(0, 1)) + '</span><span class="mi"><b>' + esc(me.name) + '</b><span class="pw">' + Art.icon('power') + ' 戰力 ' + d.power + '</span></span></button>' +
         (safe > Date.now() ? '<div class="pill safe" title="保護中，別人不能出征你">' + Art.icon('shield') + '<b data-until="' + safe + '" data-coarse="1"></b></div>' : '') +
         (me.blessUntil > Date.now() ? '<div class="pill bless" title="族人同心，產量加成中" role="img" aria-label="族人同心，產量加成中">' + Art.icon('fire') + '</div>' : '') +
         '<div class="spacer"></div>' +
@@ -310,6 +317,7 @@
     else h += '<div class="trk"><button class="tt" data-act="tab" data-tab="quest"><span class="th">' + Art.icon('fire') + esc(t.bless.zh) + '</span>' + (me.blessUntil > Date.now() ? '同心中，還有 <b data-until="' + me.blessUntil + '"></b>' : me.blessNext > Date.now() ? '下次可以舉辦：<b data-until="' + me.blessNext + '"></b>' : '可以舉辦了') + '</button></div>';
     var rows = [], idle = me.d.builders - me.queue.length;   // 進行中的事：閒著的工人排第一（提醒去升級），其次是工程、隊伍、訓練、技藝、療養
     if (idle > 0) rows.push('<div class="q idle">' + Art.icon('build') + '<span>' + (idle > 1 ? idle + ' 位工人閒著' : '工人閒著') + '，點建築升級</span></div>');   // 閒著的工人合成一行
+    if (me.helps && me.helps.length) rows.push('<button class="q help" data-act="help-all">' + Art.icon('help') + '<span>盟友需要幫忙</span><b>' + me.helps.length + ' 項 · 幫忙</b></button>');   // 按一下就幫完
     me.queue.forEach(function (w) {
       rows.push('<button class="q" data-act="go-tile" data-tile="' + w.tile + '">' + Art.icon('build') + '<span>' + (w.type === 'clear' ? '拓荒' : w.type === 'wall' ? esc(t.b.wall.zh) + ' → ' + w.to + ' 級' : esc(bdef(t, w.type).zh) + (w.type === 'unique' ? '' : ' → ' + w.to + ' 級')) + '</span><b data-until="' + w.doneAt + '"></b></button>');
     });
@@ -335,7 +343,7 @@
     var unseen = me.reports.some(function (r) { return !r.seen; }), cur = drawer();
     var b = function (tab, ic, label, dot) { return '<button class="db" data-act="tab" data-tab="' + tab + '" aria-pressed="' + (cur === tab) + '"><span>' + Art.icon(ic) + (dot ? '<i class="rdot"></i>' : '') + '</span>' + label + '</button>'; };
     var map = scene() === 'map';
-    setHTML(el.dock, b('tribe', 'pop', '族人', me.d.hungry) + b('army', 'army', '軍事') + b('social', 'alliance', '聯盟') + b('trade', 'trade', '交易') + b('reports', 'book', '戰報', unseen) + b('codex', 'craft', '圖鑑') +
+    setHTML(el.dock, b('tribe', 'pop', '族人', me.d.hungry) + b('army', 'army', '軍事') + b('social', 'alliance', '聯盟', me.helps && me.helps.length) + b('trade', 'trade', '交易') + b('reports', 'book', '戰報', unseen) + b('codex', 'craft', '圖鑑') +
       (Net.testing() ? b('test', 'star', '測試') : '') +
       '<button class="db big" data-act="tab" data-tab="' + (map ? 'build' : 'map') + '"><span>' + (map ? '<svg viewBox="-80 -140 160 180" class="bico">' + Art.building('center', myTribe(), me.d.center) + '</svg>' : Art.icon('map')) + '</span>' + (map ? '回部落' : '大地圖') + '</button>');
   }
@@ -375,6 +383,7 @@
     else if (dn === 'tribe') html = hungryCard(me) + jobsCard(me) + queueCard(me) + idleCard(me) + codeCard() + prefsCard();
     else if (dn === 'quest') html = devCard(me) + questCard(me);
     else if (dn === 'tech') html = techPanel(me);
+    else if (dn === 'rank') html = rankPanel(me);
     else if (dn === 'test') html = testPanel(me);
     else html = codexPanel(me);
     if (setHTML(el.pbody, html)) { el.pbody.scrollTop = keep; tickTimers(); if (dn === 'start') restoreForm(); }
@@ -413,12 +422,15 @@
     if (!m) return;
     var x = m.a * q[0] + m.c * q[1] + m.e - st.left, y = m.b * q[0] + m.d * q[1] + m.f - st.top, W = st.width, H = st.height, w = card.offsetWidth, h = card.offsetHeight;
     var ring = el.pop.querySelectorAll('.rb'), n = ring.length, half = n ? (n - 1) / 2 * 60 + 30 : 0;
-    var gap = bld ? Math.max(76, half + 14) : 26, top0 = 46, left, top;
+    var gap = bld ? Math.max(76, half + 14) : 26, top0 = 46, left, top, key = bld ? 't' + at.tile : at.x + ',' + at.y, pz = bld ? VV : MV;
+    if (open && bld && n && el.pop._pan !== key && el.left.firstChild) {   // 圓形按鈕會疊到左邊的追蹤欄：剛打開時把畫面往右挪一點
+      var lr = el.left.getBoundingClientRect(), over = lr.right - st.left + 8 - (x - half);
+      if (over > 0 && y + 20 < lr.bottom - st.top) { el.pop._pan = key; pz.focus(pz.cx - over / (pz.s0 * pz.k), pz.cy); return; }
+    }
     if (x + gap + w <= W - 8 || x - gap - w >= 8) { left = x + gap + w <= W - 8 ? x + gap : x - gap - w; top = y - h / 2 - (bld ? 30 : 0); }
     else if (y + (bld ? 104 : 30) + h <= H - 8) { left = x - w / 2; top = y + (bld ? 104 : 30); }
     else if (y - (bld ? 96 : 30) - h >= top0) { left = x - w / 2; top = y - (bld ? 96 : 30) - h; }
     else {
-      var key = bld ? 't' + at.tile : at.x + ',' + at.y, pz = bld ? VV : MV;
       if (open && el.pop._pan !== key) {   // 每次點新的東西只挪一次，不跟玩家拖曳畫面搶
         el.pop._pan = key;
         var toL = x - (W - 8 - gap - w), toR = 8 + gap + w - x, d = toL < toR ? -toL : toR;
@@ -438,7 +450,8 @@
   function buildingPop(me, i, b) {
     var t = myTribe(), full = me.queue.length >= me.d.builders, h = '<h3>' + bname(t, b.type) + '<span class="lv">' + (!b.level ? '興建中' : b.type === 'unique' ? '獨特建築' : '等級 ' + b.level) + '</span></h3>', why = '', up = false;
     if (b.level) h += '<p class="eff">' + effect(b.type, b.level, t) + '</p>';
-    if (b.busy) { var w = me.queue.filter(function (x) { return x.tile === i; })[0]; h += '<p class="busyline">施工中，還要 <b data-until="' + (w ? w.doneAt : 0) + '"></b></p>'; }
+    var w = b.busy ? me.queue.filter(function (x) { return x.tile === i; })[0] : null;
+    if (b.busy) h += '<p class="busyline">施工中，還要 <b data-until="' + (w ? w.doneAt : 0) + '"></b>' + (w && w.ask ? '　<i class="hn">盟友幫忙 ' + w.hn + '/' + w.hmax + '</i>' : '') + '</p>';
     else if (b.type === 'unique') h += '<p class="muted">' + t.zh + '才有的建築，只能蓋一座，不用升級。</p>';
     else if (b.level >= R.MAX_LEVEL) h += '<p class="muted">已經是最高等級。</p>';
     else {
@@ -457,6 +470,8 @@
     if (S.popMore) h += '<p class="note">' + esc(bdef(t, b.type).note) + '</p>';
     var rb = function (act, ic, label, extra, cls) { return '<button class="rb' + (cls ? ' ' + cls : '') + '" data-act="' + act + '"' + (extra || '') + '><span>' + Art.icon(ic) + '</span>' + label + '</button>'; };
     var ring = (up ? rb('upgrade', 'level', '升級', ' data-tile="' + i + '"' + (why ? ' disabled' : ''), 'up') : '') +
+      (w ? rb('speed', 'speed', '加速 ' + (me.boosts || 0), ' data-what="build" data-id="' + esc(w.id || '') + '"' + (me.boosts > 0 ? '' : ' disabled'), 'up') : '') +
+      (w && me.ally && !w.ask ? rb('ask-help', 'help', '求助', ' data-id="' + esc(w.id || '') + '"') : '') +
       (b.type === 'farm' || b.type === 'mat' || b.type === 'special' ? rb('tab', 'pop', '人手', ' data-tab="tribe"') : '') +
       (b.type === 'barracks' || b.type === 'archery' ? rb('tab', 'army', '訓練', ' data-tab="army"') : '') + (b.type === 'center' ? rb('tab', 'book', '任務', ' data-tab="quest"') : '') +
       (b.type === 'craft' ? rb('tab', 'craft', '技藝', ' data-tab="tech"') : '') + (b.type === 'heal' ? rb('tab', 'heal', '療養', ' data-tab="army"') : '') + (b.type === 'taro' ? rb('tab', 'pop', '人手', ' data-tab="tribe"') : '') +
@@ -558,8 +573,8 @@
   function queueCard(me) {
     if (!me.queue.length) return '';
     var t = myTribe(), h = '<section class="card"><h3>進行中的工程<span class="lv">' + me.queue.length + '/' + me.d.builders + '</span></h3>';
-    me.queue.forEach(function (w) { h += '<div class="qrow"><span>' + (w.type === 'clear' ? '拓荒' : esc(bdef(t, w.type).zh) + (w.type === 'unique' ? '' : ' → 等級 ' + w.to)) + '</span><b data-until="' + w.doneAt + '"></b></div>'; });
-    return h + '</section>';
+    me.queue.forEach(function (w) { h += '<div class="qrow"><span>' + (w.type === 'clear' ? '拓荒' : esc(bdef(t, w.type).zh) + (w.type === 'unique' ? '' : ' → 等級 ' + w.to)) + (w.ask ? '<i class="hn">盟友幫忙 ' + w.hn + '/' + w.hmax + '</i>' : '') + '</span><b data-until="' + w.doneAt + '"></b>' + (w.type === 'clear' ? '' : speedBtn(me, 'build', w.id)) + '</div>'; });
+    return h + boostLine(me) + '</section>';
   }
   function devText(t, q) {   // 部落發展任務的目標寫成一句話
     var nm = q.type ? esc(bdef(t, q.type).zh) : '';
@@ -570,7 +585,7 @@
     var L = R.bl(me, 'craft'), max = me.d.techMax, r = me.research, h = '';
     h += '<section class="card"><h3>' + Art.icon('craft') + '技藝屋<span class="lv">' + (L ? '等級 ' + L + ' · 每項最多 ' + max + ' 級' : '還沒有') + '</span></h3>' +
       (L ? '<p class="muted">學會的技藝永久有效。同時只能學一項；技藝屋在 6、11、16、21 級時，每一項能學的上限多一級。</p>' : '<p class="why">先在空地上蓋一座技藝屋（' + esc(myTribe().b.center.zh) + ' ' + R.UNLOCK.craft + ' 級才能蓋）。</p>') +
-      (r ? '<p class="busyline">正在學「' + R.TECH[r.id].zh + '」' + r.to + ' 級，還要 <b data-until="' + r.doneAt + '"></b></p>' : '') + '</section>';
+      (r ? '<div class="qrow busyline"><span>正在學「' + R.TECH[r.id].zh + '」' + r.to + ' 級，還要 <b data-until="' + r.doneAt + '"></b></span>' + speedBtn(me, 'research') + '</div>' + boostLine(me) : '') + '</section>';
     Object.keys(R.TECH).forEach(function (id) {
       var tk = R.TECH[id], lv = (me.tech && me.tech[id]) || 0, to = lv + 1, c = to <= R.TECH_MAX ? R.techCost(id, to) : null;
       var why = !L ? '要先蓋技藝屋' : r ? (r.id === id ? '學習中' : ' ') : to > R.TECH_MAX ? '已經是最高級' : to > max ? '技藝屋升級之後才能學' : !affordable(me, c) ? '物資還不夠' : '';
@@ -600,7 +615,7 @@
     var rw = (q.reward.food ? Art.icon('food') + q.reward.food + ' ' + t.res.food : '') + (q.reward.food && q.reward.mat ? '、' : '') + (q.reward.mat ? Art.icon('mat') + q.reward.mat + ' ' + t.res.mat : '');
     return '<section class="card dev' + (q.done ? ' ready' : '') + '"><h3>' + Art.icon('star') + '部落發展<span class="lv">第 ' + (q.i + 1) + ' 步</span></h3>' +
       '<div class="goal"><span>目標：' + devText(t, q) + '</span><b>' + q.cur + ' / ' + q.n + '</b></div><div class="bar" role="img" aria-label="進度 ' + q.cur + ' / ' + q.n + '"><i style="width:' + Math.round(100 * q.cur / q.n) + '%"></i></div>' +
-      '<div class="act"><button class="btn sm' + (q.done ? '' : ' ghost') + '" data-act="dev"' + (q.done ? '' : ' disabled') + '>' + (q.done ? '領獎勵' : '還沒達成') + '</button><span class="gain">獎勵：' + rw + '</span></div></section>';
+      '<div class="act"><button class="btn sm' + (q.done ? '' : ' ghost') + '" data-act="dev"' + (q.done ? '' : ' disabled') + '>' + (q.done ? '領獎勵' : '還沒達成') + '</button><span class="gain">獎勵：' + rw + '、' + Art.icon('speed') + '加速 ' + R.BOOST_DEV + ' 個</span></div></section>';
   }
   function questCard(me) {   // 任務主線：目前這一章的故事、目標與獎勵；五章都完成之後換成「共聚」
     var t = myTribe(), p = me.qp;
@@ -609,7 +624,7 @@
     return '<section class="card quest' + (p.done ? ' ready' : '') + '"><h3>' + Art.icon('book') + esc(t.story.t) + '<span class="lv">第 ' + (p.i + 1) + ' 章 / 共 ' + R.QUESTS.length + ' 章</span></h3>' +
       '<p class="story"><b>' + esc(q.t) + '</b>' + esc(q.x) + '</p>' +
       '<div class="goal"><span>目標：' + p.text + '</span><b>' + p.cur + ' / ' + p.n + '</b></div><div class="bar" role="img" aria-label="進度 ' + p.cur + ' / ' + p.n + '"><i style="width:' + Math.round(100 * p.cur / p.n) + '%"></i></div>' +
-      '<p class="eff next">獎勵：' + rewardText(t, p.i) + '</p>' +
+      '<p class="eff next">獎勵：' + rewardText2(t, p.i) + '</p>' +
       '<button class="btn' + (p.done ? '' : ' ghost') + '" data-act="quest"' + (p.done ? '' : ' disabled') + '>' + (p.done ? '完成這一章' : '目標還沒達成') + '</button></section>';
   }
   function blessCard(me) {
@@ -767,7 +782,8 @@
     if (!d.armyCap) h += '<p class="why">還沒有' + t.b.barracks.zh + '。回到部落，點一塊有 ＋ 的空地蓋一座，才能訓練戰士。</p>';
     else {
       var hasU = me.quest >= 4 || me.units.u + me.away.u > 0;
-      h += '<div class="units' + (hasU ? ' n5' : '') + '"><div><b>' + me.units.w + '</b><span>' + U.w.zh + '</span></div><div><b>' + me.units.a + '</b><span>' + U.a.zh + '</span></div>' + (hasU ? '<div class="uq"><b>' + me.units.u + '</b><span>' + esc(us.zh) + '</span></div>' : '') +
+      var tg = function (k) { return d.tiers && d.tiers[k] > 1 ? ' · ' + d.tiers[k] + ' 階' : ''; };
+      h += '<div class="units' + (hasU ? ' n5' : '') + '"><div><b>' + me.units.w + '</b><span>' + U.w.zh + tg('w') + '</span></div><div><b>' + me.units.a + '</b><span>' + U.a.zh + tg('a') + '</span></div>' + (hasU ? '<div class="uq"><b>' + me.units.u + '</b><span>' + esc(us.zh) + tg('u') + '</span></div>' : '') +
         '<div><b>' + all3(me.away) + '</b><span>出征中</span></div><div><b>' + me.train.length + '</b><span>訓練中</span></div></div>';
       ['w', 'a', 'u'].forEach(function (u) {
         if (u === 'u' && me.quest < 4) { h += '<p class="muted">完成任務第 4 章，可以訓練' + t.zh + '的獨特兵種「' + esc(us.zh) + '」。</p>'; return; }
@@ -775,12 +791,12 @@
         var why = d.hungry ? t.res.food + '吃光了' : u === 'a' && !R.bl(me, 'archery') ? '要先蓋靶場' : total >= d.armyCap ? '名額已滿' : !affordable(me, def.cost) ? '物資還不夠' : '';
         h += '<div class="act"><button class="btn sm' + (u === 'u' ? ' uq' : '') + '" data-act="train" data-u="' + u + '"' + (why ? ' disabled' : '') + '>訓練' + name + '</button>' + costHTML(me, def.cost) + '<span class="time">' + (why || dur(R.trainTime(u))) + '</span></div>';
       });
-      if (me.train.length) h += '<p class="busyline">下一位還要 <b data-until="' + me.train[0].doneAt + '"></b>，全部完成還要 <b data-until="' + me.train[me.train.length - 1].doneAt + '"></b></p>';
+      if (me.train.length) h += '<div class="qrow busyline"><span>下一位還要 <b data-until="' + me.train[0].doneAt + '"></b>，全部完成還要 <b data-until="' + me.train[me.train.length - 1].doneAt + '"></b></span>' + speedBtn(me, 'train') + '</div>';
       if (all3(me.units) > 0) h += '<p class="label">讓戰士回家（每位戰士每分鐘吃 ' + R.TUNE.eatUnit + ' 份' + t.res.food + '）</p><div class="tbtns row">' + ['w', 'a', 'u'].filter(function (u) { return me.units[u] > 0; }).map(function (u) { return '<button class="btn sm ghost" data-act="dismiss" data-u="' + u + '">' + (u === 'u' ? esc(us.zh) : U[u].zh) + '回家 1 位</button>'; }).join('') + '</div>';
       h += '<p class="muted">' + U.w.zh + '站在前面承受攻擊；' + U.a.zh + '攻擊力較高但較脆弱。' + (me.quest >= 4 ? nat(us) + '：' + traitFx(us.trait) + '。' : '') + '</p>';
       if (me.quest >= 4) h += '<p class="note">' + esc(us.note) + '</p>';
     }
-    h += '</section>';
+    h += '</section>' + tierCard(me);
     if (me.quest >= R.QUESTS.length) {   // 傳說英雄：每場對戰可以用一次能力，用過要休息
       var rest = me.heroRest > Date.now();
       h += '<section class="card"><h3>' + nat(t.hero) + '<span class="lv">傳說英雄 · ' + (rest ? '休息中' : '可以出戰') + '</span></h3>' +
@@ -913,6 +929,35 @@
     else return false;
     return true;
   }
+  /* 兵種階級：全部落的這種兵一起升階。列出現在第幾階、下一階要什麼 */
+  function tierCard(me) {
+    var t = myTribe(), d = me.d, pct = R.TUNE.tierPct, h = '<section class="card"><h3>' + Art.icon('tier' + Math.max(d.tiers.w, d.tiers.a)) + '兵種階級<span class="lv">每一階攻擊、耐力 +' + pct + '%</span></h3>';
+    ['w', 'a', 'u'].forEach(function (k) {
+      if (k === 'u' && me.quest < 4) return;
+      var n = d.tiers[k], nx = R.TIER[k][n + 1], name = k === 'u' ? esc(t.uniq.unit.zh) : R.UNIT[k].zh;
+      var ok = function (x) { return '<li class="' + (x[0] ? 'ok' : 'no') + '">' + (x[0] ? '✓' : '✗') + ' ' + x[1] + '</li>'; };
+      h += '<div class="tierrow"><b>' + Art.icon('tier' + n) + name + ' 第 ' + n + ' 階</b><span class="muted">' + (n > 1 ? '攻擊、耐力 +' + pct * (n - 1) + '%' : '基本') + '</span></div>' +
+        (nx ? '<ul class="reqs">' + ok([R.bl(me, nx.b) >= nx.L, '第 ' + (n + 1) + ' 階：' + esc(bdef(t, nx.b).zh) + ' ' + nx.L + ' 級']) + ok([((me.tech && me.tech[nx.t]) || 0) >= nx.n, '技藝「' + R.TECH[nx.t].zh + '」' + nx.n + ' 級']) + '</ul>' : '<p class="muted">已經是最高階。</p>');
+    });
+    return h + '<p class="muted">升階之後，部落裡所有這種兵一起變強，對戰時的樣子也會換。</p></section>';
+  }
+  /* 排行：全島或同一族的部落，照戰力排 */
+  function rankPanel(me) {
+    var t = myTribe(), by = S.rankBy === 'tribe' ? 'tribe' : 'all', all = S.pubs.slice().sort(function (a, b) { return (b.vp || 0) - (a.vp || 0); });
+    var list = all.filter(function (v) { return by === 'all' || v.tribe === me.tribe; }), mine = 0, h;
+    for (var i = 0; i < list.length; i++) if (list[i].id === me.id) { mine = i + 1; break; }
+    var row = function (v, n) { var vt = Tribes.get(v.tribe); return '<button class="rk' + (v.id === me.id ? ' me' : '') + '" data-act="rank-go" data-id="' + v.id + '"><b class="no">' + n + '</b><i class="dot" style="background:' + vt.color + '"></i><span>' + esc(v.name) + (v.bot ? '<em>示範</em>' : '') + '</span><b>' + (v.vp || 0) + '</b></button>'; };
+    h = '<section class="card"><h3>' + Art.icon('power') + '戰力排行<span class="lv">' + (mine ? '你是第 ' + mine + ' 名' : '') + '</span></h3>' + seg('rank-by', by, [['all', '全島'], ['tribe', t.zh]]);
+    list.slice(0, 30).forEach(function (v, n) { h += row(v, n + 1); });
+    if (mine > 30) h += '<p class="muted">⋯</p>' + row(list[mine - 1], mine);
+    h += '<p class="muted">戰力是建築、圍籬、技藝和戰士加起來的分數。「示範」是電腦管理的部落。點一個部落可以到地圖上看。</p></section>';
+    var sum = {}, top = 0;   // 各族的戰力加總
+    all.forEach(function (v) { sum[v.tribe] = (sum[v.tribe] || 0) + (v.vp || 0); });
+    Tribes.playable().forEach(function (x) { top = Math.max(top, sum[x.id] || 0); });
+    h += '<section class="card"><h3>各族的戰力加總</h3>';
+    Tribes.playable().forEach(function (x) { var n = sum[x.id] || 0; h += '<div class="relrow"><span><i class="dot" style="background:' + x.color + '"></i> ' + x.zh + '</span><div class="sumbar"><i style="width:' + (top ? Math.round(100 * n / top) : 0) + '%;background:' + x.color + '"></i></div><b>' + n + '</b></div>'; });
+    return h + '</section>';
+  }
   function testPanel(me) {
     var T = Net.testing(), cap = me.d.armyCap, room = cap - (all3(me.units) + all3(me.away) + me.train.length);
     return '<section class="card"><h3>測試工具<span class="lv">只有單機試玩有</span></h3><p class="muted">方便快速試玩用。連線版沒有這些功能，所有人都照正常規則。</p>' +
@@ -923,6 +968,7 @@
       '<button class="btn sm" data-act="t-army"' + (room > 0 ? '' : ' disabled') + '>戰士補滿' + (cap ? '' : '（要先有訓練場）') + '</button>' +
       '<button class="btn sm" data-act="t-march"' + (S.marches.some(function (m) { return m.from === me.id; }) ? '' : ' disabled') + '>出征的隊伍立刻抵達</button>' +
       '<button class="btn sm" data-act="t-bots">讓示範部落有守軍和物資（各加 6 人）</button>' +
+      '<button class="btn sm" data-act="t-help"' + (me.queue.some(function (q) { return q.ask && q.hn < q.hmax; }) ? '' : ' disabled') + '>盟友都來幫忙（要先在工程上按「求助」）</button>' +
       '<button class="btn sm" data-act="t-quest"' + (me.qp ? '' : ' disabled') + '>' + (me.qp ? '任務第 ' + (me.qp.i + 1) + ' 章直接完成' : '任務都完成了') + '</button>' +
       '<button class="btn sm" data-act="t-rest"' + (me.heroRest > Date.now() || me.blessNext > Date.now() ? '' : ' disabled') + '>英雄和共聚不用等</button></div></section>' +
       '<section class="card"><h3>重新開始</h3><p class="muted">清除單機存檔，回到選區域的畫面。</p><button class="btn ghost" data-act="reset">' + (Date.now() < S.resetAt ? '再按一次，確定重新開始' : '重新開始') + '</button></section>';
@@ -943,7 +989,12 @@
     // 聯盟
     h += '<section class="card"><h3>聯盟<span class="lv">' + (al ? al.n + ' 個部落' : '還沒加入') + '</span></h3>';
     if (al) {
-      h += '<p>你在「<b>' + esc(al.name) + '</b>」。同盟之間不能互相出征。</p>';
+      if (me.helps && me.helps.length) {   // 盟友請求幫忙的工程
+        h += '<div class="helpbox"><p class="label">盟友需要幫忙</p>';
+        me.helps.slice(0, 8).forEach(function (x) { var xt = Tribes.get(x.tribe); h += '<div class="qrow"><span>' + esc(x.name) + '：' + esc(bdef(xt, x.type).zh) + (x.type === 'unique' ? '' : ' → ' + x.to + ' 級') + '</span><b>' + x.hn + '/' + x.hmax + '</b></div>'; });
+        h += '<button class="btn sm" data-act="help-all">' + Art.icon('help') + ' 全部幫忙（' + me.helps.length + ' 項）</button></div>';
+      }
+      h += '<p>你在「<b>' + esc(al.name) + '</b>」。同盟之間不能互相出征；施工時可以按「求助」，盟友按一下就能縮短時間。</p>';
       S.pubs.filter(function (v) { return v.ally === me.ally; }).forEach(function (v) { var vt = Tribes.get(v.tribe); h += '<div class="qrow"><span><i class="dot" style="background:' + vt.color + '"></i> ' + esc(v.name) + (v.id === me.id ? '（你）' : '') + '</span><b>' + vt.zh + '</b></div>'; });
       h += '<button class="btn sm ghost" data-act="ally-leave">退出聯盟</button>';
     } else {
@@ -1177,6 +1228,15 @@
     else if (a === 'pop-more') { S.popMore = !S.popMore; render(); }
     else if (a === 'left-toggle') { S.leftMin = !S.leftMin; S.leftAll = false; render(); }
     else if (a === 'left-all') { S.leftAll = !S.leftAll; render(); }
+    else if (a === 'speed') act({ type: 'speed', what: b.getAttribute('data-what'), id: b.getAttribute('data-id') || '' });
+    else if (a === 'ask-help') act({ type: 'askHelp', id: b.getAttribute('data-id') || '' });
+    else if (a === 'help-all') act({ type: 'help' });
+    else if (a === 't-help') { Net.test('help'); toast('盟友都來幫忙了'); }
+    else if (a === 'rank-by') { S.rankBy = b.getAttribute('data-v'); render(); }
+    else if (a === 'rank-go') {   // 排行裡的部落：到地圖上看
+      var rv = S.pubs.filter(function (x) { return x.id === b.getAttribute('data-id'); })[0];
+      if (rv) { S.view = 'map'; S.tab = 'map'; S.node = null; S.zone = rv.hex; render(); MV.focus(rv.pos[0], rv.pos[1], Math.max(MV.k, 4.5)); render(); }
+    }
     else if (a === 'pref-big' || a === 'pref-calm') { P[a === 'pref-big' ? 'big' : 'calm'] = b.getAttribute('data-v') === 'on'; savePrefs(); render(); placePop(); }
     else if (a === 'go-tile') { var gt = +b.getAttribute('data-tile'); S.view = 'village'; S.tab = 'build'; if (gt >= 0) { S.selTile = gt; var gp = Art.sitePos(gt); VV.focus(gp[0], gp[1], VV.k); } else S.tab = 'army'; render(); }
     else if (a === 'go-march') {   // 追蹤欄的隊伍：到地圖上看
@@ -1206,7 +1266,7 @@
     else if (a === 'adopt-go') Net.adopt(S.form.adopt, function (r) { if (!r.ok) return toast(r.msg, true); S.adopt = false; S.form.adopt = ''; toast('找到了，正在接回你的部落'); });
     else if (a === 'dev') act({ type: 'dev' });
     else if (a === 'research') act({ type: 'research', id: b.getAttribute('data-id') });
-    else if (a === 'quest') { var qi = me.qp ? me.qp.i : 0; Net.act({ type: 'quest' }, function (r) { if (!r.ok) return toast(r.msg, true); toast('完成第 ' + (qi + 1) + ' 章！' + rewardText(myTribe(), qi)); }); }
+    else if (a === 'quest') { var qi = me.qp ? me.qp.i : 0; Net.act({ type: 'quest' }, function (r) { if (!r.ok) return toast(r.msg, true); toast('完成第 ' + (qi + 1) + ' 章！' + rewardText2(myTribe(), qi)); }); }
     else if (a === 'bless') act({ type: 'bless' });
     else if (a === 't-quest') Net.test('quest');
     else if (a === 't-pace') { Net.test('pace', b.getAttribute('data-v') === 'formal' ? 20 : 1); toast(b.getAttribute('data-v') === 'formal' ? '已切換成正式節奏' : '已切換成快速試玩'); }

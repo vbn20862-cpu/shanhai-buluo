@@ -861,3 +861,65 @@ test('技藝：技藝屋的等級決定上限，同時學一項，學會之後�
   const w2 = new World().load(old); assert.deepEqual(w2.villages[v.id].hurt, { w: 0, a: 0, u: 0 }); assert.equal(w2.villages[v.id].research, null);
   check(w);
 });
+
+test('第三批：兵種升階、加速道具、聯盟互助、排行用的戰力', () => {
+  const w = new World({ speed: 1, rng: seeded(31) }), R = World.rules;
+  let now = 1e6;
+  const v = w.villages[w.join('t3a', { owner: '甲', name: '甲部落', tribe: 'amis' }, now).id];
+  const t = w.villages[w.join('t3b', { owner: '乙', name: '乙部落', tribe: 'paiwan' }, now).id];
+  v.online = t.online = true; v.land = v.land.map(() => 1); t.land = t.land.map(() => 1);
+  // 兵種升階：建築與技藝都到了才升
+  assert.deepEqual(R.tiers(v), { w: 1, a: 1, u: 1 });
+  v.tiles[3] = { type: 'barracks', level: 9 }; assert.equal(R.tiers(v).w, 1, '只有訓練場不夠');
+  v.tech.spear = 2; assert.equal(R.tiers(v).w, 2, '訓練場 9 級＋矛術 2 級：勇士第 2 階');
+  v.tiles[3].level = 17; v.tech.spear = 4; assert.equal(R.tiers(v).w, 3);
+  v.tiles[7] = { type: 'archery', level: 9 }; v.tech.archery = 2; assert.equal(R.tiers(v).a, 2);
+  const m = R.battleMod(v, false);
+  assert.ok(Math.abs(m.tw - 1.3) < 1e-9 && Math.abs(m.ta - 1.15) < 1e-9 && m.tu === 1, '每一階 +15%');
+  const base = { tribe: 'amis', w: 10, a: 0, u: 0 };
+  assert.ok(Math.abs(R.power(Object.assign({ mod: { tw: 1.3 } }, base)) / R.power(base) - 1.3) < 0.02, '攻擊與耐力都乘上去：戰力也是 1.3 倍');
+  let wins = 0; for (let i = 0; i < 40; i++) if (R.autoBattle({ tribe: 'amis', w: 10, a: 0, mod: { tw: 1.3 } }, { tribe: 'amis', w: 12, a: 0, home: false }, seeded(i)).win) wins++;
+  assert.ok(wins >= 30, '第 3 階的 10 人通常打得贏第 1 階的 12 人：' + wins + '/40');
+  // 加速道具：新部落有 3 個；用在工程上；用完就不能再用
+  assert.equal(v.boosts, R.BOOST_START);
+  v.res.food = v.res.mat = 99999;
+  v.tiles[0].level = 20;
+  assert.ok(w.act(v.id, { type: 'upgrade', tile: 3 }, now).ok, '訓練場 17 → 18 級（時間夠長）');
+  const q = v.queue[0], left0 = q.doneAt - now;
+  assert.ok(left0 > 3 * w.ms(R.TUNE.boostMin * 3000));
+  assert.ok(w.act(v.id, { type: 'speed', what: 'build', id: q.id }, now).ok);
+  assert.equal(v.boosts, 2); assert.equal(left0 - (q.doneAt - now), Math.min(left0, w.ms(R.TUNE.boostMin * 3000)), '縮短一個加速的時間');
+  assert.equal(w.act(v.id, { type: 'speed', what: 'build', id: 'nope' }, now).ok, false);
+  assert.equal(w.act(v.id, { type: 'speed', what: 'toString' }, now).ok, false, '奇怪的種類不能加速');
+  v.boosts = 0; assert.equal(w.act(v.id, { type: 'speed', what: 'build', id: q.id }, now).msg, '沒有加速道具了');
+  // 部落發展、主線送加速
+  v.dev = 0; v.devCur = undefined; v.tiles[5] = { type: 'storage', level: 1 };
+  assert.ok(w.act(v.id, { type: 'dev' }, now).ok); assert.equal(v.boosts, R.BOOST_DEV);
+  // 聯盟互助
+  assert.equal(w.act(v.id, { type: 'askHelp', id: q.id }, now).msg, '加入聯盟才能請盟友幫忙');
+  assert.ok(w.act(v.id, { type: 'allyCreate', name: '山海' }, now).ok);
+  assert.ok(w.act(t.id, { type: 'allyJoin', id: v.ally }, now).ok);
+  assert.equal(w.act(t.id, { type: 'help' }, now).msg, '目前沒有需要幫忙的工程');
+  assert.ok(w.act(v.id, { type: 'askHelp', id: q.id }, now).ok);
+  assert.equal(w.act(v.id, { type: 'askHelp', id: q.id }, now).ok, false, '不能重複請求');
+  assert.equal(w.snapshot(t.id, now).me.helps.length, 1, '盟友看得到請求');
+  assert.equal(w.snapshot(v.id, now).me.queue[0].hby, undefined, '誰幫過忙不傳');
+  const before = q.doneAt;
+  assert.ok(w.act(t.id, { type: 'help' }, now).ok);
+  assert.ok(q.doneAt < before && q.hn === 1, '盟友按一下：時間變短');
+  assert.equal(w.act(t.id, { type: 'help' }, now).ok, false, '同一項工程每人只能幫一次');
+  assert.equal(w.snapshot(t.id, now).me.helps.length, 0);
+  assert.equal(R.helpMax(v), 3); v.tiles[9] = { type: 'guest', level: 6 }; assert.equal(R.helpMax(v), 6, '迎賓亭越高，可以被幫越多次');
+  // 排行用的戰力在公開清單裡
+  const pub = w.pubs(now).filter(p => p.id === v.id)[0];
+  assert.equal(pub.vp, R.villagePower(v));
+  // 對戰演出帶著雙方的階級
+  v.units = { w: 10, a: 0, u: 0 }; t.newbieUntil = 0; t.tiles[0].level = 20; w.act(v.id, { type: 'allyLeave' }, now);
+  const ar = w.act(v.id, { type: 'attack', to: t.id, w: 10, a: 0 }, now); assert.ok(ar.ok, ar.msg);
+  while (!v.reports.length) { now += 1000; w.tick(now); }
+  assert.deepEqual(v.reports[0].show.aTier, R.tiers(v));
+  // 舊存檔沒有加速道具：補 3 個
+  const old = JSON.parse(JSON.stringify(w.toJSON())); delete old.villages[t.id].boosts;
+  assert.equal(new World().load(old).villages[t.id].boosts, R.BOOST_START);
+  check(w);
+});

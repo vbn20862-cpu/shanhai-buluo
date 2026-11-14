@@ -26,7 +26,12 @@ window.Art = (function () {
     flag: '<path d="M3.2 15V1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/><path d="M4.2 2.4h9.3l-2.6 3 2.6 3H4.2z" fill="currentColor"/>',
     shield: '<path d="M8 1.2 14 3.5v4.3c0 3.4-2.4 5.9-6 7-3.6-1.1-6-3.6-6-7V3.5z" fill="currentColor"/>',
     fire: '<path d="M8 1.2c3.4 3 4.6 5.6 4.6 8a4.6 4.6 0 0 1-9.2 0c0-1.5.6-2.8 1.7-3.9.2 1.3.8 2.1 1.6 2.4C6.4 5.4 6.8 3.2 8 1.2z" fill="currentColor"/><path d="M2.5 14.6h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
-    book: '<path d="M2 3.2c2-.9 4-.9 6 .2 2-1.1 4-1.1 6-.2v9.6c-2-.9-4-.9-6 .2-2-1.1-4-1.1-6-.2z" fill="currentColor"/><path d="M8 3.6v9.4" stroke="#14212A" stroke-width="1"/>'
+    book: '<path d="M2 3.2c2-.9 4-.9 6 .2 2-1.1 4-1.1 6-.2v9.6c-2-.9-4-.9-6 .2-2-1.1-4-1.1-6-.2z" fill="currentColor"/><path d="M8 3.6v9.4" stroke="#14212A" stroke-width="1"/>',
+    speed: '<path d="M3.5 1.6h9M3.5 14.4h9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M4.6 2c0 3.2 2.6 4.4 2.6 6s-2.6 2.8-2.6 6h6.8c0-3.2-2.6-4.4-2.6-6s2.6-2.8 2.6-6z" fill="currentColor"/>',
+    help: '<path d="M8 14.2 2.3 8.6a3.3 3.3 0 0 1 5.7-4.5 3.3 3.3 0 0 1 5.7 4.5z" fill="currentColor"/>',
+    tier1: '<path d="M3 11.5 8 7.5l5 4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+    tier2: '<path d="M3 13 8 9l5 4M3 8.5 8 4.5l5 4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+    tier3: '<path d="M3 14.5 8 10.5l5 4M3 10 8 6l5 4M3 5.5 8 1.5l5 4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'
   };
   /* 美術素材：art/ 裡的 SVG 由 npm run build:art 打包成 public/assets.js（window.ShanhaiArt）。
    * 有載入、而且沒有被玩家切回「原本的畫法」時，建築和圖示用素材；否則用這個檔案裡程式畫的版本。 */
@@ -68,7 +73,7 @@ window.Art = (function () {
   (window.ShanhaiArtQueue || []).forEach(function (p) { preDefs += merge(p); }); window.ShanhaiArtQueue = [];
   try { if (localStorage.getItem('shanhai_art') === 'old') newArt = false; } catch (e) { /* 讀不到設定就用預設 */ }
   function decorCacheReset() { if (typeof decorCache !== 'undefined') { decorCache = {}; groundCache = {}; } }
-  var ICON_AS = { heal: 'heal', power: 'power', build: 'build', march: 'march', alliance: 'alliance', trade: 'specialty', craft: 'craft', map: 'map', level: 'level', food: 'food', mat: 'material', pop: 'people', army: 'warrior', star: 'prosperity', shield: 'protect', fire: 'gather', book: 'quest', charge: 'charge', volley: 'volley', hold: 'regroup' };   // 遊戲裡的圖示名稱 → 素材的檔名
+  var ICON_AS = { speed: 'speed', help: 'help', tier1: 'tier-1', tier2: 'tier-2', tier3: 'tier-3', heal: 'heal', power: 'power', build: 'build', march: 'march', alliance: 'alliance', trade: 'specialty', craft: 'craft', map: 'map', level: 'level', food: 'food', mat: 'material', pop: 'people', army: 'warrior', star: 'prosperity', shield: 'protect', fire: 'gather', book: 'quest', charge: 'charge', volley: 'volley', hold: 'regroup' };   // 遊戲裡的圖示名稱 → 素材的檔名
   [['march', 'flag'], ['trade', 'sp'], ['craft', 'book']].forEach(function (p) { ICONS[p[0]] = ICONS[p[1]]; });   // 沒有素材時借用相近的圖示
   /* 地圖上的資源點用的圖示（24 格）：素材裡沒有竹子和石板，這兩個是程式畫的 */
   var ICON24 = {
@@ -494,14 +499,20 @@ window.Art = (function () {
     for (i = 0; i < 12; i++) s += at(90 + rnd(i, 91) * 880, 30 + rnd(i, 92) * 60, '<path class="leaf" style="animation-delay:' + Math.round(-rnd(i, 93) * 8000) + 'ms;animation-duration:' + Math.round(6000 + rnd(i, 94) * 5000) + 'ms" d="M0 0q5 -5 10 0q-5 5 -10 0z" fill="' + (i % 3 ? '#D9A441' : '#8FB85A') + '"/>');
     return s;
   }
-  /* 有第二包美術素材時：雙方族群的人物（每種兵三個姿勢、英雄）、守方族群的樹木、特效，放進這個 svg 自己的 <defs> */
+  /* 有第二包美術素材時：雙方的人物（每種兵三個姿勢、英雄）、守方族群的樹木、特效，放進這個 svg 自己的 <defs>。
+   * 人物照雙方的兵種階級換成第 2、3 階的樣子（sh.aTier、sh.dTier；舊戰報沒有就是第 1 階）。代號用「哪一方」區分，兩邊同一族也不會混在一起 */
   var PK = { w: 'warrior', a: 'archer', um: 'unique', ur: 'unique' }, POSE = { run: 'run', lunge: 'attack', loose: 'attack' };
   function battleArt(td, ta) { return newArt && AS && AS.field && AS.field[td.id] && AS.people && AS.people[td.id + '-warrior-stand'] && (!ta || AS.people[ta.id + '-warrior-stand']) ? AS : null; }
-  function showDefs(A, ta, td) {
+  var TIER_K = { warrior: 'w', archer: 'a', unique: 'u' };
+  function showDefs(A, sh, ta, td) {
     var s = '<defs>';
-    [ta.id, td.id].filter(function (x, n, a) { return a.indexOf(x) === n; }).forEach(function (t) {
-      ['warrior', 'archer', 'unique'].forEach(function (k) { ['stand', 'run', 'attack'].forEach(function (p) { var b = A.people[t + '-' + k + '-' + p]; if (b) s += '<g id="bp-' + t + '-' + k + '-' + p + '">' + b + '</g>'; }); });
-      if (A.people[t + '-hero-stand']) s += '<g id="bp-' + t + '-hero">' + A.people[t + '-hero-stand'] + '</g>';
+    [['a', ta.id], ['d', td.id]].forEach(function (x) {
+      var sd = x[0], t = x[1], tier = sh[sd + 'Tier'] || {};
+      ['warrior', 'archer', 'unique'].forEach(function (k) {
+        var n = tier[TIER_K[k]] || 1;
+        ['stand', 'run', 'attack'].forEach(function (p) { var nm = t + '-' + k + '-' + p, b = (n > 1 && A.people[nm + '-t' + n]) || A.people[nm]; if (b) s += '<g id="bp-' + sd + '-' + k + '-' + p + '">' + b + '</g>'; });
+      });
+      if (A.people[t + '-hero-stand']) s += '<g id="bp-' + sd + '-hero">' + A.people[t + '-hero-stand'] + '</g>';
     });
     ['tree-a', 'tree-b', 'tree-c', 'tree-big', 'bush', 'rock', 'log'].forEach(function (n) { var b = A.nature[td.id + '-' + n]; if (b) s += '<g id="bn-' + n + '">' + b + '</g>'; });
     Object.keys(A.fx || {}).forEach(function (n) { s += '<g id="bx-' + n + '">' + A.fx[n] + '</g>'; });
@@ -529,7 +540,7 @@ window.Art = (function () {
     });
     var me = rep.role === 'atk' ? 'a' : 'd', leaves = '';
     if (ART) for (i = 0; i < 12; i++) leaves += at(90 + rnd(i, 91) * 880, 30 + rnd(i, 92) * 60, '<g class="leaf" style="animation-delay:' + Math.round(-rnd(i, 93) * 8000) + 'ms;animation-duration:' + Math.round(6000 + rnd(i, 94) * 5000) + 'ms">' + '<use href="#bx-leaf-' + (i % 3 ? 'b' : 'a') + '" transform="scale(.6)"/></g>');
-    svg.innerHTML = (ART ? showDefs(ART, ta, td) : '') + '<g class="bq">' + (ART ? ART.field[td.id].back + showEdge(td, sh) : showBack(ta, td, sh)) + '<g class="bz">' + trees + '</g><g class="bfx"></g>' + (ART ? ART.field[td.id].front + leaves : showFront(td)) + '</g><g class="btop">' +
+    svg.innerHTML = (ART ? showDefs(ART, sh, ta, td) : '') + '<g class="bq">' + (ART ? ART.field[td.id].back + showEdge(td, sh) : showBack(ta, td, sh)) + '<g class="bz">' + trees + '</g><g class="bfx"></g>' + (ART ? ART.field[td.id].front + leaves : showFront(td)) + '</g><g class="btop">' +
       '<rect class="bchip' + (me === 'a' ? ' me' : '') + '" x="10" y="10" width="270" height="32" rx="16"/><text class="bnum" id="bn-a" x="145" y="32" text-anchor="middle"></text>' +
       '<rect class="bchip' + (me === 'd' ? ' me' : '') + '" x="720" y="10" width="270" height="32" rx="16"/><text class="bnum" id="bn-d" x="855" y="32" text-anchor="middle"></text>' +
       '<rect class="bchip mid" x="400" y="10" width="200" height="32" rx="16"/><text class="bnum mid" id="bn-m" x="500" y="32" text-anchor="middle"></text></g>';
@@ -548,12 +559,12 @@ window.Art = (function () {
     function pose(f, cls) {
       if (f.cls === cls) return;
       f.cls = cls; f.bb.setAttribute('class', 'bb ' + cls);
-      if (f.use) f.use.setAttribute('href', '#bp-' + f.tribe + '-' + f.pk + '-' + (POSE[cls] || 'stand'));   // 素材的人物：換成跑步、出擊、站立的姿勢
+      if (f.use) f.use.setAttribute('href', '#bp-' + f.sd + '-' + f.pk + '-' + (POSE[cls] || 'stand'));   // 素材的人物：換成跑步、出擊、站立的姿勢
     }
     function mk(sd, type, x, y) {
       var kind = type === 'u' ? ukind[sd] : type, isU = type === 'u';
       var tr = sd === 'a' ? ta.id : td.id, ring = '<ellipse cx="0" cy="1" rx="10" ry="3.3" fill="' + (sd === 'a' ? '#F2EAD6' : '#0B161C') + '" opacity="' + (ART ? '.4' : '.5') + '"/>';
-      var el = add(Z, '<g class="bf"><g>' + (ART ? '<g class="bb idle" style="color:' + band[sd] + '">' + ring + '<use href="#bp-' + tr + '-' + PK[kind] + '-stand"/></g>'
+      var el = add(Z, '<g class="bf"><g>' + (ART ? '<g class="bb idle" style="color:' + band[sd] + '">' + ring + '<use href="#bp-' + sd + '-' + PK[kind] + '-stand"/></g>'
         : '<g class="bb idle">' + ring + figure(kind, isU ? shade(col[sd], -22) : col[sd], isU ? '#E3B341' : band[sd]) + '</g>') + '</g></g>');
       var f = { el: el, fl: el.firstChild, bb: el.firstChild.firstChild, sd: sd, type: type, tribe: tr, pk: PK[kind], melee: kind === 'w' || kind === 'um', x: x, y: y, face: sd === 'a' ? 1 : -1, mv: null, gone: false, cls: 'idle' };
       if (ART) f.use = f.bb.lastChild;
@@ -598,7 +609,7 @@ window.Art = (function () {
       var el = add(TOP, at(x, 78, '<g class="shout hero"><rect x="-92" y="-19" width="184" height="36" rx="18"/><text y="7" text-anchor="middle">★ ' + t.hero.abilityZh + '！</text></g>') +
         '');
       var hero = add(TOP, at(sd === 'a' ? 118 : 882, 300, '<g class="heroin"><ellipse class="ring" cx="0" cy="-22" rx="46" ry="38" fill="rgba(255,233,168,.3)" stroke="#E3B341" stroke-width="2.6"/>' +
-        '<g transform="scale(' + (flip ? -1.7 : 1.7) + ' 1.7)" style="color:#E3B341">' + (ART && ART.people[t.id + '-hero-stand'] ? '<use href="#bp-' + t.id + '-hero"/>' : (one ? '' : '<g transform="translate(-14 3)">' + figure(wpn, shade(body, -20), '#E3B341') + '</g>') + figure(wpn, body, '#E3B341') +
+        '<g transform="scale(' + (flip ? -1.7 : 1.7) + ' 1.7)" style="color:#E3B341">' + (ART && ART.people[t.id + '-hero-stand'] ? '<use href="#bp-' + sd + '-hero"/>' : (one ? '' : '<g transform="translate(-14 3)">' + figure(wpn, shade(body, -20), '#E3B341') + '</g>') + figure(wpn, body, '#E3B341') +
         (one ? '<path d="M-6.4 -22.6a6.4 6.4 0 0 1 12.8 0z" fill="#3A3F45"/><path d="M-8 -22.6h16" stroke="#3A3F45" stroke-width="1.8" stroke-linecap="round"/>' : '')) + '</g></g>'));
       later(2600, function () { [el, hero].forEach(function (e) { if (e.parentNode) e.parentNode.removeChild(e); }); });
     }

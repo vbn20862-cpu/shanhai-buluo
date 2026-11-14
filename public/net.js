@@ -175,6 +175,7 @@ window.Net = (function () {
         }
       }
       else if (kind === 'rest') { v.heroRest = 0; v.blessNext = 0; }
+      else if (kind === 'help') for (var hk = 1; hk <= 30; hk++) local.helpAll({ id: 'test-ally-' + hk }, { members: [localId] }, now);   // 假裝有很多位盟友各按一下，幫到上限
       else if (kind === 'pace') local.setTune({ pace: +on || 1 });   // 試試正式節奏的快慢
       else if (kind === 'bots') Object.keys(local.villages).forEach(function (id) {   // 讓示範部落有守軍，對戰才有東西可以打
         var o = local.villages[id]; if (!o.bot) return;
