@@ -213,7 +213,7 @@
   function renderVillage() {
     var v = shown(); if (!v) return;
     var t = Tribes.get(v.tribe), sel = S.visit ? null : S.selTile;
-    if (el.vimg._t !== t.id) { el.vimg.setAttribute('href', Art.groundURL(t)); el.vdecor.innerHTML = Art.decor(t); el.vimg._t = t.id; }
+    if (el.vimg._t !== t.id + Art.newArt()) { el.vimg.setAttribute('href', Art.groundURL(t)); el.vdecor.innerHTML = Art.decor(t); el.vimg._t = t.id + Art.newArt(); folkN = -1; }
     if (!VV.sized || el.vimg._focus !== v.id) {
       if (VV.resize()) { var c = Art.sitePos(R.CENTER_TILE); VV.focus(c[0], c[1] - 10, Math.max(1, Math.min(3.2, VV.vw / 1040))); el.vimg._focus = v.id; }
     }
@@ -222,7 +222,7 @@
     var want = Math.min(v.pop, 14);
     if (folkN !== want || el.folk._t !== v.id) {
       var s = '';
-      for (var i = 0; i < want; i++) { var p = spot(v); s += '<g class="person" style="transform:translate(' + p[0] + 'px,' + p[1] + 'px)">' + Art.person(i % 3 ? '#F2EAD6' : t.look.trim) + '</g>'; }
+      for (var i = 0; i < want; i++) { var p = spot(v); s += '<g class="person" style="transform:translate(' + p[0] + 'px,' + p[1] + 'px)">' + Art.person(i % 3 ? '#F2EAD6' : t.look.trim, t.id, i) + '</g>'; }
       el.folk.innerHTML = s; folkN = want; el.folk._t = v.id;
     }
   }

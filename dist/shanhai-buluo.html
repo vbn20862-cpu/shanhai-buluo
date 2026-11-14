@@ -2225,13 +2225,27 @@ window.Art = (function () {
     return s + '<circle cx="' + f1(p[0] + 4) + '" cy="' + f1(p[1] - 8) + '" r="5" fill="#F2EAD6" opacity=".55"/><circle cx="' + f1(p[0] + 10) + '" cy="' + f1(p[1] - 20) + '" r="7" fill="#F2EAD6" opacity=".35"/>';
   };
   var ASSET_SCALE = 0.92;
-  function asset(t, type) { var n = t.id + '-' + type; return newArt && AS.building[n] ? n : ''; }
-  /* 畫一棟建築，原點在佔地中心。有素材就用素材（<use> 參照 DEFS 裡的圖形），沒有就用上面程式畫的 */
-  function bld(type, k, t) {
-    var n = asset(t, type);
-    return n ? '<use href="#b-' + n + '" x="-80" y="-140" width="160" height="180" transform="scale(' + ASSET_SCALE + ')"/>' : ISO[type](k, t);   // 素材的地基比建地略大，縮一點相鄰的建築才不會疊在一起
+  /* 外觀隨等級改變（第二包美術）：中心建築三個階段，家屋、瞭望台兩個階段。
+   * 現在建築最高 5 級，暫定 3 級換第二階段、5 級換第三階段；之後等級拉長再改成 11 級、21 級 */
+  function stage(type, level) {
+    if (type === 'center') return level >= 5 ? '-3' : level >= 3 ? '-2' : '';
+    if (type === 'house' || type === 'tower') return level >= 3 ? '-2' : '';
+    return '';
   }
-  function topOf(type, t) { var n = asset(t, type); return n ? AS.height[n] * ASSET_SCALE + 18 : type === 'unique' && t.id === 'atayal' ? 128 : TOP[type]; }   // 等級標記放多高
+  function asset(t, type, level) {
+    if (!newArt || !AS) return '';
+    var n = t.id + '-' + type + stage(type, level || 1);
+    if (AS.building[n]) return n;
+    n = t.id + '-' + type; return AS.building[n] ? n : '';
+  }
+  function useB(n, sc) { return '<use href="#b-' + n + '" x="-80" y="-140" width="160" height="180" transform="scale(' + (sc || ASSET_SCALE) + ')"/>'; }
+  function site(n) { return newArt && AS && AS.building['site-' + n] ? useB('site-' + n) : ''; }   // 建地的素材：空地、施工中、升級中、拓荒中
+  /* 畫一棟建築，原點在佔地中心。有素材就用素材（<use> 參照 DEFS 裡的圖形），沒有就用上面程式畫的 */
+  function bld(type, k, t, level) {
+    var n = asset(t, type, level);
+    return n ? useB(n) : ISO[type](k, t);   // 素材的地基比建地略大，縮一點相鄰的建築才不會疊在一起
+  }
+  function topOf(type, t, level) { var n = asset(t, type, level); return n ? AS.height[n] * ASSET_SCALE + 18 : type === 'unique' && t.id === 'atayal' ? 128 : TOP[type]; }   // 等級標記放多高
   var TOP = { center: 82, house: 58, farm: 26, mat: 36, special: 48, storage: 64, barracks: 56, tower: 104, unique: 56 };   // 各建築大約多高，用來放等級標記
 
   // 樹、石頭、草叢：定義一次，用 <use> 重複放
@@ -2245,6 +2259,8 @@ window.Art = (function () {
     '<g id="bt-c"><ellipse cx="0" cy="1" rx="15" ry="4.6" fill="#000" opacity=".25"/><rect x="-3.5" y="-46" width="7" height="47" fill="#6B4A32"/><rect x="0" y="-46" width="3.5" height="47" fill="#573A26"/><polygon points="-24,-36 0,-78 24,-36" fill="#2F6B4F"/><polygon points="0,-78 24,-36 0,-36" fill="#25573F"/><polygon points="-19,-62 0,-100 19,-62" fill="#3A7C5B"/><polygon points="0,-100 19,-62 0,-62" fill="#2D6449"/><polygon points="-13,-86 0,-118 13,-86" fill="#468A66"/><polygon points="0,-118 13,-86 0,-86" fill="#357052"/></g>' +
     '<g id="bt-p"><ellipse cx="0" cy="1" rx="11" ry="3.6" fill="#000" opacity=".25"/><path d="M-2.5 0C-1 -40 0 -70 1 -92h3C4 -70 3 -40 3 0Z" fill="#8A7A5A"/><path d="M-1.6 -20h4M-1 -40h4M-.4 -60h3.6M.4 -78h3" stroke="#6E6046" stroke-width="1.4"/><g fill="none" stroke="#3E8A4E" stroke-width="5" stroke-linecap="round"><path d="M2 -92q-16 -14 -30 -2"/><path d="M2 -92q16 -14 30 -2"/><path d="M2 -92q-10 -24 -24 -24"/><path d="M2 -92q10 -24 24 -24"/><path d="M2 -92q0 -20 2 -30"/></g><circle cx="2" cy="-92" r="4" fill="#2F6A40"/></g>' +
     (AS ? Object.keys(AS.building).map(function (n) { return '<symbol id="b-' + n + '" viewBox="-80 -140 160 180" overflow="visible">' + AS.building[n] + '</symbol>'; }).join('') : '') +   // 美術素材的建築
+    (AS && AS.nature ? Object.keys(AS.nature).map(function (n) { return '<g id="n-' + n + '">' + AS.nature[n] + '</g>'; }).join('') : '') +   // 樹木與地景（原點在底部中央）
+    (AS && AS.people ? Object.keys(AS.people).filter(function (n) { return n.indexOf('-villager-') > 0; }).map(function (n) { return '<g id="vp-' + n + '">' + AS.people[n] + '</g>'; }).join('') : '') +   // 族人
     '</defs>';
   function use(id, x, y, sc) { return '<use href="#' + id + '" transform="translate(' + f1(x) + ' ' + f1(y) + ') scale(' + sc.toFixed(2) + ')"/>'; }
   function inWater(k, p) {
@@ -2253,20 +2269,39 @@ window.Art = (function () {
   }
   function stream(y) { return 1890 + 62 * Math.sin(y / 160); }
   function shore(x) { return 1096 + 24 * Math.sin(x / 190); }
-  var decorCache = {};
+  var decorCache = {}, WALL_A = 15.6;   // WALL_A：方形圍籬離部落中央的距離（地面單位），每邊 13 段、每段 2.4
+  function natureOn(t) { return newArt && AS && AS.nature && AS.nature[t.id + '-tree-a'] ? true : false; }
+  function treeId(t, r, small) {   // 素材的樹：依隨機數挑一種
+    if (small) return 'n-' + t.id + (r < 0.3 ? '-bush' : r < 0.65 ? '-tree-a' : r < 0.85 ? '-tree-b' : '-tree-c');
+    return 'n-' + t.id + (r < 0.05 ? '-rock' : r < 0.15 ? '-bush' : r < 0.45 ? '-tree-big' : r < 0.66 ? '-tree-a' : r < 0.83 ? '-tree-b' : r < 0.99 ? '-tree-c' : '-log');
+  }
   function decor(t) {   // 開墾地外面的山林：位置固定，每次都一樣
-    if (decorCache[t.id]) return decorCache[t.id];
+    var art = natureOn(t), key = t.id + (art ? '+' : '');
+    if (decorCache[key]) return decorCache[key];
     var k = t.look, out = [], coast = k.backdrop === 'coast', rocky = t.id === 'paiwan' ? 0.16 : 0.06;
     for (var i = 0; i < 1320; i++) {
       var gx = -9 + rnd(i, 1) * 58, gy = -9 + rnd(i, 2) * 58;
-      if (Math.hypot(gx - CX, gy - CY) < 15.3) continue;
+      if (art ? Math.abs(gx - CX) < WALL_A + 1.4 && Math.abs(gy - CY) < WALL_A + 1.4 : Math.hypot(gx - CX, gy - CY) < 15.3) continue;
+      if (art && rnd(i, 7) < 0.3) continue;   // 素材的樹比較大，種得稀一點，看得到草地
       var p = P(gx, gy);
       if (p[0] < -30 || p[0] > SW + 30 || p[1] < 36 || p[1] > SH + 50 || inWater(k, p)) continue;
-      var r = rnd(i, 3), id = r < rocky ? 't-r' : coast ? (r < 0.24 ? 't-s' : 't-b') : (r < 0.66 ? 't-c' : 't-b');
-      out.push({ y: p[1], s: use(id, p[0], p[1], 0.85 + rnd(i, 4) * 0.45) });
+      var r = rnd(i, 3), id = art ? treeId(t, r) : r < rocky ? 't-r' : coast ? (r < 0.24 ? 't-s' : 't-b') : (r < 0.66 ? 't-c' : 't-b');
+      out.push({ y: p[1], s: use(id, p[0], p[1], (art ? 0.82 + rnd(i, 4) * 0.3 : 0.85 + rnd(i, 4) * 0.45) * (/-tree-big$/.test(id) ? 0.5 : 1)) });
     }
     out.sort(function (a, b) { return a.y - b.y; });
-    return (decorCache[t.id] = out.map(function (o) { return o.s; }).join(''));
+    return (decorCache[key] = out.map(function (o) { return o.s; }).join(''));
+  }
+  /* 方形的圍籬（有素材時）：四邊各 13 段，左前方那一邊的正中間是大門，四個角有轉角柱。等級越高，用越堅固的那一款 */
+  function wallRing(t, level, items) {
+    var nm = t.id + (level >= 5 && AS.building[t.id + '-wall-3'] ? '-wall-3' : level >= 3 && AS.building[t.id + '-wall-2'] ? '-wall-2' : '-wall'), L = 2.4, n = 13, a = WALL_A, j;
+    function put(gx, gy, id, flip) { var p = P(gx, gy); items.push({ y: p[1] - 2, s: '<g transform="translate(' + f1(p[0]) + ' ' + f1(p[1]) + ')' + (flip ? ' scale(-1 1)' : '') + '">' + useB(id, 1) + '</g>' }); }
+    for (j = 0; j < n; j++) {
+      var o = -a + L * (j + 0.5);
+      put(CX + o, CY - a, nm, false);                                                                       // 右後方
+      put(CX + o, CY + a, j === (n - 1) / 2 && AS.building[t.id + '-gate'] ? t.id + '-gate' : nm, false);   // 左前方，正中間是大門
+      put(CX - a, CY + o, nm, true); put(CX + a, CY + o, nm, true);                                          // 左後方、右前方
+    }
+    if (AS.building[t.id + '-wall-corner']) [[-a, -a], [a, -a], [a, a], [-a, a]].forEach(function (c) { put(CX + c[0], CY + c[1], t.id + '-wall-corner', false); });
   }
   var CLUMP = [[-36, -8], [-12, -22], [18, -15], [38, 0], [-20, 9], [8, 15]];
   function badge(x, y, inner, ring) {
@@ -2278,7 +2313,8 @@ window.Art = (function () {
     var t = Tribes.get(v.tribe), k = t.look, S = R.SITES, low = '', top = '', items = [], busy = {}, i;
     v.queue.forEach(function (w) { if (w.tile >= 0) busy[w.tile] = w; });
     function dist(j) { return Math.hypot(S[j].x - CX, S[j].y - CY); }
-    if (v.wall) {   // 圍籬：繞著整個開墾地的一圈，等級越高越粗
+    if (v.wall && newArt && AS && AS.building[t.id + '-wall']) wallRing(t, v.wall, items);
+    else if (v.wall) {   // 圍籬：繞著整個開墾地的一圈，等級越高越粗
       var c0 = P(CX, CY), rx = 14.5 * U * 1.414, wd = 5 + v.wall * 2, stone = k.fence === 'stone';
       var ring = function (col, wdt, dash) { return '<ellipse cx="' + f1(c0[0]) + '" cy="' + f1(c0[1]) + '" rx="' + f1(rx) + '" ry="' + f1(rx / 2) + '" fill="none" stroke="' + col + '" stroke-width="' + wdt + '"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '/>'; };
       low += ring('rgba(0,0,0,.28)', wd + 8) + ring(stone ? '#5F6166' : '#5E7B3C', wd + 4) + ring(stone ? '#A5A8AC' : '#A9C46A', wd, stone ? '26 6' : '6 7');
@@ -2293,23 +2329,29 @@ window.Art = (function () {
       var p = sitePos(i), b = v.tiles[i], w = busy[i], tx = ' transform="translate(' + f1(p[0]) + ' ' + f1(p[1]) + ')"';
       if (sel === i) low += '<ellipse cx="' + f1(p[0]) + '" cy="' + f1(p[1]) + '" rx="66" ry="33" fill="rgba(227,179,65,.25)" stroke="#E3B341" stroke-width="4"/>';
       if (!v.land[i]) {   // 山林
-        var clearing = w && w.type === 'clear';
-        CLUMP.forEach(function (c, n) {
+        var clearing = w && w.type === 'clear', art = natureOn(t);
+        if (clearing && site('clearing')) items.push({ y: p[1], s: '<g' + tx + '>' + site('clearing') + '</g>' });   // 拓荒中：砍到一半的樹、樹樁
+        else CLUMP.forEach(function (c, n) {
           if (clearing && n % 2) return;
-          items.push({ y: p[1] + c[1], s: use(rnd(i * 7 + n, 5) < (k.backdrop === 'coast' ? 0.15 : 0.6) ? 't-c' : 't-b', p[0] + c[0], p[1] + c[1], 0.95 + rnd(i * 7 + n, 6) * 0.3) });
+          var tid = art ? treeId(t, rnd(i * 7 + n, 5), n > 3) : rnd(i * 7 + n, 5) < (k.backdrop === 'coast' ? 0.15 : 0.6) ? 't-c' : 't-b';
+          items.push({ y: p[1] + c[1], s: use(tid, p[0] + c[0], p[1] + c[1], (art ? 0.78 + rnd(i * 7 + n, 6) * 0.25 : 0.95 + rnd(i * 7 + n, 6) * 0.3) * (/-tree-big$/.test(tid) ? 0.5 : 1)) });
         });
         if (clearing) top += pill(p[0], p[1] + 6, w.doneAt);
         else if (!plain && S[i].near.some(function (j) { return v.land[j]; }))
           top += badge(p[0], p[1] - 50, '<path d="M-5 6 4 -5" stroke="#F2EAD6" stroke-width="2.4" stroke-linecap="round"/><path d="M1 -8 8 -3 4 2 -1 -4z" fill="#F2EAD6"/>', '#F2EAD6');
       } else if (!b) {     // 開墾好的空地
-        low += '<g' + tx + '>' + plot(1.2, 1.05, '#B79B6E', ' opacity=".85"') + '</g>';
-        [[-1.2, -1.05], [1.2, -1.05], [1.2, 1.05], [-1.2, 1.05]].forEach(function (c) { var g = q(c[0], c[1]); low += seg([p[0] + g[0], p[1] + g[1]], [p[0] + g[0], p[1] + g[1] - 9], '#7A5636', 2.6); });
+        if (site('empty')) low += '<g' + tx + '>' + site('empty') + '</g>';
+        else {
+          low += '<g' + tx + '>' + plot(1.2, 1.05, '#B79B6E', ' opacity=".85"') + '</g>';
+          [[-1.2, -1.05], [1.2, -1.05], [1.2, 1.05], [-1.2, 1.05]].forEach(function (c) { var g = q(c[0], c[1]); low += seg([p[0] + g[0], p[1] + g[1]], [p[0] + g[0], p[1] + g[1] - 9], '#7A5636', 2.6); });
+        }
         if (!plain) top += badge(p[0], p[1] - 2, '<path d="M-6 0H6M0 -6V6" stroke="#E3B341" stroke-width="2.6" stroke-linecap="round"/>', '#E3B341');
       } else {
-        items.push({ y: p[1] + 8, s: '<g' + tx + (b.level === 0 ? ' opacity=".45"' : '') + '>' + bld(b.type, k, t) + '</g>' });
+        if (b.level === 0 && site('building')) items.push({ y: p[1] + 8, s: '<g' + tx + '>' + site('building') + '</g>' });   // 施工中：鷹架和堆著的材料
+        else items.push({ y: p[1] + 8, s: '<g' + tx + (b.level === 0 ? ' opacity=".45"' : '') + '>' + bld(b.type, k, t, b.level) + (b.busy && b.level > 0 && site('upgrade') ? site('upgrade') : '') + '</g>' });   // 升級中：疊上鷹架
         if (b.busy && w) top += pill(p[0], p[1] + 22, w.doneAt);
         if (b.level > 0 && b.type === 'unique') top += '<g transform="translate(' + f1(p[0] + 34) + ' ' + f1(p[1] - topOf('unique', t)) + ')"><circle r="12" fill="rgba(20,33,42,.88)" stroke="#E3B341" stroke-width="2"/><path d="M0 -8l2.4 5.2 5.6.6-4.2 3.8 1.2 5.6-5-2.9-5 2.9 1.2-5.6-4.2-3.8 5.6-.6z" fill="#E3B341"/></g>';
-        else if (b.level > 0) top += '<g transform="translate(' + f1(p[0] + 34) + ' ' + f1(p[1] - topOf(b.type, t)) + ')"><circle r="12" fill="rgba(20,33,42,.88)"/><text y="6" text-anchor="middle" font-size="17" font-weight="700" fill="#F2EAD6">' + b.level + '</text></g>';
+        else if (b.level > 0) top += '<g transform="translate(' + f1(p[0] + 34) + ' ' + f1(p[1] - topOf(b.type, t, b.level)) + ')"><circle r="12" fill="rgba(20,33,42,.88)"/><text y="6" text-anchor="middle" font-size="17" font-weight="700" fill="#F2EAD6">' + b.level + '</text></g>';
       }
     }
     items.sort(function (a, c) { return a.y - c.y; });
@@ -2318,7 +2360,9 @@ window.Art = (function () {
   function pill(x, y, until) {
     return '<g transform="translate(' + f1(x) + ' ' + f1(y) + ')"><rect x="-40" y="-13" width="80" height="26" rx="13" fill="rgba(20,33,42,.9)"/><text y="6" text-anchor="middle" font-size="17" font-weight="700" fill="#E3B341" data-until="' + until + '"></text></g>';
   }
-  function person(color) {
+  function person(color, tribe, i) {   // 有素材就用該族的族人（走路、站著、扛東西），原點在腳底下 9 的地方
+    var vs = ['-villager-a-walk', '-villager-b-stand', '-villager-a-stand'], n = tribe && newArt && AS && AS.people ? tribe + vs[(i || 0) % 3] : '';
+    if (n && AS.people[n]) return '<use href="#vp-' + n + '" transform="translate(0 9) scale(.95)"/>';
     return '<ellipse cx="0" cy="9" rx="6.5" ry="2.4" fill="#000" opacity=".22"/><path d="M-5.5 9c0-8 2-13 5.5-13s5.5 5 5.5 13z" fill="' + color + '"/><circle cx="0" cy="-8" r="4.8" fill="#B98660"/>';
   }
 
@@ -2642,16 +2686,18 @@ window.Art = (function () {
 
   /* 地面底圖：畫在畫布上再當成一張圖，縮放平移才順。 */
   var groundCache = {};
+  var GRASS = { amis: '#8DB55C', atayal: '#84AC58', bunun: '#7BA262', paiwan: '#89B15A' };   // 新的美術：和部落場景示意圖一樣明亮的草地
   function groundURL(t) {
-    if (groundCache[t.id]) return groundCache[t.id];
+    var art = natureOn(t), key = t.id + (art ? '+' : '');
+    if (groundCache[key]) return groundCache[key];
     var k = t.look, cv = document.createElement('canvas'); cv.width = SW; cv.height = SH;
-    var c = cv.getContext('2d'), base = k.ground, i, g;
-    c.fillStyle = shade(base, -32); c.fillRect(0, 0, SW, SH);
+    var c = cv.getContext('2d'), base = art ? GRASS[t.id] || shade(k.ground, 30) : k.ground, i, g;
+    c.fillStyle = shade(base, art ? -4 : -32); c.fillRect(0, 0, SW, SH);
     for (i = 0; i < 180; i++) {   // 林地的深淺變化
-      var x = rnd(i, 11) * SW, y = rnd(i, 12) * SH, r = 50 + rnd(i, 13) * 130, col = i % 2 ? shade(base, -44) : shade(base, -20);
+      var x = rnd(i, 11) * SW, y = rnd(i, 12) * SH, r = 50 + rnd(i, 13) * 130, col = art ? (i % 2 ? shade(base, -14) : shade(base, 12)) : i % 2 ? shade(base, -44) : shade(base, -20);
       g = c.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, rgba(col, 0.55)); g.addColorStop(1, rgba(col, 0)); c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, 6.3); c.fill();
     }
-    var ctr = P(CX, CY), rx = 16 * U * 1.414;
+    var ctr = P(CX, CY), rx = (art ? 21 : 16) * U * 1.414;
     c.save(); c.translate(ctr[0], ctr[1]); c.scale(1, 0.5);   // 開墾地：比周圍亮的草地
     g = c.createRadialGradient(0, 0, rx * 0.2, 0, 0, rx); g.addColorStop(0, shade(base, 14)); g.addColorStop(0.7, base); g.addColorStop(1, rgba(base, 0));
     c.fillStyle = g; c.beginPath(); c.arc(0, 0, rx, 0, 6.3); c.fill();
@@ -2680,8 +2726,8 @@ window.Art = (function () {
       });
     }
     g = c.createRadialGradient(SW / 2, SH / 2, SH * 0.45, SW / 2, SH / 2, SW * 0.62);   // 四周壓暗
-    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(6,16,20,.45)'); c.fillStyle = g; c.fillRect(0, 0, SW, SH);
-    return (groundCache[t.id] = cv.toDataURL('image/jpeg', 0.86));
+    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, art ? 'rgba(6,16,20,.2)' : 'rgba(6,16,20,.45)'); c.fillStyle = g; c.fillRect(0, 0, SW, SH);
+    return (groundCache[key] = cv.toDataURL('image/jpeg', 0.86));
   }
 
   // ---------- 世界地圖（自然風格：平滑海岸線、暈染的區域色塊、山脈起伏） ----------
@@ -3151,7 +3197,7 @@ window.Net = (function () {
   function renderVillage() {
     var v = shown(); if (!v) return;
     var t = Tribes.get(v.tribe), sel = S.visit ? null : S.selTile;
-    if (el.vimg._t !== t.id) { el.vimg.setAttribute('href', Art.groundURL(t)); el.vdecor.innerHTML = Art.decor(t); el.vimg._t = t.id; }
+    if (el.vimg._t !== t.id + Art.newArt()) { el.vimg.setAttribute('href', Art.groundURL(t)); el.vdecor.innerHTML = Art.decor(t); el.vimg._t = t.id + Art.newArt(); folkN = -1; }
     if (!VV.sized || el.vimg._focus !== v.id) {
       if (VV.resize()) { var c = Art.sitePos(R.CENTER_TILE); VV.focus(c[0], c[1] - 10, Math.max(1, Math.min(3.2, VV.vw / 1040))); el.vimg._focus = v.id; }
     }
@@ -3160,7 +3206,7 @@ window.Net = (function () {
     var want = Math.min(v.pop, 14);
     if (folkN !== want || el.folk._t !== v.id) {
       var s = '';
-      for (var i = 0; i < want; i++) { var p = spot(v); s += '<g class="person" style="transform:translate(' + p[0] + 'px,' + p[1] + 'px)">' + Art.person(i % 3 ? '#F2EAD6' : t.look.trim) + '</g>'; }
+      for (var i = 0; i < want; i++) { var p = spot(v); s += '<g class="person" style="transform:translate(' + p[0] + 'px,' + p[1] + 'px)">' + Art.person(i % 3 ? '#F2EAD6' : t.look.trim, t.id, i) + '</g>'; }
       el.folk.innerHTML = s; folkN = want; el.folk._t = v.id;
     }
   }
