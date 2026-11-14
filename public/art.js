@@ -411,7 +411,7 @@ window.Art = (function () {
       s += g;
     });
     if (show) {   // 雙方喊出的指令；剋住對方的那一邊用金色框起來
-      var ma = R.taken(ca, cd), md = R.taken(cd, ca);
+      var hero = !!(last.ha || last.hd), ma = !hero && R.beats(ca, cd) ? 0 : 1, md = !hero && R.beats(cd, ca) ? 0 : 1;   // 數字小的那一邊剋住對方；用了英雄能力就不算相剋
       [[250, ca, ma < md, last.ha && ta], [750, cd, md < ma, last.hd && td]].forEach(function (c, n2) {   // 用了英雄能力：喊的是能力的名字，英雄站出來
         var ht = c[3], label = ht ? '★ ' + ht.hero.abilityZh : R.CMDS[c[1]], flip = n2 === 1;
         top += at(c[0], 46, '<g class="shout' + (c[2] ? ' win' : '') + (ht ? ' hero' : '') + '"' + dly(n2 * 120) + '><rect x="-78" y="-19" width="156" height="34" rx="17"/><text y="6" text-anchor="middle">' + label + '！' + (c[2] ? ' 剋制' : '') + '</text></g>');

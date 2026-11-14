@@ -177,6 +177,7 @@ p { margin: 4px 0; }
 
 /* 軍事與對戰 */
 .seg.n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.seg.n2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ic-army { color: #E7B9A0; } .ic-shield { color: var(--good); }
 .chip.safe { border-color: var(--good); color: var(--good); }
 .chip.bless { border-color: var(--gold); color: var(--gold); }

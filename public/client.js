@@ -4,8 +4,21 @@
   var R = World.rules, G = Geo.build();
   var STAGE_TYPES = ['house', 'farm', 'mat', 'special', 'storage', 'barracks', 'tower', 'unique'];   // 目前開放的建築
   // 獨特兵種的特性、英雄能力的效果（規則在 shared/world.js，這裡只是給玩家看的說明）
-  var TRAIT_FX = { guard: '守在自己部落時，攻擊多三成', sharp: '遠程，攻擊力比弓手高', band: '同一路的同伴越多越強（每多一位加 3%，最多三成）', wall: '守在自己部落時更耐打（多三成）' };
-  var ABILITY_FX = { volley2: '算作掩護射擊，這個階段我方的攻擊多六成', relay: '算作重整，各路負傷的人全部歸隊', unity: '算作衝鋒，這個階段我方的損失減半', steadfast: '算作重整，但攻擊不打折，損失再減半' };
+  function pct(x) { return Math.round(x * 100) + '%'; }
+  function traitFx(tr) {
+    var T = R.TUNE;
+    return tr === 'guard' ? '守在自己部落時，攻擊多 ' + T.guardPct + '%' : tr === 'sharp' ? '遠程，攻擊力比弓手高'
+      : tr === 'band' ? '同一路的同伴越多越強（每多一位加 ' + T.bandPct + '%，最多 ' + T.bandMax + '%）' : '守在自己部落時更耐打（多 ' + T.wallHpPct + '%）';
+  }
+  function abilityFx(ab) {
+    var T = R.TUNE;
+    return ab === 'volley2' ? '算作掩護射擊，這個階段我方的攻擊變成 ' + T.abVolley2 + ' 倍'
+      : ab === 'relay' ? '算作重整，各路負傷的人' + (T.abRelayBack >= 1 ? '全部' : '有 ' + pct(T.abRelayBack)) + '歸隊'
+      : ab === 'unity' ? '算作衝鋒，這個階段我方的損失只有原本的 ' + pct(T.abUnity) : '算作重整，但攻擊不打折，損失再變成原本的 ' + pct(T.abSteadfast);
+  }
+  function perTime(perSec) {   // 產量的寫法：快的時候寫每分鐘，慢的時候（正式節奏）寫每小時
+    var m = perSec * 60; return m <= 0 ? '0/分' : m >= 10 ? Math.round(m) + '/分' : m >= 1 ? Math.round(m * 10) / 10 + '/分' : Math.round(m * 60) + '/時';
+  }
   var LANE_NAMES = { even: '平均', gate: '正門', path: '山徑', valley: '溪谷' }, GUARD = ['沒有', '少', '中等', '多'];
   var CMD_TIP = { charge: '勇士攻擊大增。剋重整，怕掩護射擊', volley: '弓手攻擊大增。剋衝鋒，對重整效果差', hold: '減少損失、讓負傷的人歸隊。剋掩護射擊，怕衝鋒' };
   var JOBS = ['food', 'mat', 'special'], WILD = { fish: '漁場', hunt: '獵場', wood: '林地' };
@@ -16,7 +29,12 @@
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function n0(x) { return Math.floor(x || 0); }
   function setHTML(node, html) { if (node._h === html) return false; node.innerHTML = html; node._h = html; return true; }
-  function dur(sec) { sec = Math.max(0, Math.ceil(sec)); return sec < 60 ? sec + ' 秒' : Math.floor(sec / 60) + ' 分 ' + ('0' + sec % 60).slice(-2) + ' 秒'; }
+  function dur(sec) {
+    sec = Math.max(0, Math.ceil(sec));
+    if (sec >= 3600) return Math.floor(sec / 3600) + ' 小時 ' + ('0' + Math.floor(sec % 3600 / 60)).slice(-2) + ' 分';
+    return sec < 60 ? sec + ' 秒' : Math.floor(sec / 60) + ' 分 ' + ('0' + sec % 60).slice(-2) + ' 秒';
+  }
+  function coarse(sec) { sec = Math.max(0, sec); return sec >= 3600 ? Math.ceil(sec / 3600) + ' 小時' : sec >= 60 ? Math.ceil(sec / 60) + ' 分' : Math.ceil(sec) + ' 秒'; }   // 只寫最大的單位
   function toast(msg, bad) {
     var d = document.createElement('div'); d.className = 'toast' + (bad ? ' bad' : ''); d.textContent = msg;
     el.toast.appendChild(d); setTimeout(function () { d.remove(); }, 2600);
@@ -29,17 +47,18 @@
   function nat(o) { return esc(o.zh) + (o.native ? ' <i class="nat">' + esc(o.native) + '</i>' : ''); }
   function all3(o) { return o.w + o.a + (o.u || 0); }
   function uniqFx(t) {
+    var T = R.TUNE, g = T.prod * (T['prod_' + t.id] || 1) / T.pace;
     switch (t.uniq.building.effect) {
-      case 'watch': return '來出征的隊伍路上多花一半時間；守軍的戰力多 12%';
-      case 'range': return '野地資源點的產量多五成，可以多佔 1 處';
-      case 'pond': return '不用人手，每分鐘固定多 ' + Math.round(R.POND.food * 60) + ' 份' + t.res.food + '和約 ' + Math.round(R.POND.special * 60) + ' 份' + t.sp.zh;
-      case 'vault': return '倉庫受保護的份量加倍，倉庫容量 +300';
+      case 'watch': return '來出征的隊伍路上多花 ' + pct(T.watchSlow - 1) + ' 的時間；守軍的戰力多 ' + T.watchDefPct + '%';
+      case 'range': return '野地資源點的產量多 ' + pct(T.rangeYield - 1) + '，可以多佔 1 處';
+      case 'pond': return '不用人手，固定多 ' + perTime(T.pondFood / 60 * g) + ' 的' + t.res.food + '和 ' + perTime(T.pondSp / 60 * g) + ' 的' + t.sp.zh;
+      case 'vault': return '倉庫受保護的份量變成 ' + T.vaultProt + ' 倍，倉庫容量 +' + T.vaultCap;
     }
     return '';
   }
   function rewardText(t, i) {   // 任務每一章的獎勵
-    return i === 0 ? '器物「' + t.items[0].zh + '」，' + t.res.food + '產量永久 +' + Math.round(R.ITEM_BONUS * 100) + '%，另外送 80 份' + t.res.food
-      : i === 1 ? '器物「' + t.items[1].zh + '」，' + t.res.mat + '產量永久 +' + Math.round(R.ITEM_BONUS * 100) + '%，另外送 80 份' + t.res.mat
+    return i === 0 ? '器物「' + t.items[0].zh + '」，' + t.res.food + '產量永久 +' + Math.round(R.TUNE.itemBonus * 100) + '%，另外送 80 份' + t.res.food
+      : i === 1 ? '器物「' + t.items[1].zh + '」，' + t.res.mat + '產量永久 +' + Math.round(R.TUNE.itemBonus * 100) + '%，另外送 80 份' + t.res.mat
       : i === 2 ? '可以興建獨特建築「' + t.uniq.building.zh + '」'
       : i === 3 ? '可以訓練獨特兵種「' + t.uniq.unit.zh + '」'
       : '「' + t.hero.zh + '」成為部落的傳說英雄，並且可以舉辦「' + t.bless.zh + '」';
@@ -125,6 +144,7 @@
     Net.on('status', function (s) { S.online = s.online; S.mode = s.mode; render(); });
     Net.on('hello', function (h) { S.pubs = h.villages || S.pubs; if (h.needCode != null) S.needCode = !!h.needCode; if (h.reset) { S.me = null; S.zone = null; S.selTile = null; S.visit = null; S.tab = 'build'; el.vobjs._sig = null; } render(); });
     Net.on('state', function (st) {
+      if (st.tune) R.setTune(st.tune);   // 後台調過的數值：顯示的時間、產量、說明都跟著變
       S.me = st.me; S.pubs = st.villages; S.marches = st.marches || [];
       S.rel = st.rel || []; S.points = st.points || []; S.stock = st.stock || {}; S.market = st.market || []; S.feed = st.feed || []; S.alliances = st.alliances || {};
       if (st.battle) {                                                       // 對戰結束後伺服器不再傳，畫面保留結果到玩家關掉為止
@@ -217,7 +237,7 @@
   function tickTimers() {
     if (S.marches.length && scene() === 'map') renderMarks();
     var now = Date.now(), list = document.querySelectorAll('[data-until]');
-    for (var i = 0; i < list.length; i++) list[i].textContent = dur((+list[i].getAttribute('data-until') - now) / 1000);
+    for (var i = 0; i < list.length; i++) { var left = (+list[i].getAttribute('data-until') - now) / 1000; list[i].textContent = list[i].getAttribute('data-coarse') ? coarse(left) : dur(left); }
   }
 
   // ---------- 上方資訊列 ----------
@@ -233,7 +253,7 @@
       h = '<div class="vname"><span class="dot" style="background:' + t.color + '"></span><b>' + esc(me.name) + '</b><span class="sub">' + t.zh + '</span></div>' +
         chip('food', t.res.food, n0(me.res.food), d.cap) + chip('mat', t.res.mat, n0(me.res.mat), d.cap) +
         chip('sp', t.sp.zh, n0(me.sp[me.tribe]), d.spCap) + chip('pop', '族人', me.pop, d.popCap) + chip('army', '戰士', all3(me.units), d.armyCap) + chip('star', '繁榮', d.prosperity) +
-        (Math.max(me.shieldUntil, me.newbieUntil) > Date.now() ? '<div class="chip safe" title="保護中，別人不能出征你">' + Art.icon('shield') + '<b data-until="' + Math.max(me.shieldUntil, me.newbieUntil) + '"></b></div>' : '') +
+        (Math.max(me.shieldUntil, me.newbieUntil) > Date.now() ? '<div class="chip safe" title="保護中，別人不能出征你">' + Art.icon('shield') + '<b data-until="' + Math.max(me.shieldUntil, me.newbieUntil) + '" data-coarse="1"></b></div>' : '') +
         (me.blessUntil > Date.now() ? '<div class="chip bless" title="族人同心，產量 +15%" role="img" aria-label="族人同心，產量加成中">' + Art.icon('fire') + '</div>' : '') +
         '<div class="spacer"></div>' + (S.visit ? '<div class="visiting">正在拜訪 ' + esc(S.visit.v.name) + '</div>' : '') + badge;
     }
@@ -258,7 +278,7 @@
       case 'special': return (2 * L) + ' 個工作位置，產出' + t.sp.zh;
       case 'storage': return '倉庫容量 +' + 400 * L + '，特產容量 +' + 20 * L;
       case 'barracks': return '可以訓練勇士與弓手，名額 ' + 6 * L + ' 人';
-      case 'tower': return '防守時每個階段多一份火力（強度 ' + 9 * L + '）';
+      case 'tower': return '防守時每個階段多一份火力（強度 ' + R.TUNE.towerPow * L + '）';
       case 'unique': return uniqFx(t);
     }
     return '';
@@ -313,7 +333,7 @@
     JOBS.forEach(function (k) {
       h += '<div class="job">' + Art.icon(ic[k]) + '<span class="jn">' + names[k] + '</span><div class="stepper"><button data-act="job" data-k="' + k + '" data-d="-1" aria-label="減少' + names[k] + '的人手"' + (me.jobs[k] <= 0 ? ' disabled' : '') + '>−</button>' +
         '<b>' + me.jobs[k] + '/' + d.slots[k] + '</b><button data-act="job" data-k="' + k + '" data-d="1" aria-label="增加' + names[k] + '的人手"' + (me.jobs[k] >= d.slots[k] || used >= me.pop ? ' disabled' : '') + '>＋</button></div>' +
-        '<span class="rate">+' + Math.round(d.rates[k] * 60) + '/分</span></div>';
+        '<span class="rate">+' + perTime(d.rates[k]) + '</span></div>';
     });
     return h + '<p class="muted">族人 ' + me.pop + ' 位，待命 ' + (me.pop - used) + ' 位。位置不夠時，多蓋或升級對應的建築。</p></section>';
   }
@@ -336,8 +356,8 @@
   function blessCard(me) {
     var t = myTribe(), now = Date.now(), on = me.blessUntil > now, wait = me.blessNext > now, why = on || wait ? '' : me.res.food < R.BLESS.food ? '糧食不夠' : '';
     return '<section class="card quest"><h3>' + Art.icon('fire') + nat(t.bless) + '<span class="lv">' + (on ? '同心中' : '主線已完成') + '</span></h3>' +
-      (on ? '<p class="eff next">族人同心，所有產量 +' + Math.round((R.BLESS.mult - 1) * 100) + '%，還有 <b data-until="' + me.blessUntil + '"></b>。</p>'
-        : '<p class="eff">準備大家一起吃的飯菜，全部落聚在一起。之後 ' + dur(R.BLESS.ms / 1000) + '，所有產量 +' + Math.round((R.BLESS.mult - 1) * 100) + '%。</p>') +
+      (on ? '<p class="eff next">族人同心，所有產量 +' + Math.round((R.TUNE.blessMult - 1) * 100) + '%，還有 <b data-until="' + me.blessUntil + '"></b>。</p>'
+        : '<p class="eff">準備大家一起吃的飯菜，全部落聚在一起。之後 ' + dur(R.paced(R.BLESS.ms) / 1000) + '，所有產量 +' + Math.round((R.TUNE.blessMult - 1) * 100) + '%。</p>') +
       '<div class="act"><button class="btn sm" data-act="bless"' + (on || wait || why ? ' disabled' : '') + '>舉辦</button>' + costHTML(me, { food: R.BLESS.food, mat: 0 }) +
       '<span class="time">' + (wait ? '<b data-until="' + me.blessNext + '"></b> 後可以再辦' : why) + '</span></div><p class="note">' + esc(t.bless.note) + '</p></section>';
   }
@@ -422,11 +442,11 @@
     });
     h += '<p class="note">' + esc(t.story.credit) + '</p></section>';
     var got = [];   // 任務拿到的東西：器物、獨特建築、獨特兵種、英雄與共聚
-    if (me.quest >= 1) got.push(['器物', t.items[0], t.res.food + '產量 +' + Math.round(R.ITEM_BONUS * 100) + '%']);
-    if (me.quest >= 2) got.push(['器物', t.items[1], t.res.mat + '產量 +' + Math.round(R.ITEM_BONUS * 100) + '%']);
+    if (me.quest >= 1) got.push(['器物', t.items[0], t.res.food + '產量 +' + Math.round(R.TUNE.itemBonus * 100) + '%']);
+    if (me.quest >= 2) got.push(['器物', t.items[1], t.res.mat + '產量 +' + Math.round(R.TUNE.itemBonus * 100) + '%']);
     if (me.quest >= 3) got.push(['獨特建築', t.uniq.building, uniqFx(t)]);
-    if (me.quest >= 4) got.push(['獨特兵種', t.uniq.unit, TRAIT_FX[t.uniq.unit.trait]]);
-    if (me.quest >= 5) got.push(['傳說英雄', t.hero, '能力「' + t.hero.abilityZh + '」：' + ABILITY_FX[t.hero.ability]], ['共聚', t.bless, '舉辦後一段時間所有產量 +' + Math.round((R.BLESS.mult - 1) * 100) + '%']);
+    if (me.quest >= 4) got.push(['獨特兵種', t.uniq.unit, traitFx(t.uniq.unit.trait)]);
+    if (me.quest >= 5) got.push(['傳說英雄', t.hero, '能力「' + t.hero.abilityZh + '」：' + abilityFx(t.hero.ability)], ['共聚', t.bless, '舉辦後一段時間所有產量 +' + Math.round((R.TUNE.blessMult - 1) * 100) + '%']);
     got.forEach(function (g) { h += '<section class="card"><h3>' + nat(g[1]) + '<span class="lv">' + g[0] + '</span></h3><p class="eff">' + g[2] + '</p><p class="note">' + esc(g[1].note) + '</p></section>'; });
     t.cards.forEach(function (c) { h += '<section class="card"><h3>' + esc(c.t) + '</h3><p>' + esc(c.x) + '</p></section>'; });
     h += '<p class="label">島上的 17 族</p><ul class="tlist">';
@@ -455,24 +475,24 @@
         if (u === 'u' && me.quest < 4) { h += '<p class="muted">完成任務第 4 章，可以訓練' + t.zh + '的獨特兵種「' + esc(us.zh) + '」。</p>'; return; }
         var def = u === 'u' ? R.UNIT_U : U[u], name = u === 'u' ? esc(us.zh) : U[u].zh;
         var why = total >= d.armyCap ? '名額已滿' : me.battle ? '交戰中' : !affordable(me, def.cost) ? '物資還不夠' : '';
-        h += '<div class="act"><button class="btn sm' + (u === 'u' ? ' uq' : '') + '" data-act="train" data-u="' + u + '"' + (why ? ' disabled' : '') + '>訓練' + name + '</button>' + costHTML(me, def.cost) + '<span class="time">' + (why || dur(def.time)) + '</span></div>';
+        h += '<div class="act"><button class="btn sm' + (u === 'u' ? ' uq' : '') + '" data-act="train" data-u="' + u + '"' + (why ? ' disabled' : '') + '>訓練' + name + '</button>' + costHTML(me, def.cost) + '<span class="time">' + (why || dur(R.trainTime(u))) + '</span></div>';
       });
       if (me.train.length) h += '<p class="busyline">下一位還要 <b data-until="' + me.train[0].doneAt + '"></b>，全部完成還要 <b data-until="' + me.train[me.train.length - 1].doneAt + '"></b></p>';
-      h += '<p class="muted">' + U.w.zh + '站在前面承受攻擊；' + U.a.zh + '攻擊力較高但較脆弱。' + (me.quest >= 4 ? nat(us) + '：' + TRAIT_FX[us.trait] + '。' : '') + '</p>';
+      h += '<p class="muted">' + U.w.zh + '站在前面承受攻擊；' + U.a.zh + '攻擊力較高但較脆弱。' + (me.quest >= 4 ? nat(us) + '：' + traitFx(us.trait) + '。' : '') + '</p>';
       if (me.quest >= 4) h += '<p class="note">' + esc(us.note) + '</p>';
     }
     h += '</section>';
     if (me.quest >= R.QUESTS.length) {   // 傳說英雄：每場對戰可以用一次能力，用過要休息
       var rest = me.heroRest > Date.now();
       h += '<section class="card"><h3>' + nat(t.hero) + '<span class="lv">傳說英雄 · ' + (rest ? '休息中' : '可以出戰') + '</span></h3>' +
-        '<p class="eff' + (rest ? '' : ' next') + '">能力「' + esc(t.hero.abilityZh) + '」：' + ABILITY_FX[t.hero.ability] + '。</p>' +
-        '<p class="muted">對戰時多一個指令可以選，每場只能用一次；用過之後要休息 ' + dur(R.HERO_REST / 1000) + '。' + (rest ? '還要 <b data-until="' + me.heroRest + '"></b>。' : '') + '</p><p class="note">' + esc(t.hero.note) + '</p></section>';
+        '<p class="eff' + (rest ? '' : ' next') + '">能力「' + esc(t.hero.abilityZh) + '」：' + abilityFx(t.hero.ability) + '。</p>' +
+        '<p class="muted">對戰時多一個指令可以選，每場只能用一次，不剋制對方、也不會被對方的指令剋制；用過之後要休息 ' + dur(R.paced(R.HERO_REST) / 1000) + '。' + (rest ? '還要 <b data-until="' + me.heroRest + '"></b>。' : '') + '</p><p class="note">' + esc(t.hero.note) + '</p></section>';
     }
     if (mine) h += '<section class="card"><h3>出征中的隊伍</h3><p>' + (mine.phase === 'fight' ? '正在交戰。' : (mine.phase === 'back' ? '回程中' : '前往目標') + '，' + mine.n + ' 人，還有 <b data-until="' + mine.arriveAt + '"></b>。') + '</p></section>';
     // 防禦
     var wl = me.wall, to = wl + 1, wc = R.cost('wall', Math.min(to, R.MAX_LEVEL)), busy = me.queue.filter(function (q) { return q.type === 'wall'; })[0];
     var towers = me.tiles.filter(function (b) { return b && b.type === 'tower' && b.level > 0; }), safe = Math.max(me.shieldUntil, me.newbieUntil);
-    h += '<section class="card"><h3>' + esc(t.b.wall.zh) + '<span class="lv">' + (wl ? '等級 ' + wl : '還沒有') + '</span></h3><p class="eff">' + (wl ? '守軍的戰力加 ' + wl * 8 + '%' : '蓋了之後，每一級讓守軍的戰力加 8%') + '</p>';
+    h += '<section class="card"><h3>' + esc(t.b.wall.zh) + '<span class="lv">' + (wl ? '等級 ' + wl : '還沒有') + '</span></h3><p class="eff">' + (wl ? '守軍的戰力加 ' + wl * R.TUNE.wallPct + '%' : '蓋了之後，每一級讓守軍的戰力加 ' + R.TUNE.wallPct + '%') + '</p>';
     if (busy) h += '<p class="busyline">施工中，還要 <b data-until="' + busy.doneAt + '"></b></p>';
     else if (wl >= R.MAX_LEVEL) h += '<p class="muted">已經是最高等級。</p>';
     else {
@@ -500,13 +520,13 @@
     if (A.hex) return pointModal(me, A);
     var v = S.pubs.filter(function (x) { return x.id === A.id; })[0];
     if (!v) { S.attack = null; return ''; }
-    var t = Tribes.get(v.tribe), safe = v.safe > Date.now(), d = Geo.hexDist(G.byId[me.hex], G.byId[v.hex]), secs = Math.min(60, 6 + 2.5 * d) * (v.uq === 'watch' ? 1.5 : 1);
+    var t = Tribes.get(v.tribe), safe = v.safe > Date.now(), d = Geo.hexDist(G.byId[me.hex], G.byId[v.hex]), secs = R.marchSecs(d, v.uq === 'watch');
     var why = safe ? '對方正受到保護' : me.battle ? '你的部落正在交戰' : S.marches.some(function (m) { return m.from === me.id; }) ? '已經有一支隊伍在外面了' : all3(A) < 1 ? '至少要派出一個人' : (!v.bot && me.d.center - v.c > 1) ? '對方規模比你小太多，不能出征' : '';
     function step(u, label, have) {
       return '<div class="job"><span class="jn">' + label + '</span><div class="stepper"><button data-act="atk-n" data-u="' + u + '" data-d="-1"' + (A[u] <= 0 ? ' disabled' : '') + ' aria-label="少派一位' + label + '">−</button><b>' + A[u] + '/' + have + '</b>' +
         '<button data-act="atk-n" data-u="' + u + '" data-d="1"' + (A[u] >= have ? ' disabled' : '') + ' aria-label="多派一位' + label + '">＋</button></div><button class="btn sm ghost" data-act="atk-all" data-u="' + u + '">全部</button></div>';
     }
-    return '<div class="veil"><div class="sheet wide" role="dialog" aria-label="出征設定"><h2>出征「' + esc(v.name) + '」</h2><p class="muted">' + t.zh + ' · ' + esc(t.b.center.zh) + '等級 ' + v.c + ' · 路程約 ' + Math.round(secs) + ' 秒</p>' +
+    return '<div class="veil"><div class="sheet wide" role="dialog" aria-label="出征設定"><h2>出征「' + esc(v.name) + '」</h2><p class="muted">' + t.zh + ' · ' + esc(t.b.center.zh) + '等級 ' + v.c + ' · 路程約 ' + dur(secs) + '</p>' +
       '<p class="scout">偵察：' + esc(t.b.wall.zh) + (v.wall ? '等級 ' + v.wall : '沒有') + ' · ' + esc(t.b.tower.zh) + ' ' + v.towers + ' 座 · 守軍' + GUARD[v.guard] + (v.uq === 'watch' ? ' · 有' + esc(t.uniq.building.zh) + '，路程較久' : '') + '</p>' +
       '<p class="label">派多少人</p>' + step('w', R.UNIT.w.zh, me.units.w) + step('a', R.UNIT.a.zh, me.units.a) + (me.units.u ? step('u', esc(myTribe().uniq.unit.zh), me.units.u) : '') +
       '<p class="label">主攻哪一路</p>' + seg('atk-lanes', A.lanes, R.LANE_KEYS.map(function (k) { return [k, LANE_NAMES[k]]; })) +
@@ -515,10 +535,10 @@
       '<div class="act two"><button class="btn ghost" data-act="atk-cancel">取消</button><button class="btn" data-act="atk-go"' + (why ? ' disabled' : '') + '>出發</button></div></div></div>';
   }
   function phaseText(p, role, other) {   // other：對方的族群，用來寫出對方英雄能力的名字
-    var mine = role === 'atk' ? p.a : p.d, theirs = role === 'atk' ? p.d : p.a, mt = R.taken(mine, theirs), tt = R.taken(theirs, mine);
+    var mine = role === 'atk' ? p.a : p.d, theirs = role === 'atk' ? p.d : p.a;
     var hm = role === 'atk' ? p.ha : p.hd, ht = role === 'atk' ? p.hd : p.ha, ot = other && Tribes.get(other);
     var heroNote = (hm ? '我方的英雄發動「' + myTribe().hero.abilityZh + '」。' : '') + (ht ? '對方的英雄發動' + (ot ? '「' + ot.hero.abilityZh + '」' : '能力') + '。' : '');
-    var verdict = mt < tt ? '你的指令剋住對方' : mt > tt ? '你的指令被對方剋住' : '雙方沒有互剋';
+    var verdict = p.ha || p.hd ? '用了英雄能力，這個階段不算相剋' : R.beats(mine, theirs) ? '你的指令剋住對方' : R.beats(theirs, mine) ? '你的指令被對方剋住' : '雙方沒有互剋';   // 英雄能力不剋人也不被剋
     var lost = 0, hurt = 0, br = [];
     p.lanes.forEach(function (l) { lost += role === 'atk' ? l.aLost : l.dLost; hurt += role === 'atk' ? l.dLost : l.aLost; if (l.broken) br.push(R.LANES[l.i]); });
     return '第 ' + p.phase + ' 階段：你下「' + R.CMDS[mine] + '」，對方下「' + R.CMDS[theirs] + '」，' + verdict + '。' + heroNote + '我方 ' + Math.max(0, lost) + ' 人負傷撤退，對方 ' + Math.max(0, hurt) + ' 人' + (br.length ? '；' + br.join('、') + '被攻破' : '') + '。';
@@ -544,7 +564,7 @@
     var heroBtn = b.hero || b.mine === 'hero';   // 英雄可以出戰（或這個階段剛選了英雄能力）才多一顆按鈕
     h += '<div class="cmds' + (heroBtn ? ' h4' : '') + '">' + Object.keys(R.CMDS).map(function (k) {
       return '<button data-act="cmd" data-c="' + k + '"' + (b.state !== 'pick' || b.mine ? ' disabled' : '') + ' aria-pressed="' + (b.mine === k) + '"><b>' + R.CMDS[k] + '</b><span>' + CMD_TIP[k] + '</span></button>';
-    }).join('') + (heroBtn ? '<button class="hero" data-act="cmd" data-c="hero"' + (b.state !== 'pick' || b.mine ? ' disabled' : '') + ' aria-pressed="' + (b.mine === 'hero') + '"><b>★ ' + esc(mt.hero.abilityZh) + '</b><span>' + esc(mt.hero.zh) + '：' + ABILITY_FX[mt.hero.ability] + '。一場一次</span></button>' : '') + '</div>';
+    }).join('') + (heroBtn ? '<button class="hero" data-act="cmd" data-c="hero"' + (b.state !== 'pick' || b.mine ? ' disabled' : '') + ' aria-pressed="' + (b.mine === 'hero') + '"><b>★ ' + esc(mt.hero.abilityZh) + '</b><span>' + esc(mt.hero.zh) + '：' + abilityFx(mt.hero.ability) + '。一場一次，不受相剋影響</span></button>' : '') + '</div>';
     return h + '</div></div>';
   }
   function battleReport(me) {
@@ -577,6 +597,8 @@
     var T = Net.testing(), cap = me.d.armyCap, room = cap - (all3(me.units) + all3(me.away) + me.train.length);
     return '<section class="card"><h3>測試工具<span class="lv">只有單機試玩有</span></h3><p class="muted">方便快速試玩用。連線版沒有這些功能，所有人都照正常規則。</p>' +
       '<label class="switch wide" for="t-rich"><input type="checkbox" id="t-rich" data-act="t-rich"' + (T.rich ? ' checked' : '') + '>無限資源（糧食、建材、特產隨時補滿）</label>' +
+      '<p class="label">遊戲節奏</p>' + seg('t-pace', R.TUNE.pace >= 20 ? 'formal' : R.TUNE.pace <= 1 ? 'fast' : '', [['fast', '快速試玩'], ['formal', '正式節奏']]) +
+      '<p class="muted">正式節奏是連線版的預設：產量是快速的二十分之一，建設、訓練、路程、保護的時間是二十倍。</p>' +
       '<div class="tbtns"><button class="btn sm" data-act="t-finish"' + (me.queue.length + me.train.length ? '' : ' disabled') + '>工程和訓練立刻完成</button>' +
       '<button class="btn sm" data-act="t-army"' + (room > 0 ? '' : ' disabled') + '>戰士補滿' + (cap ? '' : '（要先有訓練場）') + '</button>' +
       '<button class="btn sm" data-act="t-march"' + (S.marches.some(function (m) { return m.from === me.id && m.phase !== 'fight'; }) ? '' : ' disabled') + '>出征的隊伍立刻抵達</button>' +
@@ -620,7 +642,7 @@
     });
     h += '<p class="label">掛一筆交易</p><div class="oform"><span>我出</span><input id="o-giveN" type="number" min="1" max="500" inputmode="numeric" aria-label="我出的數量"><select id="o-give" aria-label="我出的物資">' + resOptions(me, S.form.give, true) + '</select>' +
       '<span>想換</span><input id="o-wantN" type="number" min="1" max="500" inputmode="numeric" aria-label="想換的數量"><select id="o-want" aria-label="想換的物資">' + resOptions(me, S.form.want) + '</select></div>' +
-      '<button class="btn sm" data-act="offer-post">掛到市集</button><p class="muted">掛單時先扣下你出的物資，10 分鐘沒人換就退回來。最多同時掛三筆。</p></section>';
+      '<button class="btn sm" data-act="offer-post">掛到市集</button><p class="muted">掛單時先扣下你出的物資，' + dur(R.paced(R.OFFER_MS) / 1000) + '沒人換就退回來。最多同時掛三筆。</p></section>';
     // 族群關係
     h += '<section class="card"><h3>族群關係<span class="lv">' + t.zh + '與各族</span></h3>';
     S.rel.forEach(function (r) {
@@ -639,12 +661,12 @@
     [['f-ally', 'ally'], ['o-giveN', 'giveN'], ['o-wantN', 'wantN']].forEach(function (p) { var x = document.getElementById(p[0]); if (x) x.value = S.form[p[1]]; });
   }
   function pointCard(z) {
-    var me = S.me, kind = R.POINT[z.wild], p = S.points.filter(function (x) { return x.hex === z.id; })[0], per = Math.round(kind.rate * 60 * 10) / 10;
+    var me = S.me, kind = R.POINT[z.wild], p = S.points.filter(function (x) { return x.hex === z.id; })[0], per = perTime(R.pointRate(kind));
     var h = '<section class="card"><h3>野地 · ' + kind.zh + '<span class="chipst' + (p ? '' : ' on') + '">' + (p ? '有人佔領' : '沒有人') + '</span></h3>' +
-      '<p>佔領後持續產出' + (kind.key === 'food' ? '糧食' : '建材') + '：每位駐守的人每分鐘 ' + per + '，最多算 ' + R.POINT_UNITS + ' 人。別的部落可以派人來搶。</p>';
+      '<p>佔領後持續產出' + (kind.key === 'food' ? '糧食' : '建材') + '：每位駐守的人 ' + per + '，最多算 ' + R.POINT_UNITS + ' 人。別的部落可以派人來搶。</p>';
     if (!me) return h + '</section>';
     var mineN = S.points.filter(function (x) { return x.owner === me.id; }).length, busy = S.marches.some(function (m) { return m.from === me.id; });
-    if (p && p.owner === me.id) h += '<p class="eff next">你佔領中：' + R.UNIT.w.zh + ' ' + p.w + '、' + R.UNIT.a.zh + ' ' + p.a + (p.u ? '、' + esc(myTribe().uniq.unit.zh) + ' ' + p.u : '') + '，每分鐘約 +' + Math.round(kind.rate * 60 * Math.min(R.POINT_UNITS, p.n) * (me.d.uniq === 'range' ? 1.5 : 1)) + '。</p>' +
+    if (p && p.owner === me.id) h += '<p class="eff next">你佔領中：' + R.UNIT.w.zh + ' ' + p.w + '、' + R.UNIT.a.zh + ' ' + p.a + (p.u ? '、' + esc(myTribe().uniq.unit.zh) + ' ' + p.u : '') + '，收穫約 +' + perTime(R.pointRate(kind, me) * Math.min(R.POINT_UNITS, p.n)) + '。</p>' +
       '<div class="act"><button class="btn sm" data-act="pt-open" data-hex="' + z.id + '"' + (p.n >= R.POINT_UNITS || busy ? ' disabled' : '') + '>增援</button><button class="btn sm ghost" data-act="pt-recall" data-hex="' + z.id + '">把人叫回來</button></div>';
     else {
       var why = p && p.ally ? '這是盟友佔領的地方' : mineN >= me.d.pointMax ? '你已經佔了 ' + me.d.pointMax + ' 處，要先放掉一處' : busy ? '已經有一支隊伍在外面了' : all3(me.units) < 1 ? '部落裡沒有戰士可以派' : '';
@@ -656,12 +678,12 @@
   }
   function pointModal(me, A) {
     var z = G.byId[A.hex], kind = R.POINT[z.wild], p = S.points.filter(function (x) { return x.hex === z.id; })[0], own = p && p.owner === me.id;
-    var secs = Math.min(60, 6 + 2.5 * Geo.hexDist(G.byId[me.hex], z)), why = all3(A) < 1 ? '至少要派出一個人' : !p && all3(A) < 2 ? '有野獸出沒，至少要派兩個人' : '';
+    var secs = R.marchSecs(Geo.hexDist(G.byId[me.hex], z)), why = all3(A) < 1 ? '至少要派出一個人' : !p && all3(A) < 2 ? '有野獸出沒，至少要派兩個人' : '';
     function step(u, label, haveN) {
       return '<div class="job"><span class="jn">' + label + '</span><div class="stepper"><button data-act="atk-n" data-u="' + u + '" data-d="-1"' + (A[u] <= 0 ? ' disabled' : '') + ' aria-label="少派一位' + label + '">−</button><b>' + A[u] + '/' + haveN + '</b>' +
         '<button data-act="atk-n" data-u="' + u + '" data-d="1"' + (A[u] >= haveN ? ' disabled' : '') + ' aria-label="多派一位' + label + '">＋</button></div><button class="btn sm ghost" data-act="atk-all" data-u="' + u + '">全部</button></div>';
     }
-    return '<div class="veil"><div class="sheet wide" role="dialog" aria-label="派人到資源點"><h2>' + (own ? '增援' : p ? '搶奪' : '佔領') + kind.zh + '</h2><p class="muted">路程約 ' + Math.round(secs) + ' 秒。' +
+    return '<div class="veil"><div class="sheet wide" role="dialog" aria-label="派人到資源點"><h2>' + (own ? '增援' : p ? '搶奪' : '佔領') + kind.zh + '</h2><p class="muted">路程約 ' + dur(secs) + '。' +
       (own ? '這裡已有 ' + p.n + ' 人，最多 ' + R.POINT_UNITS + ' 人，多派的會自己回來。' : p ? '「' + esc(p.name) + '」佔領中，駐守的人' + GUARD[p.n] + '。到了會自動較量，不用下指令。' : '沒有人佔領，趕走野獸就是你的。') + '</p>' +
       '<p class="label">派多少人</p>' + step('w', R.UNIT.w.zh, me.units.w) + step('a', R.UNIT.a.zh, me.units.a) + (me.units.u ? step('u', esc(myTribe().uniq.unit.zh), me.units.u) : '') + (why ? '<p class="why">' + why + '</p>' : '') +
       '<div class="act two"><button class="btn ghost" data-act="atk-cancel">取消</button><button class="btn" data-act="atk-go"' + (why ? ' disabled' : '') + '>出發</button></div></div></div>';
@@ -787,6 +809,7 @@
     else if (a === 'quest') { var qi = me.qp ? me.qp.i : 0; Net.act({ type: 'quest' }, function (r) { if (!r.ok) return toast(r.msg, true); toast('完成第 ' + (qi + 1) + ' 章！' + rewardText(myTribe(), qi)); }); }
     else if (a === 'bless') act({ type: 'bless' });
     else if (a === 't-quest') Net.test('quest');
+    else if (a === 't-pace') { Net.test('pace', b.getAttribute('data-v') === 'formal' ? 20 : 1); toast(b.getAttribute('data-v') === 'formal' ? '已切換成正式節奏' : '已切換成快速試玩'); }
     else if (a === 't-rest') Net.test('rest');
     else if (a === 't-rich') { Net.test('rich', b.checked); toast(b.checked ? '已開啟無限資源' : '已關閉無限資源'); }
     else if (a === 't-finish') Net.test('finish');

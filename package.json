@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test test/*.test.js",
-    "build:solo": "node scripts/build-solo.js"
+    "build:solo": "node scripts/build-solo.js",
+    "sim": "node scripts/sim.js"
   },
   "engines": {
     "node": "22.x"

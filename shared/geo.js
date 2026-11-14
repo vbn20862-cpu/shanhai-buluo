@@ -111,7 +111,7 @@
   var cache = null;
   function build() {
     if (cache) return cache;
-    var hexes = [], byId = {};
+    var hexes = [], byId = Object.create(null);   // 沒有原型的字典，用奇怪的名稱來查只會查不到
     var cols = Math.ceil(MAP_W / HEX_W), rows = Math.ceil(MAP_H / ROW_H);
     var lanyuC = project(121.55, 22.05), best = null;
     for (var row = 0; row < rows; row++) {
@@ -163,7 +163,7 @@
       best.settlement = st.id; delete best.wild;
       return { id: st.id, name: st.name, hex: best.id, x: best.x, y: best.y };
     });
-    var regions = {}, centroid = {};
+    var regions = Object.create(null), centroid = Object.create(null);
     hexes.forEach(function (h) { if (h.tribe) (regions[h.tribe] = regions[h.tribe] || []).push(h.id); });
     for (var t2 in regions) {
       var sx = 0, sy = 0, list = regions[t2];

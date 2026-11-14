@@ -2,6 +2,7 @@
  * 新增一族：把該族的 playable 設為 true，並補上建築名稱、物產、族語、文化卡，以及任務主線用的
  *   uniq（獨特建築 building、獨特兵種 unit）、hero（傳說英雄）、bless（共聚）、items（兩件器物）、story 與 quests（五章故事）。
  *   規則用到的欄位只有 uniq.building.effect、uniq.unit 的 kind／atk／hp／trait、hero.ability，其餘都是顯示用的文字。
+ *   兵種的 atk／hp 是預設值，後台可以再調整；改動後請跑 npm run sim 檢查各族的勝率。
  * 族語與文化內容請務必先查證，並標明語別／地區。 */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -86,7 +87,7 @@
       ],
       uniq: {
         building: { zh: '石板豬圈', effect: 'range', note: '用厚石板砌成、幾戶人家共用的豬圈。家裡有肉可以分享，獵人就能在野地待得更久（這個效果是遊戲設定）。' },
-        unit: { zh: '獵人', kind: 'ranged', atk: 15, hp: 18, trait: 'sharp', note: '遊戲設定的兵種：擅長弓箭、守護部落的獵人。布農語的打獵叫 hanup，獵場叫 hanupan。' }
+        unit: { zh: '獵人', kind: 'ranged', atk: 15, hp: 19, trait: 'sharp', note: '遊戲設定的兵種：擅長弓箭、守護部落的獵人。布農語的打獵叫 hanup，獵場叫 hanupan。' }
       },
       hero: { zh: '射日的父子', ability: 'volley2', abilityZh: '凝神一箭', note: '傳說沒有留下這對父子的名字。故事的結局不是打敗太陽，而是和月亮立下約定。遊戲裡以他們長途跋涉之後專注的一箭作為能力，不另外取名字。' },
       bless: { zh: '月圓共聚', note: '傳說月亮教導族人依月亮的圓缺耕作與舉行祭儀：月圓時收成，月缺時除草。遊戲裡以收成後全部落聚在一起分享食物，來表現「守住與月亮的約定」，不呈現祭儀。' },
@@ -132,7 +133,7 @@
       ],
       uniq: {
         building: { zh: '巴拉告', native: 'Palakaw', effect: 'pond', note: '花蓮光復馬太鞍部落的傳統捕魚方式：在濕地的水道裡用竹筒和樹枝搭出讓魚蝦棲息的地方，需要時再去取。這是馬太鞍的做法，不是每個部落都有。' },
-        unit: { zh: '部落青年', native: 'kapah', kind: 'melee', atk: 10, hp: 28, trait: 'band', note: '青年（kapah）依年齡階級一起受訓、分工，負責守望和服務部落。人越多、越齊心，力量越大。' }
+        unit: { zh: '部落青年', native: 'kapah', kind: 'melee', atk: 10, hp: 29, trait: 'band', note: '青年（kapah）依年齡階級一起受訓、分工，負責守望和服務部落。人越多、越齊心，力量越大。' }
       },
       hero: { zh: '齊心的青年們', ability: 'unity', abilityZh: '齊心', note: '巨人傳說裡的頭目，在各個版本名字都不一樣；真正趕走巨人的，是各部落聯合起來的青年。遊戲裡以這群青年作為英雄，不另外取名字。' },
       bless: { zh: '河邊共聚', native: 'Pakelang', note: '一件大事忙完之後，大家到河邊聚在一起，表示事情告一段落、回到日常生活，阿美語叫 Pakelang。遊戲裡以這樣的共聚來表現同心，不呈現任何祭儀。' },
@@ -178,7 +179,7 @@
       ],
       uniq: {
         building: { zh: '芋頭窯', effect: 'vault', note: '設在芋頭田旁邊，用石板和頁岩砌成、搭著木架與竹架的窯，把芋頭慢慢烘成芋頭乾（aradj）。芋頭乾可以保存一年以上，是重要的存糧。' },
-        unit: { zh: '石牆守衛', kind: 'melee', atk: 8, hp: 34, trait: 'wall', note: '遊戲設定的兵種。傳統家屋裡，年輕男子睡在最靠近門口的位置，負責守護家人。' }
+        unit: { zh: '石牆守衛', kind: 'melee', atk: 9, hp: 32, trait: 'wall', note: '遊戲設定的兵種。傳統家屋裡，年輕男子睡在最靠近門口的位置，負責守護家人。' }
       },
       hero: { zh: '紅眼睛的巴里', native: 'palji', ability: 'steadfast', abilityZh: '守望', note: '巴里的傳說在北、南、東排灣都有流傳，說法很多。遊戲採用他守護部落、最後平安回家的版本：他只讓來犯的人不敢靠近，不傷害任何人。' },
       bless: { zh: '收穫感恩', native: 'Masalut', note: '小米收成之後的感恩，排灣語叫 Masalut（也寫作 Masaliutj），有「過一個年」的意思，不叫豐年祭。遊戲裡只以全部落分享新收的小米、互相道謝來表現，不呈現祭儀。' },
@@ -210,7 +211,7 @@
     { id: 'tao', zh: '雅美族（達悟族）', en: 'Yami / Tao', color: '#2BB3AC', terrain: '海島', area: '蘭嶼', intro: '住在蘭嶼的海洋民族，以拼板舟與飛魚文化聞名。' }
   ];
 
-  var BY = {};
+  var BY = Object.create(null);   // 沒有原型的字典：用 __proto__、constructor 這類名稱來查，只會查不到
   LIST.forEach(function (t) { BY[t.id] = t; });
 
   return {
