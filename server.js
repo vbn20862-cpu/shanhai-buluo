@@ -144,7 +144,7 @@ const server = http.createServer((req, res) => {
       const r = o.action === 'remove' ? world.removeVillage(id, now) : o.action === 'rename' ? world.adminRename(id, o, now) : { ok: false, msg: '不認得的動作' };
       if (r.ok) {
         if (o.action === 'remove') for (const sk of io.sockets.sockets.values()) if (sk.data.vid === id) {   // 那個玩家還在線上：讓他回到開始畫面
-          sk.data.vid = null; sk.data.last = null; sk.data.vseq = null; delete conns[id];
+          sk.data.vid = null; sk.data.last = null; sk.data.vseq = null; sk.data.nseq = null; delete conns[id];
           send(sk, 'hello', Object.assign({ reset: true }, hello(sk)));
         }
         refreshPubs(now); save();
@@ -237,6 +237,31 @@ function addPubs(socket, out) {
   socket.data.vseq = pubs.seq;
 }
 function send(socket, ev, obj) { const js = JSON.stringify(obj); traffic.bytes += js.length; traffic.msgs++; socket.emit(ev, obj); }
+/* 資源點也只送有變動的：nd 有變動的資源點、nx 消失的資源點（第一次或落後太多就送完整的 nodes） */
+const nodesC = { json: Object.create(null), ver: Object.create(null), seq: 0, gone: [], goneFloor: 0, list: [], v: -1 };
+function refreshNodes() {
+  if (nodesC.v === world.nodesV) return;
+  nodesC.v = world.nodesV;
+  const list = world.nodesList(), seen = Object.create(null);
+  for (const n of list) {
+    const js = JSON.stringify(n); seen[n.id] = 1;
+    if (nodesC.json[n.id] !== js) { nodesC.json[n.id] = js; nodesC.ver[n.id] = ++nodesC.seq; }
+  }
+  for (const id in nodesC.json) if (!seen[id]) { delete nodesC.json[id]; delete nodesC.ver[id]; nodesC.gone.push({ id: id, seq: ++nodesC.seq }); }
+  while (nodesC.gone.length > 1000) nodesC.goneFloor = nodesC.gone.shift().seq;
+  nodesC.list = list;
+}
+function addNodes(socket, out) {
+  refreshNodes();
+  const seen = socket.data.nseq;
+  if (seen == null || seen < nodesC.goneFloor) out.nodes = nodesC.list;
+  else if (seen < nodesC.seq) {
+    const nd = nodesC.list.filter(n => nodesC.ver[n.id] > seen), nx = nodesC.gone.filter(g => g.seq > seen).map(g => g.id);
+    if (nd.length) out.nd = nd;
+    if (nx.length) out.nx = nx;
+  }
+  socket.data.nseq = nodesC.seq;
+}
 function hello(socket) {   // 給還沒有部落的連線：全島的部落（差異）與要不要邀請碼
   const out = { needCode: !!JOIN_CODE, contact: CONTACT };
   addPubs(socket, out);
@@ -249,6 +274,7 @@ function push(socket, now) {   // 把這個連線還不知道的變動送過去
   const D = socket.data, first = !D.last, last = D.last || (D.last = Object.create(null)), out = { now: st.now };
   delete st.villages; delete st.now;
   if (D.tv === st.tv) { delete st.tune; delete st.tv; } else D.tv = st.tv;
+  delete st.nodes; delete st.nv;   // 資源點另外用差異的方式送（addNodes）
   const me = st.me; delete st.me;
   if (first) { out.me = me; D.lastMe = Object.create(null); for (const k in me) D.lastMe[k] = JSON.stringify(me[k]); }
   else {
@@ -261,7 +287,7 @@ function push(socket, now) {   // 把這個連線還不知道的變動送過去
   if (first) out.feed = feed; else { const add = feed.filter(f => f.id > (D.feedId || 0)); if (add.length) out.feedAdd = add; }
   if (feed.length) D.feedId = feed[feed.length - 1].id;
   for (const k in st) { const js = JSON.stringify(st[k]); if (last[k] !== js) { last[k] = js; out[k] = st[k] === undefined ? null : st[k]; } }
-  addPubs(socket, out);
+  addPubs(socket, out); addNodes(socket, out);
   send(socket, 'state', out);
 }
 function bind(socket, id) {
@@ -294,7 +320,7 @@ io.on('connection', socket => {
     if (typeof cb !== 'function') return;
     const id = o && okToken(o.token) && world.tokens[o.token];
     if (id && world.villages[id] && !socket.data.vid) bind(socket, id);
-    socket.data.vseq = null;   // 重新給一份完整的部落清單
+    socket.data.vseq = null; socket.data.nseq = null;   // 重新給一份完整的部落清單與資源點
     cb(Object.assign({ resumed: !!socket.data.vid }, hello(socket)));
   }));
   socket.on('join', guard('join', (o, cb) => {

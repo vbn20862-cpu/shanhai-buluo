@@ -95,11 +95,14 @@ test('部落中心升到三級要用別族的特產，材料不夠時不會白�
   assert.equal(v.sp.amis || 0, 0); assert.equal(v.sp.paiwan, 20);
 });
 
-test('地圖：沒有族群的格子是野地或中立聚落', () => {
+test('地圖：格子變細（約 1,250 格），每一格都有地形；路程照原本的距離算', () => {
   const Geo = require('../shared/geo.js'), m = Geo.build();
   assert.equal(m.settlements.length, 5);
-  for (const h of m.hexes) assert.ok(h.tribe || h.wild || h.settlement, h.id + ' 沒有分類');
-  assert.ok(m.hexes.filter(h => h.wild).length > 50);
+  assert.ok(m.hexes.length > 1100 && m.hexes.length < 1400, m.hexes.length + ' 格');
+  for (const h of m.hexes) assert.ok(['mt', 'hill', 'low'].includes(h.alt), h.id + ' 沒有地形');
+  assert.ok(m.hexes.filter(h => h.coast).length > 100 && m.hexes.filter(h => h.alt === 'mt').length > 300);
+  const a = m.hexes[0], b = m.hexes[m.hexes.length - 2];
+  assert.equal(Geo.travel(a, b), Geo.hexDist(a, b) * Geo.HEX_SIZE / 6);
 });
 
 test('拓荒：只能從已開墾的地往外拓，完成後多一塊建地並得到建材', () => {
@@ -335,43 +338,64 @@ test('族群關係：交易、送禮、結盟變好；出征變差；友好有�
   check(w);
 });
 
-test('野地資源點：佔領、產出、被搶、召回', () => {
+test('資源點：隨機長出來、種類照地形；派人去採，採滿就回家；可以搶；被盯上會通知；可以叫回來', () => {
   const w = new World({ rng: seeded(43) });
   let now = 1e6;
   const a = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'bunun' }, now).id];
   const b = w.villages[w.join('b', { owner: 'B', name: '乙', tribe: 'amis' }, now).id];
   w.setOnline(a.id, true, now); w.setOnline(b.id, true, now);
-  const wild = w.map.hexes.filter(h => h.wild === 'wood').map(h => h.id);
-  assert.equal(w.act(a.id, { type: 'occupy', hex: a.hex, w: 1, a: 0 }, now).ok, false, '族群的區域不是資源點');
-  a.units.w = 6; a.units.a = 2;
-  assert.ok(w.act(a.id, { type: 'occupy', hex: wild[0], w: 1, a: 0 }, now).ok);
-  assert.equal(w.act(a.id, { type: 'occupy', hex: wild[1], w: 1, a: 0 }, now).ok, false, '一次只能有一支隊伍在外面');
-  now = run(w, now, 130);
-  assert.equal(w.points[wild[0]], undefined, '只派一個人會被野獸趕回來'); assert.equal(a.units.w, 6);
-  assert.ok(w.act(a.id, { type: 'occupy', hex: wild[0], w: 3, a: 1 }, now).ok);
-  now = run(w, now, 70);
-  assert.equal(w.points[wild[0]].owner, a.id); assert.equal(a.away.w, 3);
-  const mat0 = a.res.mat; now = run(w, now, 60);
-  const base = 60 * R.derived(a, 1).rates.mat;
-  assert.ok(a.res.mat - mat0 > base + 60 * R.POINT.wood.rate * 4 * 0.9, '資源點多產出建材');
-  assert.equal(w.snapshot(b.id, now).points[0].w, null, '別人看不到確切的駐守人數');
-  assert.ok(w.snapshot(b.id, now).points[0].pw > 0, '但是看得到駐守的戰力，用來估勝算');
-  // 乙派更多人來搶
-  b.units.w = 6; b.units.a = 6;
-  assert.ok(w.act(b.id, { type: 'occupy', hex: wild[0], w: 6, a: 6 }, now).ok);
-  now = run(w, now, 70);
-  assert.equal(w.points[wild[0]].owner, b.id, '人多的一方搶下來');
-  assert.ok(a.reports[0].note.includes('搶走')); assert.ok(w.relOf('bunun', 'amis') < 0);
-  assert.ok(a.reports[0].show && a.reports[0].show.point && b.reports[0].log.length >= 1, '資源點的較量也有可以重播的紀錄');
-  const lostHere = a.reports[0].lost; assert.equal(a.away.w + a.away.a, 4 - lostHere, '撤退的人還在回家的路上');
-  now = run(w, now, 70);
-  assert.equal(a.away.w + a.away.a, 0); assert.equal(a.units.w + a.units.a, 8 - lostHere, '撤退的人回到部落');
-  // 召回
-  const n = w.points[wild[0]].w + w.points[wild[0]].a, home = b.units.w + b.units.a;
-  assert.ok(w.act(b.id, { type: 'recall', hex: wild[0] }, now).ok);
-  assert.equal(w.points[wild[0]], undefined);
-  now = run(w, now, 70);
-  assert.equal(b.units.w + b.units.a, home + n); assert.equal(b.away.w + b.away.a, 0);
+  w.tick(now += 1000);
+  const nodes = Object.values(w.nodes);
+  assert.equal(nodes.length, R.TUNE.nodeCount, '一開始就長滿');
+  const geo = w.map.byId;
+  for (const n of nodes) {
+    assert.ok(R.NODE[n.k] && n.lv >= 1 && n.lv <= 5 && n.amt === R.NODE_AMT[n.lv]);
+    if (n.k === 'stone') assert.ok(['paiwan', 'rukai', 'bunun'].includes(geo[n.hex].tribe) && geo[n.hex].alt === 'mt', '石板只在產石板的山區');
+    if (n.k === 'forage') assert.equal(geo[n.hex].alt, 'low', '野菜地在平地');
+  }
+  assert.ok(new Set(nodes.map(n => n.k)).size >= 5, '各種資源點都有');
+  // 甲派 4 人去採一個糧食的資源點
+  const nd = nodes.filter(n => R.NODE[n.k].res === 'food' && n.lv === 1)[0];
+  a.units.w = 6; a.units.a = 4;
+  assert.equal(w.act(a.id, { type: 'gather', node: 'toString', w: 1, a: 0 }, now).ok, false);
+  assert.ok(w.act(a.id, { type: 'gather', node: nd.id, w: 4, a: 0 }, now).ok);
+  assert.equal(w.act(a.id, { type: 'gather', node: nd.id, w: 1, a: 0 }, now).ok, false, '同一個點一次一支隊伍');
+  const m = w.marches.filter(x => x.from === a.id)[0];
+  now = m.arriveAt + 10; w.tick(now);
+  assert.equal(m.phase, 'gather'); assert.equal(nd.g.v, a.id, '開始採集');
+  assert.ok(w.snapshot(b.id, now).nodes.find(x => x.id === nd.id).g.pw > 0, '別人看得到誰在採、大概多強');
+  // 乙派人去搶：甲馬上收到通知
+  b.units.w = 8; b.units.a = 6;
+  assert.ok(w.act(b.id, { type: 'gather', node: nd.id, w: 8, a: 6 }, now).ok);
+  assert.ok(a.reports[0].alert && a.reports[0].note.includes('要來搶'), '被盯上的一方馬上有通知');
+  const raid = w.marches.filter(x => x.from === b.id)[0];
+  now = raid.arriveAt + 10; w.tick(now);
+  assert.equal(nd.g.v, b.id, '人多的一方搶下來，接著採'); assert.ok(raid.carry > 0, '拿走甲已經採到的');
+  assert.equal(m.phase, 'back'); assert.equal(m.carry, 0, '甲的隊伍空手回家（全部負傷的話隊伍直接解散）');
+  assert.ok(a.reports[0].show && a.reports[0].point, '有可以重播的戰報');
+  now = m.arriveAt + 10; w.tick(now);
+  assert.equal(a.away.w + a.away.a, 0, '甲的人都回來了（負傷的不算）'); assert.ok(!w.marches.includes(m));
+  // 乙採滿就回家，帶回糧食
+  const food0 = b.res.food;
+  while (raid.phase !== 'back') { now += 5000; w.tick(now); }
+  const carry = raid.carry;
+  assert.ok(carry > 0 && carry <= 14 * R.TUNE.gatherLoad);
+  now = raid.arriveAt + 10; w.tick(now);
+  assert.ok(b.res.food >= food0 + carry - 1 - 60, '帶回來的糧食進倉庫'); assert.equal(b.stat.point >= 1, true, '算採集過一次');
+  assert.ok(!w.nodes[nd.id] || w.nodes[nd.id].amt < nd.max, '資源點扣掉了');
+  // 叫回來：帶著已經採到的
+  const nd2 = Object.values(w.nodes).filter(n => !n.g && n.lv >= 3)[0];
+  b.units.w = Math.max(b.units.w, 4);
+  assert.ok(w.act(b.id, { type: 'gather', node: nd2.id, w: 4, a: 0 }, now).ok);
+  const m2 = w.marches.filter(x => x.from === b.id)[0];
+  now = m2.arriveAt + 10; w.tick(now); now += 20000; w.tick(now);
+  assert.ok(w.act(b.id, { type: 'recall', id: m2.id }, now).ok);
+  assert.equal(m2.phase, 'back'); assert.ok(m2.carry > 0); assert.equal(nd2.g, null);
+  assert.equal(w.act(b.id, { type: 'recall', id: m2.id }, now).ok, false);
+  // 採完的點會在別的地方長出新的
+  delete w.nodes[nd2.id]; w.nodesV++;
+  for (let i = 0; i < 40; i++) w.tick(now += 1000);
+  assert.equal(Object.keys(w.nodes).length, R.TUNE.nodeCount);
   check(w);
 });
 
@@ -452,19 +476,19 @@ test('任務主線：五章依序完成，獎勵是器物、器物、獨特建�
   check(w);
 });
 
-test('獨特建築的效果：望樓讓來襲變慢、石板建築保護量加倍、獵場建築多佔一處', () => {
+test('獨特建築的效果：望樓讓來襲變慢、芋頭窯保護量加倍、石板豬圈採集比較快又多一支隊伍', () => {
   const w = new World({ rng: seeded(67) });
   let now = 1e6;
   const mk = (tok, tribe) => { const v = w.villages[w.join(tok, { owner: tok, name: tok, tribe }, now).id]; v.newbieUntil = 0; return v; };
   const a = mk('a', 'bunun'), t1 = mk('b', 'atayal'), p = mk('c', 'paiwan');
-  const prot0 = R.derived(p, 1).protect, cap0 = R.derived(p, 1).cap;
+  const prot0 = R.derived(p, 1).protect, cap0 = R.derived(p, 1).cap, r0 = R.gatherRate(a, 4);
   [a, t1, p].forEach(v => { v.quest = 3; v.tiles[1] = { type: 'unique', level: 1 }; });
   assert.equal(R.derived(p, 1).protect, prot0 * 2); assert.equal(R.derived(p, 1).cap, cap0 + 300);
-  assert.equal(R.pointMax(a), R.POINT_MAX + 1);
+  assert.equal(R.marchMax(a), 3); assert.ok(Math.abs(R.gatherRate(a, 4) - r0 * R.TUNE.rangeYield) < 1e-9);
   a.units.w = 4; p.units.w = 0;
   assert.ok(w.act(a.id, { type: 'attack', to: t1.id, w: 2, a: 0 }, now).ok);
   const toWatch = w.marches[0].travel; w.marches = []; a.units.w = 4; a.away.w = 0; a.cool = {};
-  const d1 = require('../shared/geo.js').hexDist(w.map.byId[a.hex], w.map.byId[t1.hex]);
+  const d1 = require('../shared/geo.js').travel(w.map.byId[a.hex], w.map.byId[t1.hex]);
   assert.ok(Math.abs(toWatch - Math.min(60, 6 + 2.5 * d1) * 1500) < 1, '出征有望樓的部落，路上多花一半時間');
 });
 
@@ -604,7 +628,7 @@ test('玩家送來奇怪的名稱（__proto__、constructor、toString…）：�
   const before = JSON.stringify(a);
   for (const x of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'prototype', 'valueOf']) {
     const acts = [{ type: x }, { type: 'attack', to: x, w: 1, a: 0 }, { type: 'gift', to: x, key: 'food', n: 5 }, { type: 'gift', to: b.id, key: 'sp:' + x, n: 5 }, { type: 'train', u: x },
-      { type: 'build', tile: 1, type2: x }, { type: 'occupy', hex: x, w: 2, a: 0 }, { type: 'recall', hex: x }, { type: 'barter', at: 'n1', want: x, pay: 'food' }, { type: 'barter', at: x, want: 'amis', pay: x },
+      { type: 'build', tile: 1, type2: x }, { type: 'gather', node: x, w: 2, a: 0 }, { type: 'recall', id: x }, { type: 'barter', at: 'n1', want: x, pay: 'food' }, { type: 'barter', at: x, want: 'amis', pay: x },
       { type: 'offer', give: 'sp:' + x, giveN: 1, want: 'food', wantN: 1 }, { type: 'offer', give: 'food', giveN: 1, want: 'sp:' + x, wantN: 1 }, { type: 'accept', id: x }, { type: 'allyJoin', id: x },
       { type: 'say', phrase: x }, { type: 'cmd', c: x }];
     for (const act of acts) assert.equal(w.act(a.id, act, now).ok, false, JSON.stringify(act));
@@ -632,15 +656,15 @@ test('後台改名與移除部落：隊伍、資源點、掛單、聯盟一併�
   assert.equal(w.adminRename(a.id, { name: '新名字' }, now).ok, false, '沒有變就不算'); assert.equal(w.adminRename('nope', { name: 'x' }, now).ok, false);
   assert.ok(w.act(b.id, { type: 'allyCreate', name: '山海盟' }, now).ok); assert.ok(w.act(c.id, { type: 'allyJoin', id: b.ally }, now).ok);
   assert.ok(w.act(b.id, { type: 'offer', give: 'food', giveN: 10, want: 'mat', wantN: 10 }, now).ok);
-  const wild = w.map.hexes.filter(h => h.wild)[0];
-  assert.ok(w.act(b.id, { type: 'occupy', hex: wild.id, w: 2, a: 0 }, now).ok);
+  w.tick(now += 1000);
+  const ns = Object.values(w.nodes);
+  assert.ok(w.act(b.id, { type: 'gather', node: ns[0].id, w: 2, a: 0 }, now).ok);
   assert.ok(w.act(a.id, { type: 'attack', to: b.id, w: 3, a: 0 }, now).ok);   // 甲正朝乙出征
-  const wild2 = w.map.hexes.filter(h => h.wild)[1];
-  w.points[wild2.id] = { owner: b.id, w: 1, a: 0, u: 0, since: now };   // 乙已經佔了一處資源點，另一支隊伍還在路上
+  ns[1].g = { v: b.id, m: 'mX', name: '乙', tribe: 'amis', start: now, rate: 1, room: 10, n: 1, pw: 5 };   // 乙正在另一個點採集
   assert.equal(w.marches.length, 2);
   const r = w.removeVillage(b.id, now);
   assert.ok(r.ok, r.msg); assert.equal(w.villages[b.id], undefined); assert.equal(w.tokens.tokB, undefined, '識別碼作廢');
-  assert.equal(w.market.length, 0); assert.equal(w.points[wild2.id], undefined, '佔領的資源點放掉'); assert.equal(w.marches.length, 1, '它派出去的隊伍一起消失');
+  assert.equal(w.market.length, 0); assert.equal(ns[1].g, null, '採集中的資源點空出來'); assert.equal(w.marches.length, 1, '它派出去的隊伍一起消失');
   assert.equal(w.alliances[c.ally].members.length, 1); assert.equal(w.alliances[c.ally].leader, c.id, '盟主換人');
   const m = w.marches.filter(x => x.from === a.id)[0];
   if (m) { assert.equal(m.phase, 'back', '朝它出征的隊伍折返'); now = m.arriveAt + 10; w.tick(now); }
@@ -682,6 +706,15 @@ test('舊存檔：打到一半的舊式對戰把人送回去；佈防設定拿�
   assert.ok(w2.snapshot(a.id, now + 6000).me.reports[0].broken === 2, '舊的戰報還在');
   const again = new World({ rng: seeded(1) }).load(JSON.parse(JSON.stringify(Object.assign(w2.toJSON(), {}))));
   w2.setTune({ wallPct: 12 }); const w3 = new World().load(JSON.parse(JSON.stringify(w2.toJSON())));
+  // 改版前的存檔：佔領的資源點把駐守的人送回去；地圖變細，部落搬到同一族區域裡附近的新格子
+  const old = JSON.parse(JSON.stringify(w2.toJSON())); delete old.mapRev; delete old.nodes;
+  const oa = old.villages[a.id]; oa.units = { w: 1, a: 0, u: 0 }; oa.away = { w: 3, a: 0, u: 0 }; oa.pos = [140, 290];
+  old.points = { '10_20': { owner: a.id, w: 3, a: 0, u: 0, since: 1 } };
+  const w4 = new World({ rng: seeded(2) }).load(old), a4 = w4.villages[a.id];
+  assert.deepEqual([a4.units.w, a4.away.w], [4, 0], '駐守的人回到部落');
+  const h4 = w4.map.byId[a4.hex];
+  assert.ok(h4 && h4.tribe === 'bunun', '搬到同一族的區域'); assert.ok(Math.hypot(a4.pos[0] - h4.x, a4.pos[1] - h4.y) <= 2, '坐標跟著換');
+  w4.tick(now + 7000); assert.equal(Object.keys(w4.nodes).length, R.TUNE.nodeCount, '資源點重新長出來');
   assert.equal(w3.tune.wallPct, 12, '新版存檔裡調過的對戰數值會保留'); assert.equal(again.tune.pace, 20);
   check(w2);
 });

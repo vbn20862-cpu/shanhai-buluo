@@ -89,8 +89,8 @@
     return inside;
   }
 
-  // 六角格（尖頂、odd-r 排列）
-  var S = 6, HEX_W = Math.sqrt(3) * S, ROW_H = 1.5 * S;
+  // 六角格（尖頂、odd-r 排列）。S 是格子的大小：2026 年 11 月從 6 改成 3，全島從 313 格變成約 1,250 格（使用者要地圖細一點）
+  var S = 3, HEX_W = Math.sqrt(3) * S, ROW_H = 1.5 * S;
   function hexCenter(col, row) { return [HEX_W * (col + 0.5 * (row & 1)) + HEX_W / 2, row * ROW_H + S]; }
   function hexCorners(x, y, s) {
     s = s || S; var pts = [];
@@ -101,10 +101,16 @@
     return pts;
   }
   function axial(col, row) { return { q: col - (row - (row & 1)) / 2, r: row }; }
+  /* 兩格之間的路程，換算成原本（格子大小 6）的格數：格子變細，走的距離不變 */
+  function travel(a, b) { return hexDist(a, b) * S / 6; }
   function hexDist(a, b) {
     var A = axial(a.col, a.row), B = axial(b.col, b.row);
     var dq = A.q - B.q, dr = A.r - B.r;
     return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
+  }
+  function segDist(x, y, a, b) {   // 點到線段的距離
+    var dx = b[0] - a[0], dy = b[1] - a[1], t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy)));
+    return Math.hypot(x - a[0] - t * dx, y - a[1] - t * dy);
   }
   var NEIGH = [[[1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1]], [[1, 0], [1, -1], [0, -1], [-1, 0], [0, 1], [1, 1]]];
 
@@ -154,13 +160,17 @@
       }
       if (top && cnt[top] >= 4) { h.tribe = top; h.filled = true; }
     });
-    // 其餘沒有族群的格子是野地：靠海是漁場，其他輪流是獵場與林地
-    var wildN = 0;
-    hexes.forEach(function (h) { if (!h.tribe) h.wild = h.coast ? 'fish' : (wildN++ % 2 ? 'wood' : 'hunt'); });
-    var settlements = SETTLEMENTS.map(function (st) {
+    // 地形：離山脈稜線多遠（地圖單位，約 1.1 公里）。近的是山區，再遠是丘陵，其他是平地。資源點的種類照這個決定
+    var ridges = RANGES.map(function (r) { return r.map(function (p) { return project(p[0], p[1]); }); });
+    hexes.forEach(function (h) {
+      var d = 1e9;
+      ridges.forEach(function (r) { for (var i = 1; i < r.length; i++) d = Math.min(d, segDist(h.x, h.y, r[i - 1], r[i])); });
+      h.alt = h.islet ? 'low' : d < 16 ? 'mt' : d < 30 ? 'hill' : 'low';
+    });
+    var settlements = SETTLEMENTS.map(function (st) {   // 中立聚落：離指定位置最近、沒有族群的格子
       var p = project(st.at[0], st.at[1]), best = null, bd = 1e9;
       hexes.forEach(function (h) { if (h.tribe) return; var d = Math.hypot(h.x - p[0], h.y - p[1]); if (d < bd) { bd = d; best = h; } });
-      best.settlement = st.id; delete best.wild;
+      best.settlement = st.id;
       return { id: st.id, name: st.name, hex: best.id, x: best.x, y: best.y };
     });
     var regions = Object.create(null), centroid = Object.create(null);
@@ -193,7 +203,7 @@
   function slotPos(h, i) {
     if (!i) return [h.x, h.y];
     var a = (i - 1) * Math.PI / 3 + 0.3;
-    return [+(h.x + 3 * Math.cos(a)).toFixed(2), +(h.y + 3 * Math.sin(a)).toFixed(2)];
+    return [+(h.x + S / 2 * Math.cos(a)).toFixed(2), +(h.y + S / 2 * Math.sin(a)).toFixed(2)];
   }
   function nearestHex(x, y, maxDist) {
     var best = null, bd = maxDist == null ? 1e9 : maxDist;
@@ -206,7 +216,7 @@
 
   return {
     OUTLINE: OUTLINE, ISLETS: ISLETS, SEEDS: SEEDS, MAP_W: MAP_W, MAP_H: MAP_H, HEX_SIZE: S,
-    project: project, unproject: unproject, build: build, hexCorners: hexCorners, hexDist: hexDist,
+    project: project, unproject: unproject, build: build, hexCorners: hexCorners, hexDist: hexDist, travel: travel,
     outlinePath: outlinePath, smoothPath: smoothPath, smoothPoints: smoothPoints, slotPos: slotPos, nearestHex: nearestHex,
     SLOTS: SLOTS, RANGES: RANGES
   };

@@ -64,7 +64,16 @@ window.Net = (function () {
     socket = window.io({ transports: ['websocket', 'polling'] });
     /* 伺服器只送有變動的部分，這裡把它們合併回完整的狀態再交給畫面：
      * villages 是完整的部落清單，vd／vx 是有變動與被移除的部落；me 是完整的自己，mp 是自己有變動的欄位；feedAdd 是新的消息 */
-    var cur = null, pubList = [];
+    var cur = null, pubList = [], nodeList = [];
+    function applyNodes(m) {   // 資源點：完整的清單，或只有變動的（nd）與消失的（nx）
+      if (m.nodes) nodeList = m.nodes.slice();
+      if (m.nx) nodeList = nodeList.filter(function (p) { return m.nx.indexOf(p.id) < 0; });
+      if (m.nd) {
+        var idx = {}; nodeList.forEach(function (p, i) { idx[p.id] = i; });
+        m.nd.forEach(function (p) { if (idx[p.id] != null) nodeList[idx[p.id]] = p; else nodeList.push(p); });
+      }
+      return nodeList.slice();
+    }
     function applyPubs(m) {
       if (m.villages) pubList = m.villages.slice();
       if (m.vx) pubList = pubList.filter(function (p) { return m.vx.indexOf(p.id) < 0; });
@@ -75,16 +84,17 @@ window.Net = (function () {
       return pubList.slice();
     }
     socket.on('connect', function () {
-      cur = null; pubList = [];   // 重新連上之後，伺服器會重新給一份完整的
+      cur = null; pubList = []; nodeList = [];   // 重新連上之後，伺服器會重新給一份完整的
       fire('status', { online: true, mode: mode });
       socket.emit('resume', { token: token() }, function (r) { r = r || {}; r.villages = applyPubs(r); fire('hello', r); });   // 伺服器認得就會接著送出部落狀態
     });
     socket.on('disconnect', function () { fire('status', { online: false, mode: mode }); });
     socket.on('state', function (s) {
-      var list = applyPubs(s), k;
+      var list = applyPubs(s), nl = applyNodes(s), k;
       if (s.me) cur = {};
       if (!cur) return;   // 還沒拿到完整的狀態，零碎的變動先不處理
-      for (k in s) if (k !== 'mp' && k !== 'vd' && k !== 'vx' && k !== 'feedAdd' && k !== 'villages') cur[k] = s[k];
+      for (k in s) if (k !== 'mp' && k !== 'vd' && k !== 'vx' && k !== 'nd' && k !== 'nx' && k !== 'nodes' && k !== 'feedAdd' && k !== 'villages') cur[k] = s[k];
+      cur.nodes = nl;
       if (s.mp) { var me = {}; for (k in cur.me) me[k] = cur.me[k]; for (k in s.mp) me[k] = s.mp[k]; cur.me = me; }
       if (s.feedAdd) cur.feed = (cur.feed || []).concat(s.feedAdd).slice(-30);
       cur.villages = list;
@@ -142,7 +152,12 @@ window.Net = (function () {
       var v = local.villages[localId], now = Date.now();
       if (kind === 'rich') { rich = !!on; store(RICH_KEY, rich ? '1' : '0'); }
       else if (kind === 'finish') { v.queue.forEach(function (q) { q.doneAt = now; }); v.train.forEach(function (q) { q.doneAt = now; }); }
-      else if (kind === 'march') local.marches.forEach(function (m) { if (m.from === localId && m.phase !== 'fight') m.arriveAt = now; });
+      else if (kind === 'march') local.marches.forEach(function (m) {   // 出征、採集的隊伍立刻抵達；採集中的立刻採完
+        if (m.from !== localId) return;
+        var nd = m.phase === 'gather' && local.nodes[m.node];
+        if (nd && nd.g && nd.g.m === m.id) nd.g.start = now - 1e9;
+        m.arriveAt = now;
+      });
       else if (kind === 'army') {
         var room = World.rules.armyCap(v) - (v.units.w + v.units.a + v.units.u + v.away.w + v.away.a + v.away.u + v.train.length);
         var nu = v.quest >= 4 ? Math.floor(room / 3) : 0;   // 已經解鎖獨特兵種的話，三種各補一些

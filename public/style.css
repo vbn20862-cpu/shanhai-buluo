@@ -181,6 +181,12 @@ p { margin: 4px 0; }
 .ic-army { color: #E7B9A0; } .ic-shield { color: var(--good); }
 .chip.safe { border-color: var(--good); color: var(--good); }
 .chip.warn { border-color: var(--warn); } .chip.warn b { color: var(--warn); }
+.chip.raid { color: var(--warn); font-weight: 700; cursor: pointer; animation: raid 1.2s ease-in-out infinite; }
+@keyframes raid { 50% { background: rgba(240, 164, 143, .25); } }
+#mmarks .nd circle { stroke: #14212A; }
+#mmarks .nd.sel circle:first-child { stroke: #E3B341; }
+#mmarks .nd text { fill: #fff; font-weight: 700; text-anchor: middle; pointer-events: none; }
+.qrow .btn { margin-left: 6px; padding: 2px 8px; }
 .eatline { margin: 6px 0 2px; font-size: 13px; color: var(--good); } .eatline.neg { color: var(--warn); font-weight: 700; }
 .tbtns.row { flex-direction: row; flex-wrap: wrap; margin-top: 4px; }
 .rep .neg { color: var(--warn); }

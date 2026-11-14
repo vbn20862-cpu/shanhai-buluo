@@ -48,7 +48,7 @@
     renderNav(); renderTune(false); renderLog(); renderHealth();
     var v = data.villages, players = v.filter(function (x) { return !x.bot; }), live = players.filter(function (x) { return x.online; });
     $('stamp').textContent = '每 3 秒更新 · ' + new Date(data.now).toLocaleTimeString('zh-TW') + ' · 遊戲節奏 ' + data.tune.pace + (data.speed !== 1 ? ' · 測試加速 ' + data.speed + ' 倍' : '');
-    $('tiles').innerHTML = [['玩家部落', players.length], ['在線上', live.length], ['示範部落', v.length - players.length], ['出征中的隊伍', data.marches], ['打過的對戰', Object.keys(data.stats || {}).reduce(function (n, k) { return n + data.stats[k].n; }, 0)], ['被佔領的資源點', data.points], ['聯盟', (data.alliances || []).length], ['市集掛單', data.offers]]
+    $('tiles').innerHTML = [['玩家部落', players.length], ['在線上', live.length], ['示範部落', v.length - players.length], ['出征中的隊伍', data.marches], ['打過的對戰', Object.keys(data.stats || {}).reduce(function (n, k) { return n + data.stats[k].n; }, 0)], ['資源點（採集中）', data.nodes + '（' + data.gathering + '）'], ['聯盟', (data.alliances || []).length], ['市集掛單', data.offers]]
       .map(function (t) { return '<div class="tile"><b>' + t[1] + '</b><span>' + t[0] + '</span></div>'; }).join('');
     $('tribes').innerHTML = Tribes.playable().map(function (t) {
       var s = data.tribes[t.id] || { players: 0, online: 0, bots: 0, avg: 0 };
