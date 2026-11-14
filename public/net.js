@@ -162,7 +162,7 @@ window.Net = (function () {
       else if (kind === 'rest') { v.heroRest = 0; v.blessNext = 0; }
       else if (kind === 'pace') local.setTune({ pace: +on || 1 });   // 試試正式節奏的快慢
       else if (kind === 'bots') Object.keys(local.villages).forEach(function (id) {   // 讓示範部落有守軍，對戰才有東西可以打
-        var o = local.villages[id]; if (!o.bot || o.battle) return;
+        var o = local.villages[id]; if (!o.bot) return;
         o.units.w += 3; o.units.a += 3; o.wall = Math.max(o.wall, 1); o.res.food = Math.max(o.res.food, 400); o.res.mat = Math.max(o.res.mat, 400);
       });
       fill(); local.tick(now); fill(); save(); fire('state', local.snapshot(localId, now));

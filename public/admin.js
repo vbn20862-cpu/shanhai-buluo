@@ -48,7 +48,7 @@
     renderNav(); renderTune(false); renderLog(); renderHealth();
     var v = data.villages, players = v.filter(function (x) { return !x.bot; }), live = players.filter(function (x) { return x.online; });
     $('stamp').textContent = '每 3 秒更新 · ' + new Date(data.now).toLocaleTimeString('zh-TW') + ' · 遊戲節奏 ' + data.tune.pace + (data.speed !== 1 ? ' · 測試加速 ' + data.speed + ' 倍' : '');
-    $('tiles').innerHTML = [['玩家部落', players.length], ['在線上', live.length], ['示範部落', v.length - players.length], ['出征中的隊伍', data.marches], ['進行中的對戰', data.battles], ['被佔領的資源點', data.points], ['聯盟', (data.alliances || []).length], ['市集掛單', data.offers]]
+    $('tiles').innerHTML = [['玩家部落', players.length], ['在線上', live.length], ['示範部落', v.length - players.length], ['出征中的隊伍', data.marches], ['打過的對戰', Object.keys(data.stats || {}).reduce(function (n, k) { return n + data.stats[k].n; }, 0)], ['被佔領的資源點', data.points], ['聯盟', (data.alliances || []).length], ['市集掛單', data.offers]]
       .map(function (t) { return '<div class="tile"><b>' + t[1] + '</b><span>' + t[0] + '</span></div>'; }).join('');
     $('tribes').innerHTML = Tribes.playable().map(function (t) {
       var s = data.tribes[t.id] || { players: 0, online: 0, bots: 0, avg: 0 };
@@ -150,7 +150,7 @@
     var cls = function (s) { return Math.abs(s - 0.5) <= 0.05 ? 'cellok' : 'cellbad'; };
     var h = '<section class="card"><h2>結果' + (simRes.draft ? '（包含還沒套用的修改）' : '') + '</h2>' +
       '<p class="verdict ' + (m.ok ? 'ok' : 'bad') + '">' + (m.ok ? '任兩族之間都在 45%～55% 之內。' : '有組合超出 45%～55%，建議調整數值。') + '最大偏差 ' + pct(m.worst) + '。</p>' +
-      '<p class="muted">每一組 ' + m.n + ' 場 · 勇士 ' + m.army.w + '、弓手 ' + m.army.a + '、獨特兵種 ' + m.army.u + ' · 圍籬 ' + m.wall + ' 級' + (m.towers.length ? ' · 瞭望台 ' + m.towers.join('、') + ' 級' : '') +
+      '<p class="muted">每一組 ' + m.n + ' 場 · 勇士約 ' + m.army.w + '、弓手約 ' + m.army.a + '、獨特兵種約 ' + m.army.u + '（各自上下浮動三成）· 圍籬 ' + m.wall + ' 級' + (m.towers.length ? ' · 瞭望台 ' + m.towers.join('、') + ' 級' : '') +
       (m.hero ? '' : ' · 沒有英雄') + (m.uniq ? '' : ' · 沒有獨特建築') + ' · 進攻方平均勝率 ' + pct(m.base) + ' · 花了 ' + (simRes.ms / 1000).toFixed(1) + ' 秒</p>' +
       '<p class="muted">因為是隨機打的，每次結果會有一點出入：這個場數下，每個數字大約有 ±' + (2 * Math.sqrt(0.125 / m.n) * 100).toFixed(1) + ' 個百分點的誤差。數字剛好在邊緣時，用 5000 場再跑一次比較準。</p></section><div class="simgrid">';
     h += '<section class="card"><h2>兩族之間的整體勝率</h2><div class="scroll"><table><thead><tr><th>這一族</th><th class="l">對上</th><th>整體勝率</th><th class="l">判定</th></tr></thead><tbody>' +

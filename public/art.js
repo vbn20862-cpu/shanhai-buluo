@@ -226,6 +226,10 @@ window.Art = (function () {
     '<g id="t-b"><ellipse cx="0" cy="1" rx="14" ry="4.2" fill="#000" opacity=".25"/><rect x="-2.5" y="-15" width="5" height="16" fill="#6B4A32"/><circle cx="-8" cy="-23" r="12" fill="#3E7D4E"/><circle cx="8" cy="-25" r="13" fill="#357245"/><circle cx="0" cy="-35" r="13" fill="#4A8E59"/><circle cx="-4" cy="-39" r="6.5" fill="#63A96E" opacity=".85"/></g>' +
     '<g id="t-r"><polygon points="-13,2 -9,-10 3,-15 13,-6 14,2" fill="#8E9196"/><polygon points="3,-15 13,-6 14,2 2,2" fill="#74777C"/></g>' +
     '<g id="t-s"><ellipse cx="0" cy="1" rx="11" ry="3.4" fill="#000" opacity=".2"/><circle cx="-5" cy="-5" r="7" fill="#4F8F55"/><circle cx="5" cy="-6" r="8" fill="#447F4B"/><circle cx="0" cy="-10" r="6" fill="#62A566"/></g>' +
+    // 對戰畫面用的高樹：樹幹高、樹冠在上面，人站在樹後面看得到
+    '<g id="bt-a"><ellipse cx="0" cy="1" rx="17" ry="5" fill="#000" opacity=".25"/><path d="M-5 0C-4 -30 -4 -50 -3 -72h6C4 -50 5 -30 6 0Z" fill="#6B4A32"/><path d="M1 0C2 -30 2 -50 1.5 -72h1.5C4 -50 5 -30 6 0Z" fill="#573A26"/><path d="M-2 -48l-14 -14" stroke="#6B4A32" stroke-width="3" stroke-linecap="round"/><circle cx="-17" cy="-78" r="19" fill="#357245"/><circle cx="15" cy="-82" r="21" fill="#2F6A40"/><circle cx="-2" cy="-98" r="21" fill="#3E7D4E"/><circle cx="-8" cy="-104" r="10" fill="#5A9E64" opacity=".85"/></g>' +
+    '<g id="bt-c"><ellipse cx="0" cy="1" rx="15" ry="4.6" fill="#000" opacity=".25"/><rect x="-3.5" y="-46" width="7" height="47" fill="#6B4A32"/><rect x="0" y="-46" width="3.5" height="47" fill="#573A26"/><polygon points="-24,-36 0,-78 24,-36" fill="#2F6B4F"/><polygon points="0,-78 24,-36 0,-36" fill="#25573F"/><polygon points="-19,-62 0,-100 19,-62" fill="#3A7C5B"/><polygon points="0,-100 19,-62 0,-62" fill="#2D6449"/><polygon points="-13,-86 0,-118 13,-86" fill="#468A66"/><polygon points="0,-118 13,-86 0,-86" fill="#357052"/></g>' +
+    '<g id="bt-p"><ellipse cx="0" cy="1" rx="11" ry="3.6" fill="#000" opacity=".25"/><path d="M-2.5 0C-1 -40 0 -70 1 -92h3C4 -70 3 -40 3 0Z" fill="#8A7A5A"/><path d="M-1.6 -20h4M-1 -40h4M-.4 -60h3.6M.4 -78h3" stroke="#6E6046" stroke-width="1.4"/><g fill="none" stroke="#3E8A4E" stroke-width="5" stroke-linecap="round"><path d="M2 -92q-16 -14 -30 -2"/><path d="M2 -92q16 -14 30 -2"/><path d="M2 -92q-10 -24 -24 -24"/><path d="M2 -92q10 -24 24 -24"/><path d="M2 -92q0 -20 2 -30"/></g><circle cx="2" cy="-92" r="4" fill="#2F6A40"/></g>' +
     (AS ? Object.keys(AS.building).map(function (n) { return '<symbol id="b-' + n + '" viewBox="-80 -140 160 180" overflow="visible">' + AS.building[n] + '</symbol>'; }).join('') : '') +   // 美術素材的建築
     '</defs>';
   function use(id, x, y, sc) { return '<use href="#' + id + '" transform="translate(' + f1(x) + ' ' + f1(y) + ') scale(' + sc.toFixed(2) + ')"/>'; }
@@ -304,147 +308,322 @@ window.Art = (function () {
     return '<ellipse cx="0" cy="9" rx="6.5" ry="2.4" fill="#000" opacity=".22"/><path d="M-5.5 9c0-8 2-13 5.5-13s5.5 5 5.5 13z" fill="' + color + '"/><circle cx="0" cy="-8" r="4.8" fill="#B98660"/>';
   }
 
-  // ---------- 對戰畫面 ----------
-  // 三條路由上到下是山徑、正門、溪谷；攻方在左、守方在右。失去戰力的人是「往後退場」，不畫倒下的樣子。
-  var BW = 1000, BH = 300, LANE_Y = [160, 78, 242], AX = 430, DX = 572, GATE_X = 501;
-  function fig(kind, body, band, flip) {   // 一個人：腳底在原點，面向右；flip 則面向左
-    var s = '<ellipse cx="0" cy="1" rx="8" ry="2.6" fill="#000" opacity=".25"/><path d="M-6.5 0c0-9 2-15 6.5-15s6.5 6 6.5 15z" fill="' + body + '"/>' +
+  // ---------- 對戰畫面：山林間的亂戰 ----------
+  /* 對戰是自動打完的，這裡把戰報裡每一回合的紀錄演出來：一整片樹林，雙方的人在樹和樹之間穿插、兩兩纏鬥，弓手在後面放箭。
+   * 失去戰力的人是轉身跑回自己那一邊（撤退），不畫倒下的樣子。 */
+  var BW = 1000, BH = 420, B_TOP = 186, B_BOT = 394, MAXFIG = 14;   // B_TOP～B_BOT：人可以站的上下範圍；每一邊畫面上最多站 MAXFIG 個人
+  function figure(kind, body, band) {   // 一個人：腳底在原點，面向右
+    var s = '<path d="M-6.5 0c0-9 2-15 6.5-15s6.5 6 6.5 15z" fill="' + body + '"/>' +
       '<circle cx="0" cy="-19.5" r="5.6" fill="#B98660"/><path d="M-5.6 -21.5h11.2" stroke="' + band + '" stroke-width="2.2"/>';
     if (kind === 'w') s += '<g class="wpn"><path d="M8 2 12 -31" stroke="#6B4A32" stroke-width="2.2" stroke-linecap="round"/><path d="M12 -31l-2.6 -8 5.2 3z" fill="#D5D9DC"/></g>';
     else if (kind === 'a') s += '<g class="wpn"><path d="M8 -23q11 10 0 21" fill="none" stroke="#6B4A32" stroke-width="2.4" stroke-linecap="round"/><path d="M8 -23v21" stroke="#EFE7D2" stroke-width="0.9"/></g>';
     else if (kind === 'um') s += '<g class="wpn"><path d="M9 2 13 -33" stroke="#6B4A32" stroke-width="2.4" stroke-linecap="round"/><path d="M13 -33l-2.8 -9 5.6 3.4z" fill="#D5D9DC"/></g><circle cx="6.5" cy="-7.5" r="6.4" fill="#8D6642" stroke="#F2EAD6" stroke-width="1.4"/>';
     else if (kind === 'ur') s = '<path d="M-6 -5l-5 -12" stroke="#6B4A32" stroke-width="4" stroke-linecap="round"/><path d="M-11 -17l-2 -5m3.4 4.2l-.4 -5.4" stroke="#EFE7D2" stroke-width="1.2" stroke-linecap="round"/>' + s + '<g class="wpn"><path d="M8 -27q15 13 0 27" fill="none" stroke="#6B4A32" stroke-width="2.8" stroke-linecap="round"/><path d="M8 -27v27" stroke="#EFE7D2" stroke-width="0.9"/></g>';
-    return '<g transform="scale(' + (flip ? -1.3 : 1.3) + ' 1.3)">' + s + '</g>';
-  }
-  function slot(side, n, y) {   // 第 n 個人站哪裡：每排 5 人、兩排，第 0 個最靠近對方
-    var col = n % 5, row = Math.floor(n / 5) % 2, dx = col * 33 + row * 16;
-    return [side === 'a' ? AX - dx : DX + dx, y + (row ? 17 : -8)];
+    return s;
   }
   function at(x, y, inner) { return '<g transform="translate(' + f1(x) + ' ' + f1(y) + ')">' + inner + '</g>'; }
   function dly(ms) { return ' style="animation-delay:' + Math.round(ms) + 'ms"'; }
-  function arrow(dir) { return '<path d="M0 0h' + 22 * dir + '" stroke="#F4EEDC" stroke-width="2.2" stroke-linecap="round"/><path d="M' + 22 * dir + ' 0l' + -7 * dir + ' -3.4v6.8z" fill="#F4EEDC"/>'; }
   var STAR = 'M0 -17 4 -5 15 -8 7 1 15 9 4 7 0 18 -4 7 -15 9 -7 1 -15 -8 -4 -5Z';
-
-  /* 背景：遠山或海面、山林、三條路、溪水、圍籬與門柱、守方的部落。只跟守方的族群和圍籬有關，不隨每一階段改變 */
-  function battleField(b, ta, td) {
-    var k = td.look, s = '', i, coast = k.backdrop === 'coast';
-    s += '<rect width="' + BW + '" height="' + BH + '" fill="' + k.ground + '"/>';
-    s += '<rect width="130" height="' + BH + '" fill="' + shade(k.ground, -26) + '"/><rect x="130" width="70" height="' + BH + '" fill="' + shade(k.ground, -12) + '" opacity=".6"/>';
-    s += '<rect x="760" width="240" height="' + BH + '" fill="' + shade(k.ground, 12) + '"/>';
-    // 遠景：山或海
-    if (coast) s += '<rect width="' + BW + '" height="20" fill="#3E8FB8"/><path d="M0 12q30 -5 60 0t60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0" fill="none" stroke="#A9D8E8" stroke-width="2"/><rect y="20" width="' + BW + '" height="7" fill="#E2CF9C"/>';
-    else s += '<rect width="' + BW + '" height="26" fill="#BFDDE0"/><polygon points="0,26 0,14 80,3 170,17 280,2 400,16 500,6 620,19 740,3 860,16 1000,8 1000,26" fill="#6F9C8D"/><polygon points="0,26 0,20 130,11 250,22 380,10 500,23 630,13 770,24 900,14 1000,20 1000,26" fill="#4B7A69"/>';
-    for (i = 0; i < 46; i++) {   // 草叢筆觸
-      var gx = 240 + rnd(i, 51) * 740, gy = 34 + rnd(i, 52) * 258;
-      s += '<path d="M' + f1(gx) + ' ' + f1(gy) + 'l2 -6m2 6l1 -7m3 7l-1 -5" stroke="' + shade(k.ground, i % 2 ? 24 : -18) + '" stroke-width="1.5" fill="none" opacity=".7"/>';
+  function depth(y) { return 0.84 + (y - B_TOP) / (B_BOT - B_TOP) * 0.5; }   // 越靠近畫面下方（越近）越大
+  function fenceX(y) { return 872 + (y - 176) * 0.14; }                       // 部落邊緣的圍籬是一條微微斜的線
+  function bTree(coast, i) { return coast ? (rnd(i, 71) < 0.55 ? 'bt-p' : 'bt-a') : (rnd(i, 71) < 0.5 ? 'bt-c' : 'bt-a'); }
+  /* 背景：遠景、後排的樹牆、林間空地、右邊部落的邊緣。只跟守方的族群有關，演出中不會變 */
+  function showBack(ta, td, sh) {
+    var k = td.look, g = k.ground, coast = k.backdrop === 'coast', point = !!sh.point, s = '', i;
+    s += '<rect width="1000" height="130" fill="' + (coast ? '#C4E4EA' : '#CBE2DE') + '"/>';
+    if (coast) s += '<rect y="58" width="1000" height="50" fill="#3E8FB8"/><path d="M0 74q30 -5 60 0t60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0 60 0" fill="none" stroke="#A9D8E8" stroke-width="2"/><rect y="100" width="1000" height="14" fill="#E2CF9C"/>';
+    else s += '<polygon points="0,116 0,64 90,30 190,68 300,24 420,64 520,36 640,72 760,28 880,62 1000,42 1000,116" fill="#86AFA2"/><polygon points="0,118 0,88 130,60 250,90 380,56 500,92 630,64 770,94 900,66 1000,86 1000,118" fill="#5E8E7C"/>';
+    s += '<rect y="104" width="1000" height="80" fill="' + shade(g, -46) + '"/>';
+    for (i = 0; i < 31; i++) s += use(bTree(coast, i), -12 + i * 34 + rnd(i, 61) * 16, 170 + rnd(i, 62) * 12, 0.86 + rnd(i, 63) * 0.34);
+    s += '<rect y="40" width="1000" height="144" fill="' + shade(g, -62) + '" opacity=".34"/>';   // 樹牆壓暗一點，前面的人才跳得出來
+    s += '<rect y="176" width="1000" height="244" fill="' + shade(g, 2) + '"/><ellipse cx="510" cy="296" rx="420" ry="112" fill="' + shade(g, 15) + '" opacity=".8"/>';
+    s += '<rect y="176" width="140" height="244" fill="' + shade(g, -34) + '" opacity=".75"/><rect x="140" y="176" width="90" height="244" fill="' + shade(g, -20) + '" opacity=".4"/>';
+    if (point) s += '<rect x="860" y="176" width="140" height="244" fill="' + shade(g, -34) + '" opacity=".75"/><rect x="770" y="176" width="90" height="244" fill="' + shade(g, -20) + '" opacity=".4"/>';
+    else s += '<path d="M' + f1(fenceX(176) + 6) + ' 176L' + f1(fenceX(420) + 6) + ' 420H1000V176Z" fill="' + shade(g, 24) + '"/>';
+    for (i = 0; i < 10; i++) s += '<ellipse class="dapple"' + dly(-i * 700) + ' cx="' + f1(170 + rnd(i, 64) * 640) + '" cy="' + f1(200 + rnd(i, 65) * 180) + '" rx="' + f1(26 + rnd(i, 66) * 34) + '" ry="' + f1(8 + rnd(i, 67) * 8) + '" fill="#FFF3C4" opacity=".2"/>';
+    for (i = 0; i < 60; i++) {   // 草叢筆觸、落葉、小石頭
+      var gx = 20 + rnd(i, 51) * 960, gy = 190 + rnd(i, 52) * 214;
+      if (i % 4 === 0) s += '<ellipse cx="' + f1(gx) + '" cy="' + f1(gy) + '" rx="' + f1(2.5 + rnd(i, 55) * 3) + '" ry="1.7" fill="' + (i % 8 ? '#B9853E' : '#9A9C9E') + '" opacity=".7"/>';
+      else s += '<path d="M' + f1(gx) + ' ' + f1(gy) + 'l2 -6m2 6l1 -7m3 7l-1 -5" stroke="' + shade(g, i % 2 ? 26 : -20) + '" stroke-width="1.5" fill="none" opacity=".7"/>';
     }
-    LANE_Y.forEach(function (y, li) {   // 三條路：深色的路緣、淺色的路面、零星的小石子
-      s += '<rect x="96" y="' + (y - 36) + '" width="672" height="72" rx="36" fill="#8E7347" opacity=".55"/><rect x="102" y="' + (y - 31) + '" width="660" height="62" rx="31" fill="#C4AB7C"/>';
-      for (i = 0; i < 14; i++) s += '<ellipse cx="' + f1(130 + rnd(li * 20 + i, 53) * 600) + '" cy="' + f1(y - 24 + rnd(li * 20 + i, 54) * 48) + '" rx="' + f1(2 + rnd(i, 55) * 3) + '" ry="1.6" fill="#9C8256" opacity=".7"/>';
-    });
-    // 溪谷旁的溪水（會流動）與石頭
-    var yv = LANE_Y[2] + 46;
-    s += '<path d="M0 ' + yv + 'q60 -8 125 0t125 0 125 0 125 0 125 0 125 0 125 0 125 0" fill="none" stroke="#2E6F8E" stroke-width="15"/><path d="M0 ' + yv + 'q60 -8 125 0t125 0 125 0 125 0 125 0 125 0 125 0 125 0" fill="none" stroke="#4C93B5" stroke-width="10"/>' +
-      '<path class="flow" d="M0 ' + yv + 'q60 -8 125 0t125 0 125 0 125 0 125 0 125 0 125 0 125 0" fill="none" stroke="#CFEAF2" stroke-width="2" stroke-dasharray="14 26" opacity=".8"/>';
-    [[210, yv - 2], [470, yv + 1], [690, yv - 3]].forEach(function (r) { s += use('t-r', r[0], r[1], 0.55); });
-    // 山徑：坡上的石頭與樹樁
-    [[250, 42], [350, 44], [455, 40], [640, 44], [380, 118], [600, 120]].forEach(function (r, n) { s += use(n % 3 === 2 ? 't-s' : 't-r', r[0], r[1], 0.75 + (n % 2) * 0.2); });
-    [[300, 204], [420, 200], [640, 202], [270, 122]].forEach(function (r) { s += use('t-s', r[0], r[1], 0.9); });
-    // 攻方來的山林，兩層
-    var trees = [];
-    for (i = 0; i < 40; i++) trees.push([4 + rnd(i, 41) * 100, 44 + rnd(i, 43) * 258, rnd(i, 42), 0.75 + rnd(i, 44) * 0.45]);
-    trees.sort(function (p, q) { return p[1] - q[1]; }).forEach(function (t) { s += use(t[2] < (coast ? 0.2 : 0.6) ? 't-c' : 't-b', t[0], t[1], t[3]); });
-    // 攻方的旗子
-    [[130, LANE_Y[1] + 46], [152, LANE_Y[0] + 46]].forEach(function (p, n) {
-      s += at(p[0], p[1], '<path d="M0 0V-52" stroke="#6B4A32" stroke-width="3" stroke-linecap="round"/><path class="banner"' + dly(n * 400) + ' d="M0 -52l30 9-30 9z" fill="' + ta.look.trim + '" stroke="#F2EAD6" stroke-width="1.2"/>');
-    });
-    // 守方的部落：小米田、家屋、中心建築、營火
-    s += at(872, 62, '<g transform="scale(.62)">' + bld('farm', k, td) + '</g>') + at(950, 236, '<g transform="scale(.56)">' + bld('farm', k, td) + '</g>');
-    [[806, 52, 0.56], [945, 66, 0.56], [800, 262, 0.56]].forEach(function (h) { s += at(h[0], h[1], '<g transform="scale(' + h[2] + ')">' + bld('house', k, td) + '</g>'); });
-    s += at(900, 172, '<g transform="scale(.66)">' + bld('center', k, td) + '</g>') + at(962, 150, '<g transform="scale(.52)">' + bld('storage', k, td) + '</g>');
-    s += at(820, 170, '<ellipse cx="0" cy="2" rx="13" ry="5" fill="#000" opacity=".2"/><path d="M-9 2 9 -3M-9 -3 9 2" stroke="#6B4A32" stroke-width="3.2" stroke-linecap="round"/><path class="fire" d="M0 -18c6 6 7 11 4 16h-8c-3 -5 -2 -10 4 -16z" fill="#F0A13A"/>' +
-      [0, 1, 2].map(function (n) { return '<circle class="smoke"' + dly(n * 900) + ' cx="0" cy="-20" r="5" fill="#F2EAD6"/>'; }).join(''));
-    [[842, 188], [868, 206]].forEach(function (p) { s += at(p[0], p[1], '<g transform="scale(.8)">' + fig('', '#F2EAD6', k.trim, true) + '</g>'); });
+    return s + showEdge(td, sh);
+  }
+  function showEdge(td, sh) {   // 部落的邊緣：裡面的房子、圍籬、大門、瞭望台（資源點的較量沒有）
+    var k = td.look, s = '', i;
+    if (!sh.point) {
+      s += at(962, 250, '<g transform="scale(.6)">' + bld('center', k, td) + '</g>') + at(946, 200, '<g transform="scale(.46)">' + bld('house', k, td) + '</g>') + at(968, 372, '<g transform="scale(.52)">' + bld('house', k, td) + '</g>');
+      var stone = k.fence === 'stone', c1 = stone ? '#5F6166' : '#6F8A44', c2 = stone ? '#A5A8AC' : '#B4CC76', hgt = 12 + sh.wall * 5;
+      if (sh.wall) for (i = 0; i < 26; i++) {
+        var fy = 180 + i * 9.4; if (fy > 262 && fy < 322) continue;   // 大門的缺口
+        s += '<path d="M' + f1(fenceX(fy)) + ' ' + f1(fy) + 'v' + -hgt + '" stroke="' + c1 + '" stroke-width="' + (stone ? 9 : 5) + '" stroke-linecap="' + (stone ? 'butt' : 'round') + '"/><path d="M' + f1(fenceX(fy)) + ' ' + f1(fy - 1) + 'v' + -(hgt - 3) + '" stroke="' + c2 + '" stroke-width="' + (stone ? 5 : 2) + '"/>';
+      }
+      [262, 322].forEach(function (py) { s += '<path d="M' + f1(fenceX(py)) + ' ' + py + 'v-34" stroke="#6B4A32" stroke-width="6" stroke-linecap="round"/><path d="M' + f1(fenceX(py) - 4) + ' ' + (py - 34) + 'h8" stroke="#8D6642" stroke-width="4" stroke-linecap="round"/>'; });
+      [[212, 0.5], [366, 0.58], [300, 0.44]].slice(0, Math.min(3, sh.towerN)).forEach(function (tw) { s += at(fenceX(tw[0]) + 30, tw[0], '<g transform="scale(' + tw[1] + ')">' + bld('tower', k, td) + '</g>'); });
+    }
     return s;
   }
-  /* b：伺服器傳來的對戰狀態；prev：上一個階段開打前各路的人數（用來演出誰退場、誰衝進去）；回傳 <svg> 的內容 */
-  function battle(b, prev) {
-    var ta = Tribes.get(b.aTribe), td = Tribes.get(b.dTribe), k = td.look, last = b.log[b.log.length - 1], show = b.state === 'show' && !!last, prep = b.state === 'prep', done = !!b.result;
-    var ca = show ? last.a : null, cd = show ? last.d : null, s = battleField(b, ta, td), fx = '', top = '', i, n;
-    var stone = k.fence === 'stone', wcol = stone ? ['#5F6166', '#A5A8AC', '12 4'] : ['#5E7B3C', '#A9C46A', '4 5'], ww = 5 + b.wall * 2;
-    // 圍籬（三條路之間的部分）與每條路口的門柱；被攻破的門柱會倒下
-    if (b.wall) [[28, LANE_Y[1] - 38], [LANE_Y[1] + 38, LANE_Y[0] - 38], [LANE_Y[0] + 38, LANE_Y[2] - 38]].forEach(function (g) {
-      s += '<path d="M' + GATE_X + ' ' + g[0] + 'V' + g[1] + '" stroke="' + wcol[0] + '" stroke-width="' + (ww + 5) + '" stroke-linecap="round"/><path d="M' + GATE_X + ' ' + g[0] + 'V' + g[1] + '" stroke="' + wcol[1] + '" stroke-width="' + ww + '" stroke-dasharray="' + wcol[2] + '"/>';
+  /* 前景：畫面下緣和兩個角落的大葉子（會蓋在人物上面）、樹冠間灑下來的光、飄落的葉子 */
+  function showFront(td) {
+    var g = td.look.ground, dk = shade(g, -58), dk2 = shade(g, -44), s = '', i;
+    [[120, 96, 240], [390, 70, 210], [650, 90, 230]].forEach(function (p, n) {
+      s += '<polygon class="shaft"' + dly(-n * 1900) + ' points="' + p[0] + ',60 ' + (p[0] + p[1]) + ',60 ' + (p[0] + p[1] + p[2]) + ',410 ' + (p[0] + p[2] - 20) + ',410" fill="#FFF6D0" opacity=".1"/>';
     });
-    for (i = 0; i < Math.min(3, b.towerN); i++) s += at(GATE_X + 26, [LANE_Y[1] + 58, LANE_Y[0] + 58, 50][i], '<g transform="scale(.42)">' + bld('tower', k, td) + '</g>');
-    b.lanes.forEach(function (l, li) {
-      var y = LANE_Y[li], p = prev && prev[li], rec = show ? last.lanes[li] : null, active = show && !!p && p.aw + p.aa + (p.au || 0) > 0 && !p.broken, justBroke = !!(rec && rec.broken), g = '';
-      [-37, 37].forEach(function (dy, n2) {   // 門柱
-        var fall = l.broken ? ' class="post ' + (justBroke ? 'fall' : 'down') + (n2 ? ' r' : '') + '"' : ' class="post"';
-        g += at(GATE_X, y + dy, '<g' + fall + '><path d="M0 4V-22" stroke="#6B4A32" stroke-width="6" stroke-linecap="round"/><path d="M-4 -22h8" stroke="#8D6642" stroke-width="4" stroke-linecap="round"/></g>');
-      });
-      function side(sd, w, a, u, pw, pa, pu, cmd, tribe, lost, hurt) {
-        var out = '', total = w + a + u, flip = sd === 'd', body = tribe.look.trim, band = sd === 'a' ? '#F2EAD6' : '#2A1F05', dir = sd === 'a' ? 1 : -1, before = pw + pa + pu, won = done && (sd === 'a' ? b.result.win : !b.result.win);
-        var uk = tribe.uniq && tribe.uniq.unit.kind === 'ranged' ? 'ur' : 'um', ubody = shade(body, -24), kinds = [], shown = Math.min(total, 10);
-        // 畫面上最多站 10 個人；人更多時三種兵照比例出現。站位由前到後：勇士、近戰的獨特兵種、弓手、遠程的獨特兵種
-        var nu = total > 10 ? Math.min(u, Math.max(u ? 1 : 0, Math.round(10 * u / total))) : u, na = total > 10 ? Math.min(a, Math.max(a ? 1 : 0, Math.round(10 * a / total))) : a, nw = Math.max(0, shown - nu - na);
-        for (n = 0; n < nw; n++) kinds.push('w');
-        if (uk === 'um') for (n = 0; n < nu; n++) kinds.push('um');
-        for (n = 0; n < na; n++) kinds.push('a');
-        if (uk === 'ur') for (n = 0; n < nu; n++) kinds.push('ur');
-        for (n = 0; n < kinds.length; n++) {
-          var kind = kinds[n], melee = kind === 'w' || kind === 'um', isU = kind === 'um' || kind === 'ur', q = slot(sd, n, y), mv = 'mv', bob = 'bob';
-          if (prep) mv += ' in-' + sd;
-          else if (show && p && n >= before) mv += ' in-' + sd;                       // 歸隊或從別路趕來支援
-          else if (active && cmd === 'charge' && melee) mv += ' charge-' + sd;
-          if (active && cmd === 'hold') bob += ' brace';
-          else if (active && cmd === 'volley' && !melee) bob += ' loose';
-          else if (active && hurt && !(cmd === 'charge' && melee)) bob += ' hit';
-          if (won) bob += ' cheer';
-          out += at(q[0], q[1], '<g class="' + mv + '"' + dly(n % 5 * 80 + Math.floor(n / 5) * 60) + '><g class="' + bob + '"' + dly(n * 110) + '>' + fig(kind, isU ? ubody : body, isU ? '#E3B341' : band, flip) + '</g>' +
-            (active && cmd === 'charge' && melee ? '<circle class="dust" cx="' + -12 * dir + '" cy="0" r="5" fill="#EADFC0"/><circle class="dust"' + dly(160) + ' cx="' + -22 * dir + '" cy="-2" r="4" fill="#EADFC0"/>' : '') + '</g>');
-        }
-        if (show && p) {   // 離開這一路的人：負傷的往自己那邊退場；攻破之後剩下的攻方衝進部落
-          var gone = Math.max(0, before - total), back = Math.min(gone, Math.max(0, lost)), lw = Math.max(0, pw - w), lu = Math.max(0, pu - u);
-          for (n = 0; n < Math.min(gone, 8); n++) {
-            var q2 = slot(sd, Math.min(9, total + n), y), away = n < back ? 'retreat-' + sd : (sd === 'a' && justBroke ? 'storm' : 'retreat-' + sd), gk = n < lw ? 'w' : n < lw + lu ? uk : 'a';
-            out += at(q2[0], q2[1], '<g class="mv ' + away + '"' + dly(650 + n * 110) + '><g class="bob run">' + fig(gk, gk === uk ? ubody : body, gk === uk ? '#E3B341' : band, flip) + '</g></g>');
-          }
-        }
-        if (active && cmd === 'volley') for (n = 0; n < Math.min(6, Math.max(2, a + (uk === 'ur' ? u : 0) + 1)); n++) {   // 箭，以及落地揚起的塵土
-          out += at(sd === 'a' ? AX - 46 : DX + 46, y - 30 + (n % 3) * 9, '<g class="arrow-' + sd + '"' + dly(250 + n * 140) + '>' + arrow(dir) + '</g>');
-          fx += at((sd === 'a' ? DX + 30 : AX - 30) + (n % 3) * 26 * dir, y + 8 - (n % 2) * 14, '<circle class="puff"' + dly(900 + n * 140) + ' r="6" fill="#EADFC0"/>');
-        }
-        if (active && cmd === 'hold') out += '<ellipse class="ring" cx="' + (sd === 'a' ? AX - 66 : DX + 66) + '" cy="' + (y + 8) + '" rx="96" ry="30" fill="none" stroke="#F4EEDC" stroke-width="2.6" stroke-dasharray="9 7"/>';
-        return out + (total ? '<text class="bcount" x="' + (sd === 'a' ? AX - 196 : DX + 196) + '" y="' + (y + 8) + '" text-anchor="middle">' + total + ' 人</text>' : '');
-      }
-      var au = l.au || 0, du = l.du || 0;
-      g += side('a', l.aw, l.aa, au, p ? p.aw : l.aw, p ? p.aa : l.aa, p ? p.au || 0 : au, ca, ta, rec ? rec.aLost : 0, rec && rec.aLost > 0) +
-        side('d', l.dw, l.da, du, p ? p.dw : l.dw, p ? p.da : l.da, p ? p.du || 0 : du, cd, td, rec ? rec.dLost : 0, rec && rec.dLost > 0);
-      if (active && (ca === 'charge' || cd === 'charge')) fx += at(GATE_X, y - 6, '<path class="clash" d="' + STAR + '" fill="#FFE9A8" stroke="#E3B341" stroke-width="2"/>') + at(GATE_X, y - 6, '<path class="clash"' + dly(1500) + ' d="' + STAR + '" fill="#FFE9A8" stroke="#E3B341" stroke-width="2"/>');
-      if (active && b.towerN) for (n = 0; n < 2; n++) fx += at(GATE_X + 26, y - 30, '<g class="arrow-t"' + dly(400 + n * 600) + '>' + arrow(-1) + '</g>');
-      var status = l.broken ? '已攻破' : l.aw + l.aa + au === 0 && !prep ? (l.dw + l.da + du ? '守住了' : '') : '';
-      top += '<text class="blane' + (l.broken ? ' brk' : status ? ' ok' : '') + '" x="' + GATE_X + '" y="' + (y - 27) + '" text-anchor="middle">' + R.LANES[li] + (status ? '・' + status : '') + '</text>';
-      if (l.broken) top += at(GATE_X + 4, y + 30, '<g class="bflag' + (justBroke ? ' plant' : '') + '"><path d="M0 0V-46" stroke="#6B4A32" stroke-width="3" stroke-linecap="round"/><path class="banner" d="M0 -46l26 8-26 8z" fill="' + ta.look.trim + '" stroke="#F2EAD6" stroke-width="1.2"/></g>');
-      s += g;
+    function leaf(x, y, r, len, col) { return '<ellipse cx="' + x + '" cy="' + y + '" rx="' + len + '" ry="' + f1(len * 0.3) + '" fill="' + col + '" transform="rotate(' + r + ' ' + x + ' ' + y + ')"/>'; }
+    s += leaf(18, 404, -52, 74, dk) + leaf(64, 416, -30, 80, dk2) + leaf(-6, 372, -74, 60, dk2) + leaf(120, 424, -14, 66, dk);
+    s += leaf(982, 404, 232, 74, dk) + leaf(936, 418, 208, 78, dk2) + leaf(1006, 370, 252, 58, dk2) + leaf(880, 426, 194, 62, dk);
+    for (i = 0; i < 16; i++) { var fx = 170 + i * 44 + rnd(i, 81) * 20; s += '<path d="M' + f1(fx) + ' 424q' + f1(-6 + rnd(i, 82) * 12) + ' -' + f1(10 + rnd(i, 83) * 12) + ' ' + f1(-10 + rnd(i, 84) * 20) + ' -' + f1(16 + rnd(i, 85) * 12) + '" stroke="' + (i % 2 ? dk : dk2) + '" stroke-width="5" stroke-linecap="round" fill="none"/>'; }
+    for (i = 0; i < 12; i++) s += at(90 + rnd(i, 91) * 880, 30 + rnd(i, 92) * 60, '<path class="leaf" style="animation-delay:' + Math.round(-rnd(i, 93) * 8000) + 'ms;animation-duration:' + Math.round(6000 + rnd(i, 94) * 5000) + 'ms" d="M0 0q5 -5 10 0q-5 5 -10 0z" fill="' + (i % 3 ? '#D9A441' : '#8FB85A') + '"/>');
+    return s;
+  }
+  /* 有第二包美術素材時：雙方族群的人物（每種兵三個姿勢、英雄）、守方族群的樹木、特效，放進這個 svg 自己的 <defs> */
+  var PK = { w: 'warrior', a: 'archer', um: 'unique', ur: 'unique' }, POSE = { run: 'run', lunge: 'attack', loose: 'attack' };
+  function battleArt(td) { return newArt && AS && AS.field && AS.field[td.id] && AS.people && AS.people[td.id + '-warrior-stand'] ? AS : null; }
+  function showDefs(A, ta, td) {
+    var s = '<defs>';
+    [ta.id, td.id].filter(function (x, n, a) { return a.indexOf(x) === n; }).forEach(function (t) {
+      ['warrior', 'archer', 'unique'].forEach(function (k) { ['stand', 'run', 'attack'].forEach(function (p) { var b = A.people[t + '-' + k + '-' + p]; if (b) s += '<g id="bp-' + t + '-' + k + '-' + p + '">' + b + '</g>'; }); });
+      if (A.people[t + '-hero-stand']) s += '<g id="bp-' + t + '-hero">' + A.people[t + '-hero-stand'] + '</g>';
     });
-    if (show) {   // 雙方喊出的指令；剋住對方的那一邊用金色框起來
-      var hero = !!(last.ha || last.hd), ma = !hero && R.beats(ca, cd) ? 0 : 1, md = !hero && R.beats(cd, ca) ? 0 : 1;   // 數字小的那一邊剋住對方；用了英雄能力就不算相剋
-      [[250, ca, ma < md, last.ha && ta], [750, cd, md < ma, last.hd && td]].forEach(function (c, n2) {   // 用了英雄能力：喊的是能力的名字，英雄站出來
-        var ht = c[3], label = ht ? '★ ' + ht.hero.abilityZh : R.CMDS[c[1]], flip = n2 === 1;
-        top += at(c[0], 46, '<g class="shout' + (c[2] ? ' win' : '') + (ht ? ' hero' : '') + '"' + dly(n2 * 120) + '><rect x="-78" y="-19" width="156" height="34" rx="17"/><text y="6" text-anchor="middle">' + label + '！' + (c[2] ? ' 剋制' : '') + '</text></g>');
-        if (!ht) return;
-        var ab = ht.hero.ability, wpn = ab === 'unity' ? 'w' : ab === 'steadfast' ? '' : 'a', body = ht.look.trim, one = ab === 'steadfast';   // 排灣的巴里是一個人、戴著帽子；其他族是一群人
-        top += at(flip ? 786 : 214, 144, '<g class="heroin"><ellipse class="ring" cx="0" cy="-18" rx="38" ry="32" fill="rgba(255,233,168,.3)" stroke="#E3B341" stroke-width="2.6"/>' +
-          (one ? '' : '<g transform="translate(' + (flip ? 17 : -17) + ' 3)">' + fig(wpn, shade(body, -20), '#E3B341', flip) + '</g>') +
-          '<g transform="scale(1.3)">' + fig(wpn, body, '#E3B341', flip) + '</g>' +
-          (one ? '<path d="M-10.8 -34.8a10.8 10.8 0 0 1 21.6 0z" fill="#3A3F45"/><path d="M-13 -34.8h26" stroke="#3A3F45" stroke-width="2.6" stroke-linecap="round"/>' : '') + '</g>');
+    ['tree-a', 'tree-b', 'tree-c', 'tree-big', 'bush', 'rock', 'log'].forEach(function (n) { var b = A.nature[td.id + '-' + n]; if (b) s += '<g id="bn-' + n + '">' + b + '</g>'; });
+    Object.keys(A.fx || {}).forEach(function (n) { s += '<g id="bx-' + n + '">' + A.fx[n] + '</g>'; });
+    return s + '</defs>';
+  }
+  /* 在 svg 裡演出一場對戰。rep：戰報（rep.show 是雙方的資料、rep.log 是每一回合的紀錄）；
+   * opt.onDone：演完時呼叫；opt.end：不演，直接顯示結束的樣子。回傳 { finish(): 直接跳到結束 } */
+  function battleShow(svg, rep, opt) {
+    opt = opt || {};
+    var sh = rep.show, log = rep.log || [], ta = Tribes.get(sh.aTribe), td = Tribes.get(sh.dTribe), point = !!sh.point, coast = td.look.backdrop === 'coast';
+    var win = rep.role === 'atk' ? !!rep.win : !rep.win;   // 進攻方有沒有贏
+    var seed = (Math.floor(rep.t || 1) % 2147483646) + 1, rand = function () { seed = seed * 48271 % 2147483647; return seed / 2147483647; };
+    var col = { a: ta.color, d: ta.id === td.id ? shade(td.color, -34) : td.color }, band = { a: '#F2EAD6', d: '#1B2A33' };
+    var ukind = { a: ta.uniq && ta.uniq.unit.kind === 'ranged' ? 'ur' : 'um', d: td.uniq && td.uniq.unit.kind === 'ranged' ? 'ur' : 'um' };
+    function n3(o) { return o.w + o.a + (o.u || 0); }
+    var fscale = { a: Math.min(1, MAXFIG / Math.max(1, n3(sh.start.a))), d: Math.min(1, MAXFIG / Math.max(1, n3(sh.start.d))) };
+    function shown(sd, c) { var o = {}; ['w', 'a', 'u'].forEach(function (k) { o[k] = c[k] > 0 ? Math.max(1, Math.round(c[k] * fscale[sd])) : 0; }); return o; }
+    var ART = battleArt(td), FS = ART ? 1.3 : 1.22, trees = '', i;   // FS：人物放大的倍數（素材的人物比程式畫的高）
+    if (ART) [[206, 204, 'tree-big', 0.76], [694, 198, 'tree-big', 0.72], [356, 210, 'tree-a', 1.0], [546, 204, 'tree-c', 0.95], [796, 228, 'tree-b', 1.0], [270, 298, 'bush', 1.3], [452, 262, 'rock', 1.2],
+      [612, 318, 'log', 1.1], [744, 352, 'tree-a', 1.2], [134, 356, 'tree-b', 1.25], [524, 388, 'bush', 1.4], [372, 374, 'rock', 1.3]].forEach(function (t) {
+      if (ART.nature[td.id + '-' + t[2]]) trees += '<g class="btree" data-y="' + t[1] + '">' + use('bn-' + t[2], t[0], t[1], t[3]) + '</g>';
+    });
+    else [[196, 214, 1.0], [338, 198, 0.9], [486, 222, 1.05], [628, 200, 0.92], [772, 216, 1.0], [262, 306, 1.25], [436, 338, 1.4], [600, 304, 1.25], [748, 342, 1.35], [108, 368, 1.5], [540, 392, 1.5]].forEach(function (t, n) {
+      trees += '<g class="btree" data-y="' + t[1] + '">' + use(bTree(coast, n + 40), t[0], t[1], t[2]) + '</g>';
+    });
+    var me = rep.role === 'atk' ? 'a' : 'd', leaves = '';
+    if (ART) for (i = 0; i < 12; i++) leaves += at(90 + rnd(i, 91) * 880, 30 + rnd(i, 92) * 60, '<g class="leaf" style="animation-delay:' + Math.round(-rnd(i, 93) * 8000) + 'ms;animation-duration:' + Math.round(6000 + rnd(i, 94) * 5000) + 'ms">' + '<use href="#bx-leaf-' + (i % 3 ? 'b' : 'a') + '" transform="scale(.6)"/></g>');
+    svg.innerHTML = (ART ? showDefs(ART, ta, td) : '') + '<g class="bq">' + (ART ? ART.field[td.id].back + showEdge(td, sh) : showBack(ta, td, sh)) + '<g class="bz">' + trees + '</g><g class="bfx"></g>' + (ART ? ART.field[td.id].front + leaves : showFront(td)) + '</g><g class="btop">' +
+      '<rect class="bchip' + (me === 'a' ? ' me' : '') + '" x="10" y="10" width="270" height="32" rx="16"/><text class="bnum" id="bn-a" x="145" y="32" text-anchor="middle"></text>' +
+      '<rect class="bchip' + (me === 'd' ? ' me' : '') + '" x="720" y="10" width="270" height="32" rx="16"/><text class="bnum" id="bn-d" x="855" y="32" text-anchor="middle"></text>' +
+      '<rect class="bchip mid" x="400" y="10" width="200" height="32" rx="16"/><text class="bnum mid" id="bn-m" x="500" y="32" text-anchor="middle"></text></g>';
+    var Z = svg.querySelector('.bz'), FX = svg.querySelector('.bfx'), TOP = svg.querySelector('.btop'), Q = svg.querySelector('.bq');
+    Array.prototype.forEach.call(Z.children, function (el) { el._y = +el.getAttribute('data-y'); });
+    var figs = [], arrows = [], events = [], stopped = false, T = 0, t0 = 0, lastSort = -1e9, order = '';
+    function nm(x) { x = String(x || ''); return x.length > 8 ? x.slice(0, 7) + '…' : x; }
+    function bar(a, d, mid) { svg.querySelector('#bn-a').textContent = nm(sh.aName) + ' · ' + a + ' 人'; svg.querySelector('#bn-d').textContent = (point && !sh.dName ? '駐守' : nm(sh.dName)) + ' · ' + d + ' 人'; svg.querySelector('#bn-m').textContent = mid; }
+    function add(parent, html) { parent.insertAdjacentHTML('beforeend', html); return parent.lastElementChild; }
+    function later(ms, fn) { events.push({ t: T + ms, fn: fn }); }
+    function fx(html, life) { var el = add(FX, html); later(life, function () { if (el.parentNode) el.parentNode.removeChild(el); }); return el; }
+    function place(f) {
+      f.el.setAttribute('transform', 'translate(' + f1(f.x) + ' ' + f1(f.y) + ') scale(' + (depth(f.y) * FS).toFixed(3) + ')');
+      f.fl.setAttribute('transform', f.face < 0 ? 'scale(-1 1)' : 'scale(1 1)'); f.el._y = f.y;
+    }
+    function pose(f, cls) {
+      if (f.cls === cls) return;
+      f.cls = cls; f.bb.setAttribute('class', 'bb ' + cls);
+      if (f.use) f.use.setAttribute('href', '#bp-' + f.tribe + '-' + f.pk + '-' + (POSE[cls] || 'stand'));   // 素材的人物：換成跑步、出擊、站立的姿勢
+    }
+    function mk(sd, type, x, y) {
+      var kind = type === 'u' ? ukind[sd] : type, isU = type === 'u';
+      var tr = sd === 'a' ? ta.id : td.id, ring = '<ellipse cx="0" cy="1" rx="10" ry="3.3" fill="' + (sd === 'a' ? '#F2EAD6' : '#0B161C') + '" opacity="' + (ART ? '.4' : '.5') + '"/>';
+      var el = add(Z, '<g class="bf"><g>' + (ART ? '<g class="bb idle" style="color:' + band[sd] + '">' + ring + '<use href="#bp-' + tr + '-' + PK[kind] + '-stand"/></g>'
+        : '<g class="bb idle">' + ring + figure(kind, isU ? shade(col[sd], -22) : col[sd], isU ? '#E3B341' : band[sd]) + '</g>') + '</g></g>');
+      var f = { el: el, fl: el.firstChild, bb: el.firstChild.firstChild, sd: sd, type: type, tribe: tr, pk: PK[kind], melee: kind === 'w' || kind === 'um', x: x, y: y, face: sd === 'a' ? 1 : -1, mv: null, gone: false, cls: 'idle' };
+      if (ART) f.use = f.bb.lastChild;
+      place(f); figs.push(f); return f;
+    }
+    function go(f, x, y, ms, delay, then) { f.mv = { x1: x, y1: Math.max(B_TOP, Math.min(B_BOT, y)), t0: T + (delay || 0), ms: Math.max(60, ms), then: then, on: false }; }
+    function live(sd, melee) { return figs.filter(function (f) { return f.sd === sd && !f.gone && (melee == null || f.melee === melee); }); }
+    function shuffle(a) { for (var n = a.length - 1; n > 0; n--) { var j = Math.floor(rand() * (n + 1)), x = a[n]; a[n] = a[j]; a[j] = x; } return a; }
+    function edgeX(sd) { return sd === 'a' ? -46 : 1046; }
+    function home(sd, melee) { return sd === 'a' ? (melee ? 250 + rand() * 150 : 160 + rand() * 90) : (melee ? 600 + rand() * 150 : 748 + rand() * 86); }
+    function enter(sd, type, delay) {   // 從自己那一邊跑進場
+      var melee = (type === 'u' ? ukind[sd] : type) !== 'a' && (type === 'u' ? ukind[sd] : type) !== 'ur', y = B_TOP + 8 + rand() * (B_BOT - B_TOP - 16);
+      var f = mk(sd, type, edgeX(sd) + (sd === 'a' ? -rand() * 60 : rand() * 60), sd === 'd' && !point ? 292 + (rand() - 0.5) * 30 : y);
+      go(f, home(sd, melee), y, 900 + rand() * 500, delay || 0); return f;
+    }
+    function retreat(f, delay) {   // 失去戰力：晃一下，轉身跑回自己那一邊
+      f.gone = true;
+      later(delay || 0, function () {
+        pose(f, 'hit'); f.mv = null;
+        later(280, function () {
+          var x = edgeX(f.sd), y = f.sd === 'd' && !point ? 292 + (rand() - 0.5) * 40 : f.y + (rand() - 0.5) * 50;
+          f.out = true; go(f, x, y, Math.abs(x - f.x) / 0.36, 0, function () { if (f.el.parentNode) f.el.parentNode.removeChild(f.el); figs.splice(figs.indexOf(f), 1); });
+        });
       });
     }
-    // 雲影與飛鳥
-    top = '<ellipse class="cloud" cx="0" cy="110" rx="170" ry="46" fill="#0B1A20" opacity=".1"/><ellipse class="cloud"' + dly(-22000) + ' cx="0" cy="230" rx="130" ry="36" fill="#0B1A20" opacity=".08"/>' +
-      '<g class="bird"><path d="M0 0q5 -6 10 0q5 -6 10 0" fill="none" stroke="#22333B" stroke-width="2" stroke-linecap="round"/><path d="M26 10q4 -5 8 0q4 -5 8 0" fill="none" stroke="#22333B" stroke-width="1.8" stroke-linecap="round"/></g>' + top;
-    return '<g' + (show && (ca === 'charge' || cd === 'charge') ? ' class="quake"' : '') + '>' + s + fx + '</g>' + top;
+    function shoot(from, to, delay, tower) {   // 一支箭：拋物線飛過去，落地揚起一點土
+      later(delay, function () {
+        if (!tower && (from.gone || !from.el.parentNode)) return;
+        if (!tower) { from.face = to.x > from.x ? 1 : -1; place(from); pose(from, 'loose'); later(700, function () { if (!from.gone && !from.mv) pose(from, 'idle'); }); }
+        var x0 = from.x + (tower ? 0 : from.face * 12), y0 = from.y - (tower ? 62 : 26 * depth(from.y)), x1 = to.x + (rand() - 0.5) * 16, y1 = to.y - 14;
+        var el = add(FX, '<g class="barrow">' + (ART ? '<use href="#bx-arrow" transform="scale(.8)"/>' : '<path d="M-9 0h17" stroke="#F4EEDC" stroke-width="2" stroke-linecap="round"/><path d="M9 0l-6 -3v6z" fill="#F4EEDC"/>') + '</g>');
+        arrows.push({ el: el, x0: x0, y0: y0, x1: x1, y1: y1, t0: T, ms: 380 + Math.abs(x1 - x0) * 0.5, h: 34 + Math.abs(x1 - x0) * 0.1, to: to });
+      });
+    }
+    function clash(x, y) {
+      fx(at(x, y - 22, ART ? '<g class="clash"><use href="#bx-clash" transform="scale(1.3)"/></g>' : '<path class="clash" d="' + STAR + '" fill="#FFE9A8" stroke="#E3B341" stroke-width="2"/>'), 620);
+      fx(at(x - 12, y, ART ? '<g class="dust"><use href="#bx-dust" transform="scale(.6)"/></g>' : '<circle class="dust" r="6" fill="#EADFC0"/>'), 760);
+      fx(at(x + 12, y + 2, ART ? '<g class="dust"' + dly(120) + '><use href="#bx-dust" transform="scale(.5)"/></g>' : '<circle class="dust"' + dly(120) + ' r="5" fill="#EADFC0"/>'), 880);
+    }
+    function shout(sd, t) {   // 英雄發動能力：喊出能力的名字，英雄站出來
+      var x = sd === 'a' ? 235 : 765, flip = sd === 'd', ab = t.hero.ability, one = ab === 'steadfast', wpn = ab === 'unity' ? 'w' : one ? '' : 'a', body = t.color;
+      var el = add(TOP, at(x, 78, '<g class="shout hero"><rect x="-92" y="-19" width="184" height="36" rx="18"/><text y="7" text-anchor="middle">★ ' + t.hero.abilityZh + '！</text></g>') +
+        '');
+      var hero = add(TOP, at(sd === 'a' ? 118 : 882, 300, '<g class="heroin"><ellipse class="ring" cx="0" cy="-22" rx="46" ry="38" fill="rgba(255,233,168,.3)" stroke="#E3B341" stroke-width="2.6"/>' +
+        '<g transform="scale(' + (flip ? -1.7 : 1.7) + ' 1.7)" style="color:#E3B341">' + (ART && ART.people[t.id + '-hero-stand'] ? '<use href="#bp-' + t.id + '-hero"/>' : (one ? '' : '<g transform="translate(-14 3)">' + figure(wpn, shade(body, -20), '#E3B341') + '</g>') + figure(wpn, body, '#E3B341') +
+        (one ? '<path d="M-6.4 -22.6a6.4 6.4 0 0 1 12.8 0z" fill="#3A3F45"/><path d="M-8 -22.6h16" stroke="#3A3F45" stroke-width="1.8" stroke-linecap="round"/>' : '')) + '</g></g>'));
+      later(2600, function () { [el, hero].forEach(function (e) { if (e.parentNode) e.parentNode.removeChild(e); }); });
+    }
+    function settle(rec) {   // 這一回合結束：照紀錄裡剩下的人數，讓多出來的人撤退
+      ['a', 'd'].forEach(function (sd) {
+        var want = shown(sd, rec[sd]);
+        ['w', 'u', 'a'].forEach(function (k) {
+          var have = figs.filter(function (f) { return f.sd === sd && f.type === k && !f.gone; }), diff = have.length - want[k], n;
+          for (n = 0; n < diff; n++) retreat(have[have.length - 1 - n], n * 110);
+          for (n = 0; n < -diff; n++) enter(sd, k, n * 140);
+        });
+      });
+      bar(n3(rec.a), n3(rec.d), rec.r === 0 ? '開場遠射' : '第 ' + rec.r + ' 回合');
+    }
+    function heroes(rec) {
+      if (rec.ha) shout('a', ta); if (rec.hd) shout('d', td);
+      [['a', rec.backA], ['d', rec.backD]].forEach(function (x) {   // 世代接力：負傷的人從後面跑回來
+        var n = x[1] ? Math.max(1, Math.round(x[1] * fscale[x[0]])) : 0;
+        for (var j = 0; j < n; j++) enter(x[0], 'w', 300 + j * 160);
+      });
+    }
+    function volleys(dur, per) {   // 雙方的弓手和瞭望台放箭
+      ['a', 'd'].forEach(function (sd) {
+        var foe = live(sd === 'a' ? 'd' : 'a'), mine = live(sd, false);
+        if (!foe.length) return;
+        mine.forEach(function (f) { for (var n = 0; n < per; n++) shoot(f, foe[Math.floor(rand() * foe.length)], 120 + rand() * (dur - 900) + n * 260); });
+        if (sd === 'd' && !point) [[212], [366], [300]].slice(0, Math.min(3, sh.towerN)).forEach(function (tw) {
+          shoot({ x: fenceX(tw[0]) + 30, y: tw[0] }, foe[Math.floor(rand() * foe.length)], 200 + rand() * (dur - 900), true);
+        });
+      });
+    }
+    function meleeRound(dur) {   // 近戰：每個人找一個對手，跑到樹林間的某個地方纏鬥；每一回合都換位置、換對手
+      var A = live('a', true), D = live('d', true), fa = shuffle(A.length ? A : live('a')), fd = shuffle(D.length ? D : live('d')), pairs = [], n = Math.max(fa.length, fd.length);
+      if (!fa.length || !fd.length) return;
+      for (var j = 0; j < n; j++) {
+        var a = fa[j % fa.length], d = fd[j % fd.length], p;
+        if (j < Math.min(fa.length, fd.length)) {
+          p = { x: Math.max(300, Math.min(720, (a.x + d.x) / 2 + (rand() - 0.5) * 240)), y: Math.max(B_TOP + 6, Math.min(B_BOT - 6, (a.y + d.y) / 2 + (rand() - 0.5) * 110)) };
+          pairs.push(p);
+          (function (a, d, p) {
+            var ms = 480 + rand() * 260, wait = rand() * 220;
+            go(a, p.x - 15, p.y, ms, wait, function () { pose(a, 'lunge'); a.face = 1; place(a); });
+            go(d, p.x + 15, p.y + 3, ms, wait, function () { pose(d, 'lunge'); d.face = -1; place(d); clash(p.x, p.y); });
+            later(wait + ms + 520, function () { if (!a.gone && !d.gone) clash(p.x + (rand() - 0.5) * 10, p.y); });
+          })(a, d, p);
+        } else {   // 人多的一邊：多出來的人去幫同伴，變成二打一
+          p = pairs[j % pairs.length];
+          (function (f, p, k) {
+            var side = f.sd === 'a' ? -1 : 1;
+            go(f, p.x + side * (32 + k * 6), p.y + (k % 2 ? 15 : -13), 560 + rand() * 300, 150 + rand() * 300, function () { pose(f, 'lunge'); f.face = -side; place(f); });
+          })(fa.length > fd.length ? a : d, p, j);
+        }
+      }
+      live('a', false).concat(live('d', false)).forEach(function (f) {   // 弓手在後面換位置
+        if (f.melee || f.mv || (A.length === 0 && f.sd === 'a') || (D.length === 0 && f.sd === 'd')) return;
+        go(f, home(f.sd, false), f.y + (rand() - 0.5) * 60, 500, rand() * 300);
+      });
+      later(700, function () { Q.setAttribute('class', 'bq quake'); later(700, function () { Q.setAttribute('class', 'bq'); }); });
+      volleys(dur, 1);
+    }
+    function ending() {
+      var losers = live(win ? 'd' : 'a'), winners = live(win ? 'a' : 'd');
+      losers.forEach(function (f, n) { retreat(f, n * 80); });
+      winners.forEach(function (f, n) {
+        if (win && !point) go(f, 770 + rand() * 70, f.y, 700 + rand() * 300, 300 + rand() * 300, function () { pose(f, 'cheer'); });
+        else later(400 + n * 60, function () { if (!f.mv) pose(f, 'cheer'); });
+      });
+      if (win && !point) later(1100, flag);
+      bar(n3(lastRec ? lastRec.a : sh.start.a), n3(lastRec ? lastRec.d : sh.start.d), win ? (point ? '搶下來了' : '攻下來了') : '守住了');
+    }
+    function flag() { add(FX, at(fenceX(292) - 6, 300, '<g class="bflag plant"><path d="M0 0V-58" stroke="#6B4A32" stroke-width="3.4" stroke-linecap="round"/><path class="banner" d="M0 -58l32 10-32 10z" fill="' + ta.color + '" stroke="#F2EAD6" stroke-width="1.4"/></g>')); }
+    var lastRec = log[log.length - 1] || null, done = false;
+    function finishUp() { if (done) return; done = true; if (opt.onDone) opt.onDone(); }
+    /* 直接擺出結束的樣子：贏的一方留在場上歡呼 */
+    function finish() {
+      stopped = true; events = []; arrows = [];
+      figs.forEach(function (f) { if (f.el.parentNode) f.el.parentNode.removeChild(f.el); }); figs = [];
+      FX.innerHTML = ''; Q.setAttribute('class', 'bq');
+      Array.prototype.slice.call(TOP.querySelectorAll('.shout, .heroin')).forEach(function (e) { var p = e.parentNode; if (p && p.parentNode) p.parentNode.removeChild(p); });
+      var sd = win ? 'a' : 'd', c = shown(sd, lastRec ? lastRec[sd] : sh.start[sd]), list = [];
+      ['w', 'u', 'a'].forEach(function (k) { for (var n = 0; n < c[k]; n++) list.push(k); });
+      list.forEach(function (k, n) {
+        var y = B_TOP + 10 + (n + 0.5) / list.length * (B_BOT - B_TOP - 20), x = win && !point ? 760 + rnd(n, 31) * 80 : (sd === 'a' ? 250 : 560) + rnd(n, 32) * 190;
+        pose(mk(sd, k, x, y), 'cheer');
+      });
+      sortZ(true);
+      if (win && !point) flag();
+      bar(n3(lastRec ? lastRec.a : sh.start.a), n3(lastRec ? lastRec.d : sh.start.d), win ? (point ? '搶下來了' : '攻下來了') : '守住了');
+      finishUp();
+    }
+    function sortZ(force) {   // 依照遠近重新排列人和樹，近的蓋住遠的
+      if (!force && T - lastSort < 140) return;
+      lastSort = T;
+      var kids = Array.prototype.slice.call(Z.children).sort(function (p, q) { return p._y - q._y; }), sig = kids.map(function (k) { return k._y.toFixed(0); }).join(',');
+      if (sig === order && !force) return;
+      order = sig; kids.forEach(function (k) { Z.appendChild(k); });
+    }
+    function frame(now) {
+      if (stopped || !svg.isConnected) return;
+      if (!t0) t0 = now;
+      T = now - t0;
+      var due = events.filter(function (e) { return e.t <= T; });
+      if (due.length) { events = events.filter(function (e) { return e.t > T; }); due.sort(function (p, q) { return p.t - q.t; }).forEach(function (e) { if (!stopped) e.fn(); }); }
+      if (stopped) return;
+      figs.slice().forEach(function (f) {
+        var m = f.mv; if (!m || T < m.t0) return;
+        if (!m.on) { m.on = true; m.x0 = f.x; m.y0 = f.y; if (Math.abs(m.x1 - f.x) > 3) f.face = m.x1 > f.x ? 1 : -1; pose(f, 'run'); }
+        var p = Math.min(1, (T - m.t0) / m.ms), e = p < 0.5 ? 2 * p * p : 1 - 2 * (1 - p) * (1 - p);
+        f.x = m.x0 + (m.x1 - m.x0) * e; f.y = m.y0 + (m.y1 - m.y0) * e; place(f);
+        if (f.out) f.el.style.opacity = p > 0.7 ? ((1 - p) / 0.3).toFixed(2) : '1';
+        if (p >= 1) { f.mv = null; pose(f, 'idle'); if (!f.out) { f.face = f.sd === 'a' ? 1 : -1; place(f); } if (m.then) m.then(); }
+      });
+      arrows = arrows.filter(function (a) {
+        var p = (T - a.t0) / a.ms;
+        if (p >= 1) {
+          if (a.el.parentNode) a.el.parentNode.removeChild(a.el);
+          fx(at(a.x1, a.y1 + 14, '<circle class="puff" r="5" fill="#EADFC0"/>'), 520);
+          if (a.to && a.to.bb && !a.to.gone && !a.to.mv && a.to.cls === 'idle') { pose(a.to, 'hit'); (function (f) { later(520, function () { if (!f.gone && !f.mv && f.cls === 'hit') pose(f, 'idle'); }); })(a.to); }
+          return false;
+        }
+        var x = a.x0 + (a.x1 - a.x0) * p, y = a.y0 + (a.y1 - a.y0) * p - Math.sin(Math.PI * p) * a.h;
+        var dx = a.x1 - a.x0, dy = a.y1 - a.y0 - Math.PI * Math.cos(Math.PI * p) * a.h;
+        a.el.setAttribute('transform', 'translate(' + f1(x) + ' ' + f1(y) + ') rotate(' + f1(Math.atan2(dy, dx) * 57.3) + ')');
+        return true;
+      });
+      sortZ(false);
+      requestAnimationFrame(frame);
+    }
+    if (opt.end || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) { finish(); return { finish: finish }; }
+    // 排演出的時間表：進場 → 每一回合 → 收尾
+    bar(n3(sh.start.a), n3(sh.start.d), point ? sh.point + '的較量' : '兩軍接近');
+    ['a', 'd'].forEach(function (sd) { var c = shown(sd, sh.start[sd]), n = 0; ['w', 'u', 'a'].forEach(function (k) { for (var j = 0; j < c[k]; j++) enter(sd, k, 60 * n++); }); });
+    var tt = 1700, rd = Math.max(1250, Math.min(1900, 9000 / Math.max(1, log.length)));
+    log.forEach(function (rec) {
+      var far = rec.r === 0, dur = far ? 1500 : rd;
+      later(tt, function () { heroes(rec); bar(n3(prevCount.a), n3(prevCount.d), far ? '開場遠射' : '第 ' + rec.r + ' 回合'); if (far) volleys(dur, 2); else meleeRound(dur); });
+      later(tt + dur - 420, function () { settle(rec); prevCount = rec; });
+      tt += dur;
+    });
+    var prevCount = { a: sh.start.a, d: sh.start.d };
+    later(tt + 250, ending);
+    later(tt + 2300, function () { stopped = true; finishUp(); });
+    requestAnimationFrame(frame);
+    return { finish: finish };
   }
 
   /* 地面底圖：畫在畫布上再當成一張圖，縮放平移才順。 */
@@ -557,7 +736,7 @@ window.Art = (function () {
     return s;
   }
 
-  return { icon: icon, scene: scene, battle: battle, building: function (type, t) { return bld(type, t.look, t); },
+  return { icon: icon, scene: scene, battleShow: battleShow, building: function (type, t) { return bld(type, t.look, t); },
     hasNewArt: function () { return !!AS; }, newArt: function () { return newArt; },
     setNewArt: function (on) { newArt = !!AS && !!on; try { localStorage.setItem('shanhai_art', newArt ? 'new' : 'old'); } catch (e) { /* 記不住就只在這次有效 */ } }, BW: BW, BH: BH, decor: decor, groundURL: groundURL, sitePos: sitePos, person: person, DEFS: DEFS, SW: SW, SH: SH,
     paintMap: paintMap, mapLabels: mapLabels, shade: shade };

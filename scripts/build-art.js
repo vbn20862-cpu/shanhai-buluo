@@ -5,7 +5,13 @@
  * 1. 檢查安全：素材是外來的檔案，含有程式、事件屬性、外部連結的一律拒收。
  * 2. 把顏色先算好：原檔用 CSS 變數和 color-mix 算明暗，這裡依每個檔案的預設色算成固定色碼寫進圖形，
  *    舊一點的手機瀏覽器（不支援 color-mix）也能正常顯示，也不用把樣式表塞進網頁。
- * 3. 圖層的 id（ground／shadow／body／deco）改成 class（ly-…），同一個網頁裡放很多棟建築才不會有重複的 id。 */
+ * 3. 圖層的 id（ground、shadow、body、deco、band、weapon…）改成 class（ly-…），同一個網頁裡放很多份才不會有重複的 id。
+ *
+ * 收哪些資料夾（每一類的畫布是約定好的，不合就拒收）：
+ *   buildings/、site/ 建築與建地（-80 -140 160 180）  icons/ 圖示（0 0 24 24）
+ *   people/ 人物（-30 -70 60 80；英雄 -50 -70 100 80）  nature/ 樹木與地景（-40 -100 80 110；大樹 -70 -170 140 180）
+ *   battlefield/ 對戰的背景（0 0 1000 420，前景 #front 分開存，要蓋在人物上面）  fx/ 小特效（-16 -16 32 32）  logo/ 標誌
+ *   scenes/、mockup/、patterns/ 只是參考，不打包。 */
 const fs = require('fs');
 const path = require('path');
 const root = path.join(__dirname, '..');
@@ -15,13 +21,15 @@ function hex(c) { c = c.replace('#', ''); if (c.length === 3) c = c.split('').ma
 function toHex(rgb) { return '#' + rgb.map(x => ('0' + Math.max(0, Math.min(255, Math.round(x))).toString(16)).slice(-2)).join('').toUpperCase(); }
 function mix(a, b, p) { const x = hex(a), y = hex(b); return toHex(x.map((v, i) => v * (1 - p) + y[i] * p)); }   // color-mix(in srgb, a, b p%)
 
-function building(file) {
+/* 讀一個 SVG，回傳 { name, vb 畫布, h 高度, body 去掉外框的內容 }。vbs：允許的畫布 */
+function convert(file, vbs) {
   const src = fs.readFileSync(file, 'utf8'), name = path.basename(file, '.svg');
   if (BAD.test(src)) throw new Error(name + '：含有不允許的內容（程式、事件或外部連結），沒有收進來');
   const head = /<svg\b([^>]*)>/.exec(src); if (!head) throw new Error(name + '：不是 SVG');
-  if (!/viewBox="-80 -140 160 180"/.test(head[1])) throw new Error(name + '：畫布不是約定的 -80 -140 160 180');
+  const vb = (/viewBox="([^"]+)"/.exec(head[1]) || [0, ''])[1];
+  if (vbs.indexOf(vb) < 0) throw new Error(name + '：畫布 ' + vb + ' 不是約定的 ' + vbs.join(' 或 '));
   const style = (/<style>([\s\S]*?)<\/style>/.exec(src) || [0, ''])[1];
-  const vars = {}; (/svg\.[\w-]+\{([^}]*)\}/.exec(style) || [0, ''])[1].split(';').forEach(kv => { const m = /^\s*(--[\w-]+)\s*:\s*(#[0-9a-fA-F]{3,6})\s*$/.exec(kv); if (m) vars[m[1]] = m[2]; });
+  const vars = {}; (/svg(?:\.[\w-]+)?\{([^}]*)\}/.exec(style) || [0, ''])[1].split(';').forEach(kv => { const m = /^\s*(--[\w-]+)\s*:\s*(#[0-9a-fA-F]{3,6})\s*$/.exec(kv); if (m) vars[m[1]] = m[2]; });
   const cls = {};   // class 名稱 → [屬性, 色碼]
   style.replace(/\.([fs])-([\w-]+)\{(fill|stroke):([^}]*)\}/g, (all, kind, n, prop, val) => {
     let m = /^var\((--[\w-]+)\)$/.exec(val.trim()), color = null;
@@ -30,32 +38,45 @@ function building(file) {
     if (!color) throw new Error(name + '：看不懂的顏色規則 ' + all);
     cls[kind + '-' + n] = [prop, toHex(hex(color))];
   });
-  let body = src.slice(src.indexOf('</style>') + 8).replace(/<\/svg>\s*$/, '').replace(/<title>[\s\S]*?<\/title>|<desc>[\s\S]*?<\/desc>/g, '');
+  let body = src.slice(src.indexOf('>', head.index) + 1).replace(/<style>[\s\S]*?<\/style>/, '').replace(/<\/svg>\s*$/, '').replace(/<title>[\s\S]*?<\/title>|<desc>[\s\S]*?<\/desc>/g, '');
   body = body.replace(/\sclass="([^"]*)"/g, (all, list) => {   // 顏色的 class 換成固定的 fill／stroke；其他 class 留著
     let attrs = '', keep = [];
     list.split(/\s+/).filter(Boolean).forEach(c => { if (cls[c]) attrs += ' ' + cls[c][0] + '="' + cls[c][1] + '"'; else keep.push(c); });
     return attrs + (keep.length ? ' class="' + keep.join(' ') + '"' : '');
   });
-  body = body.replace(/\sid="(ground|shadow|body|deco)"/g, ' data-ly="$1"').replace(/\sid="[^"]*"/g, '');
-  body = body.replace(/\sclass="([^"]*)"/g, (all, list) => ' class="' + list + '"').replace(/ data-ly="(\w+)"( class="([^"]*)")?/g, (all, ly, c, list) => ' class="ly-' + ly + (list ? ' ' + list : '') + '"');
+  // 圖層的 id 改成 class；<mask> 的 id 有被 url(#…) 用到，留著（每個檔案的名字不同，不會撞）
+  body = body.replace(/<(\w+)([^>]*?)\sid="([^"]*)"/g, (all, tag, mid, id) => tag === 'mask' || tag === 'clipPath' || tag === 'linearGradient' || tag === 'radialGradient' ? all : '<' + tag + mid + ' data-ly="' + id + '"');
+  body = body.replace(/ data-ly="([\w-]+)"([^>]*?)( class="([^"]*)")?(?=[\s/>])/g, (all, ly, mid, c, list) => mid + ' class="ly-' + ly + (list ? ' ' + list : '') + '"');
+  if (/data-ly=/.test(body)) throw new Error(name + '：圖層的名稱有看不懂的寫法');
   if (/class="[fs]-/.test(body) || /var\(--|color-mix/.test(body)) throw new Error(name + '：還有沒換掉的顏色變數');
-  const title = (/<title>([\s\S]*?)<\/title>/.exec(src) || [0, ''])[1].trim();
-  return { name, h: +(/data-height="(\d+)"/.exec(head[1]) || [0, 60])[1], title, body: body.replace(/>\s+</g, '><').trim() };
+  return { name, vb, h: +(/data-height="(\d+)"/.exec(head[1]) || [0, 60])[1], body: body.replace(/>\s+</g, '><').trim() };
 }
-function icon(file) {
-  const src = fs.readFileSync(file, 'utf8'), name = path.basename(file, '.svg').replace(/^icon-/, '');
-  if (BAD.test(src)) throw new Error('圖示 ' + name + '：含有不允許的內容');
-  if (!/viewBox="0 0 24 24"/.test(src)) throw new Error('圖示 ' + name + '：畫布不是 0 0 24 24');
-  return { name, body: src.replace(/^[\s\S]*?<svg\b[^>]*>/, '').replace(/<\/svg>\s*$/, '').replace(/<title>[\s\S]*?<\/title>/g, '').trim() };
+/* 對戰背景：最外層的 <g class="ly-front"> 拿出來另外存，畫面上要疊在人物上面 */
+function splitFront(body, name) {
+  const i = body.indexOf('<g class="ly-front'); if (i < 0) throw new Error(name + '：找不到前景圖層 #front');
+  let depth = 0, re = /<(\/?)g\b[^>]*?(\/?)>/g, m, end = -1; re.lastIndex = i;
+  while ((m = re.exec(body))) { if (m[2]) continue; depth += m[1] ? -1 : 1; if (!depth) { end = re.lastIndex; break; } }
+  if (end < 0) throw new Error(name + '：前景圖層沒有結尾');
+  return { back: body.slice(0, i) + body.slice(end), front: body.slice(i, end) };
 }
+function files(dir) { const d = path.join(root, 'art', dir); return fs.existsSync(d) ? fs.readdirSync(d).filter(f => f.endsWith('.svg')).sort().map(f => path.join(d, f)) : []; }
 
-const bdir = path.join(root, 'art/buildings'), idir = path.join(root, 'art/icons');
-const B = fs.readdirSync(bdir).filter(f => f.endsWith('.svg')).sort().map(f => building(path.join(bdir, f)));
-const I = fs.readdirSync(idir).filter(f => f.endsWith('.svg')).sort().map(f => icon(path.join(idir, f)));
-const out = { building: {}, height: {}, icon: {} };
-B.forEach(b => { out.building[b.name] = b.body; out.height[b.name] = b.h; });
-I.forEach(i => { out.icon[i.name] = i.body; });
-const js = '/* 這個檔案是 npm run build:art 從 art/ 產生的，不要手動修改。\n * building：每棟建築的圖形（原點在佔地中心，畫布 -80 -140 160 180）；height：建築高度；icon：圖示（畫布 24×24，顏色跟著文字） */\n' +
+const BLD = '-80 -140 160 180';
+// 第二包裡遊戲還沒有的建築（等建築擴充確認、規則做好之後再拿掉這一行），先不打包，玩家才不用多下載
+const LATER = /-(archery|heal|craft|hut|market|plaza|guest|taro|water)\.svg$/;
+const out = { building: {}, height: {}, icon: {}, people: {}, nature: {}, field: {}, fx: {}, logo: {} };
+const count = {};
+files('buildings').filter(f => !LATER.test(f)).concat(files('site')).forEach(f => { const b = convert(f, [BLD]); out.building[b.name] = b.body; out.height[b.name] = b.h; });
+files('icons').forEach(f => { const b = convert(f, ['0 0 24 24']); out.icon[b.name.replace(/^icon-/, '')] = b.body; });
+files('people').forEach(f => { const b = convert(f, ['-30 -70 60 80', '-50 -70 100 80']); out.people[b.name] = b.body; });
+files('nature').forEach(f => { const b = convert(f, ['-40 -100 80 110', '-70 -170 140 180']); out.nature[b.name] = b.body; });
+files('battlefield').forEach(f => { const b = convert(f, ['0 0 1000 420']); out.field[b.name.replace(/-battlefield$/, '')] = splitFront(b.body, b.name); });
+files('fx').forEach(f => { const b = convert(f, ['-16 -16 32 32']); out.fx[b.name.replace(/^fx-/, '')] = b.body; });
+files('logo').forEach(f => { const b = convert(f, ['0 0 288 64', '0 0 512 512']); out.logo[b.name] = { vb: b.vb, body: b.body }; });
+Object.keys(out).forEach(k => { count[k] = Object.keys(out[k]).length; });
+const js = '/* 這個檔案是 npm run build:art 從 art/ 產生的，不要手動修改。\n' +
+  ' * building：建築與建地（原點在佔地中心，畫布 -80 -140 160 180）；height：建築高度；icon：圖示（24×24，顏色跟著文字）；\n' +
+  ' * people：人物（原點在腳底，面向右）；nature：樹木與地景（原點在底部中央）；field：對戰背景（back 背景、front 蓋在人物上面的前景）；fx：小特效；logo：標誌 */\n' +
   'window.ShanhaiArt = ' + JSON.stringify(out) + ';\n';
 fs.writeFileSync(path.join(root, 'public/assets.js'), js);
-console.log('已產生 public/assets.js：' + B.length + ' 棟建築、' + I.length + ' 個圖示，' + Math.round(js.length / 1024) + ' KB');
+console.log('已產生 public/assets.js：建築與建地 ' + count.building + '、圖示 ' + count.icon + '、人物 ' + count.people + '、樹木與地景 ' + count.nature + '、對戰背景 ' + count.field + '、特效 ' + count.fx + '、標誌 ' + count.logo + '，' + Math.round(js.length / 1024) + ' KB');

@@ -153,40 +153,57 @@ test('掛機：採集重點、離線自動升級與離線報告', () => {
   assert.equal(adm.villages.length, 1); assert.equal(adm.tribes.amis.players, 1);
 });
 
-// ---------- 對戰（三路佈陣加臨場指令） ----------
+// ---------- 對戰（自動、單一戰場） ----------
 const R = World.rules;
-function duel(ca, cd, seed) {   // 一路、雙方各 6 勇士 6 弓手，回傳雙方損失
-  const side = () => ({ w: 6, a: 6, pool: 0, lostW: 0, lostA: 0 });
-  const b = { phase: 1, wall: 0, towers: 0, lanes: [{ a: side(), d: side(), broken: false }, { a: { w: 0, a: 0, pool: 0, lostW: 0, lostA: 0 }, d: side(), broken: false }, { a: { w: 0, a: 0, pool: 0, lostW: 0, lostA: 0 }, d: side(), broken: false }] };
-  const r = R.fightPhase(b, ca, cd, seeded(seed));
-  return { a: r.lanes[0].aLost, d: r.lanes[0].dLost };
-}
-function run(w, now, sec, pick) {   // 推進時間；pick(battle) 回傳攻方這一階段要下的指令
-  for (let i = 0; i < sec; i++) {
-    now += 1000; w.tick(now);
-    for (const id in w.battles) { const b = w.battles[id]; if (b.state === 'pick' && !b.cmd.a && pick) w.act(b.a, { type: 'cmd', c: pick(b) }, now); }
-  }
-  return now;
-}
+const all3 = o => o.w + o.a + (o.u || 0);
+function run(w, now, sec) { for (let i = 0; i < sec; i++) { now += 1000; w.tick(now); } return now; }   // 推進時間
 
-test('對戰：人數分到三路', () => {
-  assert.deepEqual(R.split(7, 'even'), [3, 2, 2]);
-  assert.deepEqual(R.split(7, 'gate'), [4, 2, 1]);
-  assert.deepEqual(R.split(6, 'valley'), [2, 1, 3]);
-  for (const k of R.LANE_KEYS) for (let n = 0; n < 20; n++) assert.equal(R.split(n, k).reduce((s, x) => s + x, 0), n);
+test('自動對戰：人多的一方贏；輸的一方撤退時還留著人；每一回合都有紀錄', () => {
+  new World();   // 換回預設的數值
+  const A = n => ({ tribe: 'bunun', w: n, a: n, u: 0 }), D = (n, wall, towers) => ({ tribe: 'amis', w: n, a: n, u: 0, wall: wall || 0, towers: towers || [] });
+  let big = 0, small = 0;
+  for (let i = 1; i <= 40; i++) { if (R.autoBattle(A(8), D(5), seeded(i)).win) big++; if (R.autoBattle(A(5), D(8), seeded(i)).win) small++; }
+  assert.equal(big, 40, '多六成的人一定贏'); assert.equal(small, 0, '少四成的人一定輸');
+  const r = R.autoBattle(A(8), D(5), seeded(3));
+  assert.equal(r.log[0].r, 0, '先是一輪遠射'); assert.ok(r.log.length >= 2 && r.log.length <= R.FIGHT.rounds + 1);
+  for (let i = 1; i < r.log.length; i++) { assert.ok(all3(r.log[i].a) <= all3(r.log[i - 1].a)); assert.ok(all3(r.log[i].d) <= all3(r.log[i - 1].d)); }
+  assert.deepEqual(r.log[r.log.length - 1].a, r.left); assert.deepEqual(r.log[r.log.length - 1].d, r.home);
+  assert.ok(all3(r.home) <= Math.floor(10 * R.TUNE.breakPct / 100), '守方剩不到三分之一就撤退');
+  assert.equal(r.lostD, 10 - all3(r.home)); assert.equal(r.lostA, 16 - all3(r.left)); assert.ok(r.grade >= 1 && r.grade <= 3);
+  assert.deepEqual(r.start, { a: { w: 8, a: 8, u: 0 }, d: { w: 5, a: 5, u: 0 } });
+  const lose = R.autoBattle(A(5), D(8), seeded(3));
+  assert.equal(lose.grade, 0); assert.ok(all3(lose.left) <= 3, '進攻方剩不到三分之一就撤退');
+  const e = R.autoBattle(A(3), D(0, 2, [2]), seeded(1));
+  assert.ok(e.win && e.grade === 3 && e.lostA === 0 && e.log.length === 0, '沒有守軍：直接獲勝，沒有人負傷');
+  let open = 0, walled = 0;   // 人數一樣時，圍籬和瞭望台讓守方更容易守住
+  for (let i = 1; i <= 200; i++) { if (R.autoBattle(A(6), D(6), seeded(i)).win) open++; if (R.autoBattle(A(6), D(6, 3, [2, 2]), seeded(i)).win) walled++; }
+  assert.ok(open > 20 && walled === 0, '沒有圍籬時有機會打贏（' + open + '/200），有三級圍籬和兩座瞭望台就打不下來（' + walled + '/200）');
 });
 
-test('對戰：三個指令互相剋制', () => {
-  let chargeWins = 0, holdWins = 0, volleyWins = 0;
-  for (let s = 1; s <= 20; s++) {
-    const x = duel('charge', 'hold', s); if (x.d > x.a) chargeWins++;      // 衝鋒剋重整
-    const y = duel('hold', 'volley', s); if (y.d >= y.a) holdWins++;       // 重整剋掩護射擊
-    const z = duel('volley', 'charge', s); if (z.d > z.a) volleyWins++;    // 掩護射擊剋衝鋒
+test('戰力與勝算：圍籬、瞭望台、獨特兵種的特性都算進戰力；勝算和實際結果對得上', () => {
+  new World();
+  const base = R.power({ tribe: 'amis', w: 4, a: 4, u: 0 });
+  assert.ok(base > 0); assert.equal(R.power({ tribe: 'amis', w: 0, a: 0, u: 0, def: true, wall: 3, towers: [3] }), 0, '沒有人守，圍籬和瞭望台擋不住');
+  assert.ok(R.power({ tribe: 'amis', w: 8, a: 8, u: 0 }) > base * 1.9);
+  assert.ok(R.power({ tribe: 'amis', w: 4, a: 4, u: 0, def: true, wall: 2 }) > base); assert.ok(R.power({ tribe: 'amis', w: 4, a: 4, u: 0, def: true, wall: 2, towers: [2] }) > R.power({ tribe: 'amis', w: 4, a: 4, u: 0, def: true, wall: 2 }));
+  assert.ok(R.power({ tribe: 'atayal', w: 0, a: 0, u: 6, def: true }) > R.power({ tribe: 'atayal', w: 0, a: 0, u: 6 }), '山林獵手守在自己部落時更強');
+  assert.ok(R.power({ tribe: 'paiwan', w: 0, a: 0, u: 6, def: true }) > R.power({ tribe: 'paiwan', w: 0, a: 0, u: 6 }), '石牆守衛守在自己部落時更耐打');
+  assert.ok(R.power({ tribe: 'amis', w: 0, a: 0, u: 8 }) / 8 > R.power({ tribe: 'amis', w: 0, a: 0, u: 2 }) / 2, '部落青年人越多越強');
+  assert.equal(R.odds(130, 100), 'high'); assert.equal(R.odds(110, 100), 'mid'); assert.equal(R.odds(90, 100), 'low'); assert.equal(R.odds(50, 0), 'high'); assert.equal(R.odds(0, 0), 'low');
+  const rng = seeded(17), ids = ['atayal', 'bunun', 'amis', 'paiwan'], ri = n => Math.floor(rng() * n), tally = { high: [0, 0], mid: [0, 0], low: [0, 0] };
+  for (let i = 0; i < 6000; i++) {
+    const n = 1 + ri(12), A = { tribe: ids[ri(4)], w: ri(n + 1), a: ri(n + 1), u: ri(n + 1), hero: rng() < 0.5 };
+    const D = { tribe: ids[ri(4)], w: ri(n + 1), a: ri(n + 1), u: ri(n + 1), hero: rng() < 0.5, wall: ri(4), towers: Array.from({ length: ri(3) }, () => 1 + ri(3)), uniq: rng() < 0.3 ? 'watch' : '' };
+    if (all3(A) < 1 || all3(D) < 1) continue;
+    const o = R.odds(R.power(A), R.power(Object.assign({ def: true }, D))); tally[o][0]++; if (R.autoBattle(A, D, rng).win) tally[o][1]++;
   }
-  assert.equal(chargeWins, 20); assert.equal(holdWins, 20); assert.equal(volleyWins, 20);
+  const rate = k => tally[k][1] / tally[k][0];
+  assert.ok(rate('high') >= 0.93, '勝算高：實際贏了 ' + (rate('high') * 100).toFixed(0) + '%');
+  assert.ok(rate('low') <= 0.04, '勝算低：實際贏了 ' + (rate('low') * 100).toFixed(0) + '%');
+  assert.ok(rate('mid') > 0.25 && rate('mid') < 0.75, '勝算中：實際贏了 ' + (rate('mid') * 100).toFixed(0) + '%');
 });
 
-test('對戰：打下沒有防守的部落，攻破三路、帶回物資、對方得到保護', () => {
+test('對戰：打下沒有防守的部落，大勝、帶回物資、對方得到保護', () => {
   const w = new World({ rng: seeded(3) });
   let now = 1e6;
   const a = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'bunun' }, now).id];
@@ -200,69 +217,71 @@ test('對戰：打下沒有防守的部落，攻破三路、帶回物資、對�
   assert.equal(w.act(a.id, { type: 'attack', to: b.id, w: 6, a: 3 }, now).ok, false, '同盟不能互打');
   assert.ok(w.act(b.id, { type: 'allyLeave' }, now).ok);
   const food0 = a.res.food;
-  assert.ok(w.act(a.id, { type: 'attack', to: b.id, w: 6, a: 3, lanes: 'gate' }, now).ok);
+  assert.equal(w.pub(b, now).pw, 0, '沒有守軍，守備戰力是 0');
+  assert.ok(w.act(a.id, { type: 'attack', to: b.id, w: 6, a: 3 }, now).ok);
   assert.equal(a.units.w, 0); assert.equal(a.away.w, 6);
   assert.equal(w.act(a.id, { type: 'attack', to: b.id, w: 0, a: 0 }, now).ok, false);
-  now = run(w, now, 200, () => 'charge');
+  now = run(w, now, 200);
   assert.equal(w.marches.length, 0, '隊伍已經回來');
-  assert.equal(a.battle, null); assert.equal(b.battle, null);
   assert.deepEqual([a.units.w, a.units.a, a.away.w, a.away.a], [6, 3, 0, 0], '沒有守軍，全員回來');
   const rep = a.reports[0];
-  assert.equal(rep.broken, 3); assert.equal(rep.win, true);
-  assert.ok(rep.loot['sp:amis'] === 4, '攻破三路帶走四成特產');
+  assert.equal(rep.grade, 3); assert.equal(rep.win, true); assert.equal(rep.lost, 0); assert.deepEqual(rep.log, []);
+  assert.deepEqual(rep.show.start.a, { w: 6, a: 3, u: 0 }); assert.equal(rep.show.aTribe, 'bunun'); assert.equal(rep.show.dName, '乙');
+  assert.ok(rep.loot['sp:amis'] === 4, '大勝帶走四成特產');
   assert.ok(a.res.food > food0 + 100 && a.sp.amis === 4);
-  assert.ok(b.shieldUntil > now && b.reports[0].win === false);
+  assert.ok(b.shieldUntil > now && b.reports[0].win === false && b.reports[0].id === rep.id);
   assert.equal(w.stats['bunun>amis'].n, 1); assert.equal(w.stats['bunun>amis'].win, 1);
   assert.equal(w.act(a.id, { type: 'attack', to: b.id, w: 1, a: 0 }, now).ok, false, '保護時間內不能再出征');
+  assert.equal(w.snapshot(a.id, now).battle, undefined, '沒有「進行中的對戰」這種狀態了');
   check(w);
 });
 
-test('對戰：守軍、圍籬與瞭望台擋下小隊；不在線上的守方照守備方針', () => {
+test('對戰：守軍、圍籬與瞭望台擋下小隊；守方不用在線上，也不用設定任何東西', () => {
   const w = new World({ rng: seeded(5) });
   let now = 1e6;
   const a = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'atayal' }, now).id];
   const b = w.villages[w.join('b', { owner: 'B', name: '乙', tribe: 'paiwan' }, now).id];
   w.setOnline(a.id, true, now); b.newbieUntil = 0;
   b.units.w = 6; b.units.a = 6; b.wall = 2; b.tiles[1] = { type: 'tower', level: 2 };
-  assert.ok(w.act(b.id, { type: 'defense', lanes: 'gate', plan: ['volley', 'volley', 'hold'] }, now).ok);
+  assert.equal(w.act(b.id, { type: 'defense', lanes: 'gate' }, now).ok, false, '佈防設定已經拿掉');
   a.units.w = 4;
-  assert.ok(w.act(a.id, { type: 'attack', to: b.id, w: 4, a: 0, lanes: 'gate' }, now).ok);
-  now = run(w, now, 200, () => 'charge');
+  assert.equal(R.odds(R.power({ tribe: 'atayal', w: 4, a: 0, u: 0 }), w.pub(b, now).pw), 'low', '出發前看得出勝算低');
+  assert.ok(w.act(a.id, { type: 'attack', to: b.id, w: 4, a: 0 }, now).ok);
+  while (!a.reports.length) { now += 1000; w.tick(now); }
   const rep = a.reports[0];
-  assert.equal(rep.win, false); assert.ok(rep.broken < 2);
-  assert.deepEqual(rep.log.map(p => p.d).slice(0, 2), ['volley', 'volley'].slice(0, rep.log.length), '守方照預設下指令');
+  assert.equal(rep.win, false); assert.equal(rep.grade, 0); assert.ok(rep.log.length >= 1 && rep.show.wall === 2 && rep.show.towerN === 1);
+  assert.equal(b.reports[0].win, true); assert.equal(b.reports[0].lost, rep.hurt); assert.equal(b.reports[0].hurt, rep.lost);
   assert.equal(b.shieldUntil, 0, '守住了就沒有保護時間');
-  assert.ok(b.units.w + b.units.a > 6, '守軍大多回到部落');
+  assert.equal(b.units.w + b.units.a, 12 - rep.hurt, '守軍留在部落裡'); assert.ok(b.units.w + b.units.a > 6);
   assert.ok(b.glory >= 5);
+  assert.equal(a.away.w, 4 - rep.lost, '負傷的人不再算出征中');
+  now = run(w, now, 200);
+  assert.deepEqual([a.units.w, a.away.w, w.marches.length], [4 - rep.lost, 0, 0], '剩下的人回到部落');
   check(w);
 });
 
-test('對戰：防守方在線上可以自己下指令，時間到沒下就照預設', () => {
+test('對戰：隊伍一到就打完，雙方同時收到戰報；戰報帶著每一回合的紀錄可以重播', () => {
   const w = new World({ rng: seeded(8) });
   let now = 1e6;
   const a = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'bunun' }, now).id];
   const b = w.villages[w.join('b', { owner: 'B', name: '乙', tribe: 'amis' }, now).id];
-  w.setOnline(a.id, true, now); w.setOnline(b.id, true, now); b.newbieUntil = 0;
-  a.units.w = 6; a.units.a = 6; b.units.w = 6; b.units.a = 6;
+  w.setOnline(a.id, true, now); b.newbieUntil = 0;   // 乙不在線上
+  a.units.w = 6; a.units.a = 6; b.units.w = 6; b.units.a = 6; b.res.food = 800;
   assert.ok(w.act(a.id, { type: 'attack', to: b.id, w: 6, a: 6 }, now).ok);
-  while (!a.battle) { now += 1000; w.tick(now); }
-  const bt = w.battles[a.battle];
-  assert.equal(w.snapshot(b.id, now).battle.role, 'def');
-  while (bt.state !== 'pick') { now += 1000; w.tick(now); }
-  assert.ok(w.act(a.id, { type: 'cmd', c: 'charge' }, now).ok);
-  assert.equal(bt.state, 'pick', '守方在線上，要等他下令');
-  assert.ok(w.act(b.id, { type: 'cmd', c: 'volley' }, now).ok);
-  assert.equal(bt.state, 'show'); assert.deepEqual([bt.log[0].a, bt.log[0].d], ['charge', 'volley']);
-  now = run(w, now, 6);
-  assert.equal(bt.phase, 2);
-  now = run(w, now, 14);                     // 雙方都不下令，等時間到
-  assert.equal(bt.log.length, 2); assert.equal(bt.log[1].a, 'charge'); assert.equal(bt.log[1].d, b.def.plan[1]);
-  while (bt.state !== 'done') { now += 1000; w.tick(now); }
-  assert.equal(a.battle, null);
-  const fin = w.snapshot(b.id, now).battle;
-  assert.ok(fin && fin.result && fin.role === 'def', '打完後雙方還收得到結果');
-  now = run(w, now, 30);
-  assert.equal(w.snapshot(b.id, now).battle, null, '過一陣子就不再傳');
+  const arrive = w.marches[0].arriveAt;
+  now = arrive - 1; w.tick(now); assert.equal(a.reports.length, 0);
+  now = arrive + 1; w.tick(now);
+  assert.equal(a.reports.length, 1); assert.equal(b.reports.length, 1, '同一刻雙方都有戰報');
+  const ra = a.reports[0], rb = b.reports[0];
+  assert.deepEqual(ra.log, rb.log); assert.equal(ra.role, 'atk'); assert.equal(rb.role, 'def'); assert.equal(ra.win, !rb.win);
+  assert.ok(ra.log.length >= 2); ra.log.forEach((p, i) => { assert.equal(p.r, i, '回合依序'); assert.ok(p.a && p.d); });
+  assert.equal(all3(ra.log[ra.log.length - 1].a), 12 - ra.lost); assert.equal(all3(ra.log[ra.log.length - 1].d), 12 - rb.lost);
+  assert.equal(b.units.w + b.units.a, 12 - rb.lost);
+  const me = w.snapshot(a.id, now).me;
+  assert.ok(me.reports[0].show && me.reports[0].log.length === ra.log.length, '玩家收得到重播用的紀錄'); assert.equal(me.battle, undefined); assert.equal(me.def, undefined);
+  if (ra.win) { assert.ok(w.marches[0].phase === 'back' && w.marches[0].loot.food > 0); assert.ok(b.shieldUntil > now); }
+  now = run(w, now, 200);
+  assert.equal(a.units.w + a.units.a, 12 - ra.lost); assert.equal(all3(a.away), 0);
   check(w);
 });
 
@@ -334,13 +353,17 @@ test('野地資源點：佔領、產出、被搶、召回', () => {
   const base = 60 * R.derived(a, 1).rates.mat;
   assert.ok(a.res.mat - mat0 > base + 60 * R.POINT.wood.rate * 4 * 0.9, '資源點多產出建材');
   assert.equal(w.snapshot(b.id, now).points[0].w, null, '別人看不到確切的駐守人數');
+  assert.ok(w.snapshot(b.id, now).points[0].pw > 0, '但是看得到駐守的戰力，用來估勝算');
   // 乙派更多人來搶
   b.units.w = 6; b.units.a = 6;
   assert.ok(w.act(b.id, { type: 'occupy', hex: wild[0], w: 6, a: 6 }, now).ok);
   now = run(w, now, 70);
   assert.equal(w.points[wild[0]].owner, b.id, '人多的一方搶下來');
-  assert.equal(a.away.w + a.away.a, 0, '被趕走的人不再算出征中');
   assert.ok(a.reports[0].note.includes('搶走')); assert.ok(w.relOf('bunun', 'amis') < 0);
+  assert.ok(a.reports[0].show && a.reports[0].show.point && b.reports[0].log.length >= 1, '資源點的較量也有可以重播的紀錄');
+  const lostHere = a.reports[0].lost; assert.equal(a.away.w + a.away.a, 4 - lostHere, '撤退的人還在回家的路上');
+  now = run(w, now, 70);
+  assert.equal(a.away.w + a.away.a, 0); assert.equal(a.units.w + a.units.a, 8 - lostHere, '撤退的人回到部落');
   // 召回
   const n = w.points[wild[0]].w + w.points[wild[0]].a, home = b.units.w + b.units.a;
   assert.ok(w.act(b.id, { type: 'recall', hex: wild[0] }, now).ok);
@@ -443,11 +466,7 @@ test('獨特建築的效果：望樓讓來襲變慢、石板建築保護量加�
   assert.ok(Math.abs(toWatch - Math.min(60, 6 + 2.5 * d1) * 1500) < 1, '出征有望樓的部落，路上多花一半時間');
 });
 
-test('獨特兵種：能上場；守方的山林獵手比進攻時更強；英雄能力一場只能用一次', () => {
-  const side = (u, tribe, def) => R.mkSide(0, 0, u, tribe, def);
-  const fight = (def) => { const b = { phase: 1, wall: 0, towers: 0, lanes: [{ a: side(6, def ? 'bunun' : 'atayal', false), d: side(6, def ? 'atayal' : 'bunun', true), broken: false }, { a: side(0, 'bunun'), d: side(0, 'bunun'), broken: true }, { a: side(0, 'bunun'), d: side(0, 'bunun'), broken: true }] }; R.fightPhase(b, 'charge', 'charge', seeded(5)); return b.lanes[0]; };
-  const asDef = fight(true), asAtk = fight(false);
-  assert.ok(asDef.d.u >= asAtk.a.u, '泰雅的山林獵手守在部落時損失不會比進攻時多');
+test('獨特兵種能上場；英雄能力自動發動、一場一次，用過要休息', () => {
   const w = new World({ rng: seeded(71) });
   let now = 1e6;
   const a = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'bunun' }, now).id];
@@ -456,20 +475,19 @@ test('獨特兵種：能上場；守方的山林獵手比進攻時更強；英�
   a.quest = 5; a.units.w = 3; a.units.a = 3; a.units.u = 4; b.units.w = 4; b.units.a = 4; b.units.u = 2; b.quest = 4;
   assert.ok(w.act(a.id, { type: 'attack', to: b.id, w: 3, a: 3, u: 4 }, now).ok);
   assert.equal(a.away.u, 4);
-  while (!a.battle) { now += 1000; w.tick(now); }
-  const bt = w.battles[a.battle];
-  assert.deepEqual(bt.hero, { a: true, d: false }, '守方還沒完成主線，沒有英雄');
-  assert.equal(bt.lanes.reduce((s, l) => s + l.a.u, 0), 4); assert.equal(bt.lanes.reduce((s, l) => s + l.d.u, 0), 2);
-  while (bt.state !== 'pick') { now += 1000; w.tick(now); }
-  assert.ok(w.act(a.id, { type: 'cmd', c: 'hero' }, now).ok);
-  assert.equal(bt.log[0].ha, 'volley2'); assert.equal(bt.log[0].a, 'volley', '射日一箭算作掩護射擊');
-  assert.equal(w.snapshot(a.id, now).battle.hero, false);
-  while (bt.state !== 'pick' && bt.state !== 'done') { now += 1000; w.tick(now); }
-  if (bt.state === 'pick') assert.equal(w.act(a.id, { type: 'cmd', c: 'hero' }, now).ok, false, '一場只能用一次');
-  while (bt.state !== 'done') { now += 1000; w.tick(now); }
-  assert.ok(a.heroRest > now, '用過之後英雄要休息');
+  while (!a.reports.length) { now += 1000; w.tick(now); }
+  const rep = a.reports[0];
+  assert.deepEqual(rep.show.start, { a: { w: 3, a: 3, u: 4 }, d: { w: 4, a: 4, u: 2 } });
+  assert.equal(rep.log[0].ha, 'volley2', '布農的英雄在開場的遠射發動');
+  assert.equal(rep.log.filter(p => p.ha).length, 1, '一場只發動一次'); assert.equal(rep.log.filter(p => p.hd).length, 0, '守方還沒完成主線，沒有英雄');
+  assert.ok(a.heroRest > now, '出過力之後英雄要休息'); assert.equal(b.heroRest, 0);
   now = run(w, now, 90);
   assert.equal(a.away.u, 0); assert.ok(a.units.u <= 4 && a.units.u >= 0);
+  // 英雄還在休息：再打一場就不會發動
+  a.units.w = 3; a.units.a = 3; a.units.u = 4; a.cool = {}; b.shieldUntil = 0; b.units.w = 4; b.units.a = 4;
+  assert.ok(w.act(a.id, { type: 'attack', to: b.id, w: 3, a: 3, u: 4 }, now).ok);
+  const n0 = a.reports.length; while (a.reports.length === n0 && a.reports[0] === rep) { now += 1000; w.tick(now); }
+  assert.equal(a.reports[0].log.filter(p => p.ha).length, 0, '休息中的英雄不會出力');
   check(w);
 });
 
@@ -491,7 +509,7 @@ test('可調數值：超出範圍會夾回去、不認得的略過；每個世�
   assert.ok(R.TUNE_DEF.every(d => d.min <= d.def && d.def <= d.max && d.zh && d.g), '每個可調數值都有名稱、分組，預設值在範圍內');
 });
 
-test('遊戲節奏：產量變慢，建設、訓練、路程、保護變長；對戰的讀秒不變', () => {
+test('遊戲節奏：產量變慢，建設、訓練、路程、保護變長；對戰還是一到就打完', () => {
   const w = new World({ rng: seeded(83) });
   let now = 1e6;
   const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'bunun' }, now).id];
@@ -508,10 +526,7 @@ test('遊戲節奏：產量變慢，建設、訓練、路程、保護變長；�
   assert.ok(w.act(v.id, { type: 'attack', to: b.id, w: 4, a: 0 }, now).ok);
   assert.ok(w.marches[0].arriveAt - now >= 6 * 20 * 1000, '路程變長');
   now = w.marches[0].arriveAt + 10; w.tick(now);
-  const bt = w.battles[v.battle];
-  assert.ok(bt && bt.deadline - now <= 6000, '對戰的準備時間還是幾秒鐘，不受節奏影響');
-  while (bt.state !== 'done') { now += 1000; w.tick(now); }
-  assert.ok(now - (w.marches[0] ? w.marches[0].departAt : now) < 120000, '一場對戰在兩分鐘內打完');
+  assert.ok(v.reports[0] && v.reports[0].show, '隊伍一到就打完，不受節奏影響');
   check(w);
 });
 
@@ -539,29 +554,44 @@ test('後台調整部落：物資加減不會超過倉庫、可以給保護，�
   check(w);
 });
 
-test('英雄能力不剋人也不被剋；世代接力讓一半負傷的人歸隊（無條件進位）', () => {
-  new World();   // 換回預設的數值
-  assert.deepEqual(R.edge('charge', 'volley', false, false), { a: 1.5, d: 1 }, '一般指令：衝鋒怕掩護射擊');
-  assert.deepEqual(R.edge('charge', 'volley', true, false), { a: 1, d: 1 }, '攻方用英雄：不被剋');
-  assert.deepEqual(R.edge('hold', 'charge', false, true), { a: 0.6, d: 1 }, '守方用英雄：也不剋人（重整只有原本的減傷）');
-  const side = (w, lost) => { const s = R.mkSide(w, 0, 0, 'atayal', false); s.lostW = lost; return s; };
-  const b = { phase: 2, wall: 0, towers: 0, lanes: [{ a: side(2, 3), d: R.mkSide(0, 0, 0, 'bunun', true), broken: true }, { a: side(2, 1), d: R.mkSide(0, 0, 0, 'bunun', true), broken: true }, { a: side(0, 0), d: R.mkSide(0, 0, 0, 'bunun', true), broken: true }], hero: { a: true, d: false }, aTribe: 'atayal', dTribe: 'bunun', log: [] };
-  b.lanes[0].broken = false; b.lanes[0].d = R.mkSide(1, 0, 0, 'bunun', true); b.lanes[1].broken = false; b.lanes[1].d = R.mkSide(1, 0, 0, 'bunun', true);
-  const rec = R.playPhase(b, 'hero', 'hold', seeded(3));
-  assert.equal(rec.ha, 'relay'); assert.equal(rec.a, 'hold'); assert.equal(b.hero.a, false);
-  assert.equal(rec.lanes[0].backA, 2, '負傷 3 人，一半是 1.5，進位成 2 人歸隊'); assert.equal(rec.lanes[1].backA, 1, '負傷 1 人也回得來');
-  assert.equal(R.playPhase(b, 'hero', 'hold', seeded(4)).ha, null, '英雄用過了，再選也只算一般指令');
+test('英雄能力各自的時機：凝神一箭在開場、齊心在第一次交鋒、世代接力在負傷三成之後、守望在人數剩六成以下', () => {
+  new World();
+  const army = (tribe, hero, o) => Object.assign({ tribe, w: 5, a: 5, u: 2, hero }, o);
+  const find = (r, k) => r.log.filter(p => p[k]);
+  for (let i = 1; i <= 30; i++) {
+    const bu = R.autoBattle(army('bunun', true), army('amis', true), seeded(i));
+    assert.equal(find(bu, 'ha').length, 1); assert.equal(find(bu, 'ha')[0].r, 0, '凝神一箭：開場的遠射');
+    assert.equal(find(bu, 'hd').length, 1); assert.equal(find(bu, 'hd')[0].r, 1, '齊心：第一次交鋒');
+    const at = R.autoBattle(army('atayal', true), army('paiwan', true, { wall: 1 }), seeded(i)), ha = find(at, 'ha')[0], hd = find(at, 'hd')[0];
+    if (ha) { const before = at.log[at.log.indexOf(ha) - 1]; assert.ok(ha.r >= 1 && 12 - all3(before.a) >= 4, '世代接力：負傷的人到三成才發動'); assert.ok(ha.backA >= 0 && ha.backA <= 12 - all3(before.a)); }
+    if (hd) { const before = at.log[at.log.indexOf(hd) - 1]; assert.ok(hd.r >= 1 && all3(before.d) <= 12 * 0.6, '守望：人數剩六成以下才發動'); }
+    assert.ok(find(at, 'ha').length <= 1 && find(at, 'hd').length <= 1);
+    const none = R.autoBattle(army('atayal', false), army('paiwan', false), seeded(i));
+    assert.equal(find(none, 'ha').length + find(none, 'hd').length, 0, '沒有英雄就不會發動');
+  }
+  const melee = R.autoBattle({ tribe: 'bunun', w: 8, a: 0, u: 0, hero: true }, { tribe: 'amis', w: 8, a: 0, u: 0 }, seeded(2));
+  assert.equal(melee.log[0].r, 1, '兩邊都沒有弓箭：直接接近'); assert.equal(melee.log[0].ha, 'volley2', '沒有弓箭時，凝神一箭留到第一次交鋒');
+  let back = 0, lost = 0;   // 世代接力：平均有兩成負傷的人歸隊
+  for (let i = 1; i <= 400; i++) {
+    const r = R.autoBattle({ tribe: 'atayal', w: 10, a: 0, u: 0, hero: true }, { tribe: 'amis', w: 10, a: 0, u: 0 }, seeded(i)), h = r.log.filter(p => p.ha)[0];
+    if (h) { back += h.backA; lost += 10 - all3(r.log[r.log.indexOf(h) - 1].a); }
+  }
+  assert.ok(lost > 500 && Math.abs(back / lost - R.TUNE.abRelayBack) < 0.05, '歸隊比例 ' + (back / lost).toFixed(2));
 });
 
-test('自動模擬對戰：同一組亂數結果相同；標準情境下任兩族都在 45%～55% 之內', () => {
+test('自動模擬對戰：同一組亂數結果相同；兵力差不多時任兩族都在 45%～55% 之內', () => {
   new World();
   const m1 = R.simMatrix({ n: 300, rng: seeded(5) }), m2 = R.simMatrix({ n: 300, rng: seeded(5) });
   assert.deepEqual(m1.duel, m2.duel);
   assert.equal(m1.pairs.length, 16); assert.equal(m1.duel.length, 6); assert.equal(m1.tribes.length, 4);
-  const m = R.simMatrix({ n: 2500, rng: seeded(11) });
-  assert.ok(m.ok && m.worst <= 0.05, '最大偏差 ' + (m.worst * 100).toFixed(1) + '%：' + m.duel.map(d => d.x + '-' + d.y + ' ' + (d.score * 100).toFixed(1)).join(' '));
-  const r = R.simBattle({ tribe: 'bunun', w: 6, a: 6, u: 6, lanes: 'even', hero: true }, { tribe: 'amis', w: 0, a: 0, u: 0, lanes: 'even', hero: false, wall: 0 }, null, null, seeded(1));
-  assert.equal(r.broken, 3); assert.equal(r.win, true); assert.equal(r.lostA, 0, '沒有守軍：三路都攻破、沒有人負傷');
+  [['標準', {}], ['沒有獨特兵種', { army: { w: 6, a: 6, u: 0 } }], ['大隊', { army: { w: 6, a: 6, u: 6 }, wall: 2, towers: [1] }]].forEach(([name, o], i) => {
+    const m = R.simMatrix(Object.assign({ n: 2500, rng: seeded(11 + i) }, o));
+    assert.ok(m.ok && m.worst <= 0.05, name + '：最大偏差 ' + (m.worst * 100).toFixed(1) + '%：' + m.duel.map(d => d.x + '-' + d.y + ' ' + (d.score * 100).toFixed(1)).join(' '));
+  });
+  const flat = R.simMatrix({ n: 200, rng: seeded(3), spread: 0 });
+  assert.ok(flat.pairs.every(p => p.win < 0.2), '人數完全一樣又有圍籬時，幾乎都是守方守住——所以模擬要讓人數上下浮動才量得出強弱');
+  const r = R.simBattle({ tribe: 'bunun', w: 6, a: 6, u: 6, hero: true }, { tribe: 'amis', w: 0, a: 0, u: 0, hero: false, wall: 0 }, seeded(1));
+  assert.equal(r.grade, 3); assert.equal(r.win, true); assert.equal(r.lostA, 0, '沒有守軍：大勝、沒有人負傷');
 });
 
 test('玩家送來奇怪的名稱（__proto__、constructor、toString…）：一律當成查不到，不會出錯', () => {
@@ -616,11 +646,40 @@ test('後台改名與移除部落：隊伍、資源點、掛單、聯盟一併�
   assert.equal(w.join('tokB', { owner: '乙', name: '乙二', tribe: 'amis' }, now).resumed, undefined, '同一個識別碼再來，是全新的部落');
   assert.equal(w.removeVillage('nope', now).ok, false);
   assert.ok(w.adminLog.length >= 2);
-  a.cool = {}; assert.ok(w.act(a.id, { type: 'attack', to: c.id, w: 3, a: 0 }, now).ok);   // 交戰中的部落不能移除
-  while (!c.battle) { now += 1000; w.tick(now); }
-  assert.equal(w.removeVillage(c.id, now).ok, false); assert.equal(w.removeVillage(a.id, now).ok, false);
-  while (w.battles[c.battle] && w.battles[c.battle].state !== 'done') { now += 1000; w.tick(now); }
-  assert.ok(w.removeVillage(c.id, now).ok, '打完就可以移除');
+  a.cool = {}; assert.ok(w.act(a.id, { type: 'attack', to: c.id, w: 3, a: 0 }, now).ok);
+  assert.ok(w.removeVillage(c.id, now).ok, '對戰是一到就打完，沒有「交戰中」的狀態，隨時可以移除');
+  now = run(w, now, 200);
+  assert.deepEqual([a.units.w, a.away.w], [6, 0], '朝它出征的人折返回來');
   for (let i = 1; i <= 30; i++) w.tick(now + i * 1000);
   check(w);
+});
+
+test('舊存檔：打到一半的舊式對戰把人送回去；佈防設定拿掉；舊規則調出來的對戰數值改用新的預設', () => {
+  const w = new World({ rng: seeded(97) });
+  let now = 1e6;
+  const a = w.villages[w.join('tokA-0123456789abcdef', { owner: 'A', name: '甲', tribe: 'bunun' }, now).id];
+  const b = w.villages[w.join('tokB-0123456789abcdef', { owner: 'B', name: '乙', tribe: 'amis' }, now).id];
+  const save = JSON.parse(JSON.stringify(w.toJSON()));
+  const sa = save.villages[a.id], sb = save.villages[b.id];
+  // 改成舊版存檔的樣子：甲派 4 個勇士出征乙，場上還剩 2 個；乙的守軍 3 人都在場上
+  sa.away.w = 4; sa.battle = 'b1'; sb.battle = 'b1'; sa.def = { lanes: 'gate', plan: ['volley', 'hold', 'charge'] }; sb.def = sa.def;
+  sa.reports = [{ id: 'r1', t: now, role: 'atk', other: '乙', otherTribe: 'amis', win: true, broken: 2, loot: {}, lost: 1, log: [{ phase: 1, a: 'charge', d: 'hold', lanes: [] }] }];
+  save.marches = [{ id: 'm1', from: a.id, to: b.id, w: 4, a: 0, u: 0, lanes: 'even', departAt: now - 5000, arriveAt: now - 1000, travel: 4000, phase: 'fight', loot: null }];
+  const lane = (aw, dw, da) => ({ a: { w: aw, a: 0, u: 0 }, d: { w: dw, a: da, u: 0 }, broken: false });
+  save.battles = { b1: { id: 'b1', a: a.id, d: b.id, march: 'm1', state: 'pick', phase: 2, lanes: [lane(1, 1, 1), lane(1, 0, 1), lane(0, 0, 0)], log: [] } };
+  delete save.tuneRev; save.tune = Object.assign({}, save.tune, { pace: 20, prod: 1.5, uAtk_bunun: 15, abRelay: 0.7, wallPct: 20 });
+  const w2 = new World({ rng: seeded(1) }).load(save);
+  const a2 = w2.villages[a.id], b2 = w2.villages[b.id];
+  assert.equal(a2.battle, undefined); assert.equal(a2.def, undefined);
+  assert.deepEqual([b2.units.w, b2.units.a], [1, 2], '守軍回到部落');
+  assert.equal(a2.away.w, 2, '負傷的人不再算出征中'); assert.equal(w2.marches[0].phase, 'back'); assert.equal(w2.marches[0].w, 2);
+  assert.equal(w2.tune.pace, 20); assert.equal(w2.tune.prod, 1.5, '節奏和經濟的設定照舊');
+  assert.equal(w2.tune.uAtk_bunun, R.tuneDefaults().uAtk_bunun); assert.equal(w2.tune.wallPct, R.tuneDefaults().wallPct, '對戰相關的數值改用新的預設');
+  w2.tick(now + 5000);
+  assert.deepEqual([a2.units.w, a2.away.w, w2.marches.length], [2, 0, 0], '折返的人回到部落');
+  assert.ok(w2.snapshot(a.id, now + 6000).me.reports[0].broken === 2, '舊的戰報還在');
+  const again = new World({ rng: seeded(1) }).load(JSON.parse(JSON.stringify(Object.assign(w2.toJSON(), {}))));
+  w2.setTune({ wallPct: 12 }); const w3 = new World().load(JSON.parse(JSON.stringify(w2.toJSON())));
+  assert.equal(w3.tune.wallPct, 12, '新版存檔裡調過的對戰數值會保留'); assert.equal(again.tune.pace, 20);
+  check(w2);
 });
