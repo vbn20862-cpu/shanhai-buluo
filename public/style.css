@@ -181,6 +181,17 @@ p { margin: 4px 0; }
 .ic-army { color: #E7B9A0; } .ic-shield { color: var(--good); }
 .chip.safe { border-color: var(--good); color: var(--good); }
 .chip.bless { border-color: var(--gold); color: var(--gold); }
+/* 部落代碼（換裝置用） */
+.codebox { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; letter-spacing: .04em; background: var(--bg); border: 1px dashed var(--gold); border-radius: 8px; padding: 7px 10px; word-break: break-all; user-select: all; -webkit-user-select: all; margin: 4px 0; }
+.adopt { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: end; }
+.adopt label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--mute); }
+.adopt input { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; color: var(--ink); font-size: 14px; min-width: 0; }
+.adoptbtn { width: 100%; padding: 7px; }
+/* 關於這個遊戲 */
+.about { border: 1px solid var(--line); border-radius: 10px; padding: 7px 12px; color: var(--mute); font-size: 12.5px; }
+.about summary { cursor: pointer; color: var(--ink); font-weight: 500; }
+.about p { margin: 6px 0; line-height: 1.6; }
+.about b { color: var(--ink); }
 /* 任務主線與共聚 */
 .card.quest { border-color: rgba(227, 179, 65, .55); }
 .card.quest.ready { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }

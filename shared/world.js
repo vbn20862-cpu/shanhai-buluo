@@ -460,6 +460,43 @@
   World.prototype.adminNote = function (text, now) {
     this.adminLog.push({ t: now, text: text }); if (this.adminLog.length > 80) this.adminLog.splice(0, this.adminLog.length - 80);
   };
+  /* 後台：幫部落改名（處理不當的名稱）。name 是部落名稱，owner 是主人的名字，沒給的就不改 */
+  World.prototype.adminRename = function (id, d, now) {
+    var v = this.villages[id]; if (!v) return { ok: false, msg: '找不到這個部落' };
+    var name = d.name == null ? '' : clean(d.name, 10), owner = d.owner == null ? '' : clean(d.owner, 10), done = [];
+    if (name && name !== v.name) { done.push('部落「' + v.name + '」改名為「' + name + '」'); v.name = name; }
+    if (owner && owner !== v.owner) { done.push('「' + v.name + '」的主人「' + v.owner + '」改名為「' + owner + '」'); v.owner = owner; }
+    if (!done.length) return { ok: false, msg: '名稱沒有變' };
+    for (var bk in this.battles) { var b = this.battles[bk]; if (b.a === id) b.aName = v.name; if (b.d === id) b.dName = v.name; }
+    this.adminNote(done.join('、'), now);
+    return { ok: true, msg: done.join('、') };
+  };
+  /* 後台：移除一個部落（灌水或棄置的帳號）。交戰中不能移除；它派出去的隊伍、佔領的資源點、掛的單、聯盟身分一併清掉，
+   * 別人正朝它出征的隊伍會折返。移除後原本的識別碼作廢，那個玩家會回到開始畫面 */
+  World.prototype.removeVillage = function (id, now) {
+    TUNE = this.tune;
+    var v = this.villages[id], self = this; if (!v) return { ok: false, msg: '找不到這個部落' };
+    if (v.battle && this.battles[v.battle] && this.battles[v.battle].state !== 'done') return { ok: false, msg: '這個部落正在交戰，等打完再移除' };
+    if (v.ally) ACTIONS.allyLeave.call(this, v, {}, now);
+    this.marches = this.marches.filter(function (m) {
+      if (m.from === id) return false;
+      if (m.to === id && m.phase === 'out') {   // 別人朝它出征的隊伍：折返
+        var o = self.villages[m.from];
+        if (o) self.pushReport(o, { t: now, role: 'atk', other: v.name, otherTribe: v.tribe, win: false, broken: 0, note: '對方的部落已經不在了，隊伍折返。', log: [] });
+        m.phase = 'back'; m.departAt = now; m.arriveAt = now + (m.travel || 0);
+      }
+      return true;
+    });
+    for (var h in this.points) if (this.points[h].owner === id) delete this.points[h];
+    this.market = this.market.filter(function (o) { return o.from !== id; });
+    for (var tk in this.tokens) if (this.tokens[tk] === id) delete this.tokens[tk];
+    for (var bk in this.battles) if (this.battles[bk].a === id || this.battles[bk].d === id) delete this.battles[bk];
+    for (var oid in this.villages) if (this.villages[oid].cool) delete this.villages[oid].cool[id];
+    delete this.villages[id];
+    this.popBonus();
+    this.adminNote('移除部落「' + v.name + '」（' + (Tribes.get(v.tribe) || {}).zh + '，主人 ' + v.owner + (v.bot ? '，示範部落' : '') + '）', now);
+    return { ok: true, msg: '已移除「' + v.name + '」' };
+  };
   /* 後台：調整某個部落的物資或保護。d = { food, mat, sp: { 族群: 數量 }, shieldMin }，數量可正可負 */
   World.prototype.adminAdjust = function (id, d, now) {
     TUNE = this.tune;
@@ -1183,12 +1220,13 @@
     p.pop = v.pop;
     return p;
   };
-  World.prototype.snapshot = function (id, now) {
+  /* 給某個玩家的完整狀態。opt.noPubs：不帶全島的部落清單（伺服器另外用差異的方式傳，才不會每秒重傳一大包） */
+  World.prototype.snapshot = function (id, now, opt) {
     TUNE = this.tune;
     var v = this.villages[id], self = this;
     if (!v) return null;
     var me = JSON.parse(JSON.stringify(v));
-    delete me.offSnap; delete me.offLog; delete me.cool;
+    delete me.offSnap; delete me.offLog; delete me.cool; delete me.last; delete me.popAcc;   // 玩家用不到的欄位不傳
     var bt = v.battle && this.battles[v.battle];
     if (!bt) for (var bk in this.battles) {   // 剛打完的對戰再多傳一小段時間，讓雙方看到結果
       var x = this.battles[bk]; if (x.state === 'done' && (x.a === id || x.d === id)) bt = x;
@@ -1199,7 +1237,7 @@
     for (var k in this.alliances) al[k] = { id: k, name: this.alliances[k].name, leader: this.alliances[k].leader, n: this.alliances[k].members.length };
     return {
       now: now, speed: this.speed, me: me,
-      villages: Object.keys(this.villages).map(function (k) { return self.pub(self.villages[k], now); }),
+      villages: opt && opt.noPubs ? undefined : Object.keys(this.villages).map(function (k) { return self.pub(self.villages[k], now); }),
       marches: this.marches.map(function (m) { return { id: m.id, from: m.from, to: m.to, hex: m.hex || null, departAt: m.departAt, arriveAt: m.arriveAt, phase: m.phase, n: all3(m) }; }),
       shieldMs: shieldMs() / this.speed, tune: this.tune, tv: this.tuneV,
       rel: Tribes.playable().filter(function (t) { return t.id !== v.tribe; }).map(function (t) { return { tribe: t.id, value: self.relOf(v.tribe, t.id), state: self.relState(v.tribe, t.id) }; }),

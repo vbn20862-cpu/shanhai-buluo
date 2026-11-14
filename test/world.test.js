@@ -590,3 +590,37 @@ test('玩家送來奇怪的名稱（__proto__、constructor、toString…）：�
   assert.equal(w2.act(Object.keys(w2.villages)[0], { type: 'attack', to: 'toString', w: 1, a: 0 }, now + 30000).ok, false, '讀檔之後也一樣安全');
   check(w);
 });
+
+test('後台改名與移除部落：隊伍、資源點、掛單、聯盟一併處理，識別碼作廢', () => {
+  const w = new World({ rng: seeded(93) });
+  let now = 1e6;
+  const mk = (tok, name, tribe) => { const v = w.villages[w.join(tok, { owner: name, name: name, tribe }, now).id]; v.newbieUntil = 0; v.tiles[3] = { type: 'barracks', level: 1 }; v.units.w = 6; v.res.food = 400; v.res.mat = 400; w.setOnline(v.id, true, now); return v; };
+  const a = mk('tokA', '甲', 'bunun'), b = mk('tokB', '乙', 'amis'), c = mk('tokC', '丙', 'paiwan');
+  assert.ok(w.adminRename(a.id, { name: '  新<名>字  ', owner: '阿明' }, now).ok); assert.equal(a.name, '新名字'); assert.equal(a.owner, '阿明');
+  assert.equal(w.adminRename(a.id, { name: '新名字' }, now).ok, false, '沒有變就不算'); assert.equal(w.adminRename('nope', { name: 'x' }, now).ok, false);
+  assert.ok(w.act(b.id, { type: 'allyCreate', name: '山海盟' }, now).ok); assert.ok(w.act(c.id, { type: 'allyJoin', id: b.ally }, now).ok);
+  assert.ok(w.act(b.id, { type: 'offer', give: 'food', giveN: 10, want: 'mat', wantN: 10 }, now).ok);
+  const wild = w.map.hexes.filter(h => h.wild)[0];
+  assert.ok(w.act(b.id, { type: 'occupy', hex: wild.id, w: 2, a: 0 }, now).ok);
+  assert.ok(w.act(a.id, { type: 'attack', to: b.id, w: 3, a: 0 }, now).ok);   // 甲正朝乙出征
+  const wild2 = w.map.hexes.filter(h => h.wild)[1];
+  w.points[wild2.id] = { owner: b.id, w: 1, a: 0, u: 0, since: now };   // 乙已經佔了一處資源點，另一支隊伍還在路上
+  assert.equal(w.marches.length, 2);
+  const r = w.removeVillage(b.id, now);
+  assert.ok(r.ok, r.msg); assert.equal(w.villages[b.id], undefined); assert.equal(w.tokens.tokB, undefined, '識別碼作廢');
+  assert.equal(w.market.length, 0); assert.equal(w.points[wild2.id], undefined, '佔領的資源點放掉'); assert.equal(w.marches.length, 1, '它派出去的隊伍一起消失');
+  assert.equal(w.alliances[c.ally].members.length, 1); assert.equal(w.alliances[c.ally].leader, c.id, '盟主換人');
+  const m = w.marches.filter(x => x.from === a.id)[0];
+  if (m) { assert.equal(m.phase, 'back', '朝它出征的隊伍折返'); now = m.arriveAt + 10; w.tick(now); }
+  assert.equal(a.units.w + a.away.w, 6, '甲的人都回來了');
+  assert.equal(w.join('tokB', { owner: '乙', name: '乙二', tribe: 'amis' }, now).resumed, undefined, '同一個識別碼再來，是全新的部落');
+  assert.equal(w.removeVillage('nope', now).ok, false);
+  assert.ok(w.adminLog.length >= 2);
+  a.cool = {}; assert.ok(w.act(a.id, { type: 'attack', to: c.id, w: 3, a: 0 }, now).ok);   // 交戰中的部落不能移除
+  while (!c.battle) { now += 1000; w.tick(now); }
+  assert.equal(w.removeVillage(c.id, now).ok, false); assert.equal(w.removeVillage(a.id, now).ok, false);
+  while (w.battles[c.battle] && w.battles[c.battle].state !== 'done') { now += 1000; w.tick(now); }
+  assert.ok(w.removeVillage(c.id, now).ok, '打完就可以移除');
+  for (let i = 1; i <= 30; i++) w.tick(now + i * 1000);
+  check(w);
+});

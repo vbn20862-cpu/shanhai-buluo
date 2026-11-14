@@ -22,7 +22,7 @@
   var LANE_NAMES = { even: '平均', gate: '正門', path: '山徑', valley: '溪谷' }, GUARD = ['沒有', '少', '中等', '多'];
   var CMD_TIP = { charge: '勇士攻擊大增。剋重整，怕掩護射擊', volley: '弓手攻擊大增。剋衝鋒，對重整效果差', hold: '減少損失、讓負傷的人歸隊。剋掩護射擊，怕衝鋒' };
   var JOBS = ['food', 'mat', 'special'], WILD = { fish: '漁場', hunt: '獵場', wood: '林地' };
-  var S = { me: null, pubs: [], tab: 'build', zone: null, selTile: null, visit: null, needCode: false, battle: null, marches: [], attack: null, report: null, closed: null, gift: null, rel: [], points: [], stock: {}, market: [], feed: [], alliances: {}, form: { owner: '', name: '', code: '', ally: '', give: 'food', giveN: '10', want: 'mat', wantN: '10' }, mode: '', online: false, resetAt: 0, joining: false };
+  var S = { me: null, pubs: [], tab: 'build', zone: null, selTile: null, visit: null, needCode: false, battle: null, marches: [], attack: null, report: null, closed: null, gift: null, rel: [], points: [], stock: {}, market: [], feed: [], alliances: {}, form: { owner: '', name: '', code: '', adopt: '', ally: '', give: 'food', giveN: '10', want: 'mat', wantN: '10' }, mode: '', online: false, resetAt: 0, joining: false };
   var el = {}, MV = null, VV = null;
 
   // ---------- 小工具 ----------
@@ -142,7 +142,7 @@
     setInterval(moveFolk, 2400);
     setInterval(function () { if (S.visit) Net.view(S.visit.id, function (d) { if (d && S.visit && S.visit.id === d.id) { S.visit.v = d; render(); } }); }, 3000);
     Net.on('status', function (s) { S.online = s.online; S.mode = s.mode; render(); });
-    Net.on('hello', function (h) { S.pubs = h.villages || S.pubs; if (h.needCode != null) S.needCode = !!h.needCode; if (h.reset) { S.me = null; S.zone = null; S.selTile = null; S.visit = null; S.tab = 'build'; el.vobjs._sig = null; } render(); });
+    Net.on('hello', function (h) { S.pubs = h.villages || S.pubs; if (h.needCode != null) S.needCode = !!h.needCode; if (h.contact != null) S.contact = String(h.contact); if (h.reset) { S.me = null; S.zone = null; S.selTile = null; S.visit = null; S.tab = 'build'; el.vobjs._sig = null; } render(); });
     Net.on('state', function (st) {
       if (st.tune) R.setTune(st.tune);   // 後台調過的數值：顯示的時間、產量、說明都跟著變
       S.me = st.me; S.pubs = st.villages; S.marches = st.marches || [];
@@ -365,7 +365,14 @@
     var h = '', i = S.selTile;
     if (i != null) h += !me.land[i] ? wildCard(me, i) : me.tiles[i] ? buildingCard(me, i, me.tiles[i]) : emptyCard(me, i);
     else h += '<p class="hint">點建築可以升級，點有 ＋ 的空地可以蓋新建築，點外圍有斧頭記號的山林可以拓荒。畫面可以拖曳和縮放。</p>';
-    return h + questCard(me) + jobsCard(me) + queueCard(me) + idleCard(me);
+    return h + questCard(me) + jobsCard(me) + queueCard(me) + idleCard(me) + codeCard();
+  }
+  function codeCard() {   // 換裝置繼續玩：部落代碼。只有連線版有（單機試玩的進度存在這個瀏覽器裡）
+    if (S.mode !== 'online') return '';
+    var h = '<section class="card"><h3>換裝置繼續玩<span class="lv">部落代碼</span></h3>';
+    if (!S.showCode) return h + '<p class="muted">想在另一支手機或電腦接著玩，或擔心瀏覽器的資料被清掉，先把部落代碼記下來。</p><button class="btn sm ghost" data-act="code-show">顯示我的部落代碼</button></section>';
+    return h + '<p class="codebox" id="codebox">' + esc(Net.code()) + '</p><div class="act"><button class="btn sm" data-act="code-copy">複製連結</button><button class="btn sm ghost" data-act="code-hide">收起來</button></div>' +
+      '<p class="muted">在另一臺裝置打開複製的連結，或在開始畫面按「我已經有部落」輸入這組代碼，就會接回這個部落。</p><p class="why">這組代碼就是部落的鑰匙，不要給別人。</p></section>';
   }
   function idleCard(me) {
     var t = myTribe(), opts = [['even', '平均'], ['food', t.res.food], ['mat', t.res.mat], ['special', t.sp.zh]];
@@ -416,9 +423,21 @@
     }
     return h;
   }
+  function aboutCard() {   // 關於這個遊戲：文化內容的來源與限制、記了哪些資料。開始畫面和圖鑑都會放
+    return '<details class="about"><summary>關於這個遊戲</summary>' +
+      '<p>以臺灣原住民族為主題的部落經營遊戲，背景是虛構的「南島時期」。目前開放泰雅、布農、阿美、排灣四族，其他族會陸續加入。</p>' +
+      '<p>遊戲裡的族語、建築、物產與神話故事，整理自原住民族委員會、文化部、學術研究與出版品等公開資料，並標明語別或地區。<b>這些內容還沒有經過族人與專家審閱</b>，各部落的說法也不盡相同；如果有錯誤或不妥的地方，歡迎指正。</p>' +
+      '<p>遊戲不呈現獵首與傷亡（戰敗一律是「負傷撤退」），神聖或有身分意義的物品不會成為戰利品，各族專屬的紋樣在取得授權前只用一般的幾何形狀；祭儀不會出現在畫面上，神靈也不是可以操控的角色。</p>' +
+      '<p>我們只記下你取的名字、部落名稱與遊戲進度，不蒐集其他個人資料。為了防止灌水，伺服器會暫時記住連線的網路位置，但不會存下來。</p>' +
+      (S.contact ? '<p>' + esc(S.contact) + '</p>' : '') + '</details>';
+  }
   function startPanel() {
     var z = S.zone && G.byId[S.zone], t = z && z.tribe && Tribes.get(z.tribe), ok = t && t.playable;
-    var h = '<div class="start"><h1>山海部落</h1><p class="lead">很久以前，島上的山與海之間住著許多族群。選一個地方，建立你的部落。</p>' +
+    var h = '<div class="start"><h1>山海部落</h1><p class="lead">很久以前，島上的山與海之間住著許多族群。選一個地方，建立你的部落。</p>';
+    if (S.mode === 'online') h += S.adopt
+      ? '<div class="adopt"><label for="f-adopt">部落代碼<input id="f-adopt" maxlength="200" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="貼上部落代碼，或整個連結"></label><button class="btn sm" data-act="adopt-go">接回我的部落</button><button class="btn sm ghost" data-act="adopt-close">取消</button></div>'
+      : '<button class="btn ghost adoptbtn" data-act="adopt-open">玩過了？輸入部落代碼，接回原本的部落</button>';
+    h +=
       '<div class="fields"><label for="f-owner">你的名字<input id="f-owner" maxlength="10" autocomplete="off" placeholder="例如：小米"></label>' +
       '<label for="f-name">部落名稱<input id="f-name" maxlength="10" autocomplete="off" placeholder="例如：晨霧部落"></label>' +
       (S.needCode ? '<label for="f-code" class="wide">邀請碼<input id="f-code" maxlength="40" autocomplete="off" autocapitalize="off" placeholder="這是封閉測試，請輸入邀請你的人給的邀請碼"></label>' : '') + '</div>' +
@@ -430,7 +449,7 @@
     if (t) h += tribeCard(t, (G.regions[t.id] || []).length);
     else if (z) h += zonePanel();
     else h += '<p class="hint">點上面的族群，或直接在地圖上點一個地方。</p>';
-    h += '<button class="btn big" data-act="join"' + (ok && !S.joining ? '' : ' disabled') + '>' + (ok ? '在' + t.zh + '的區域建立部落' : '先選一個可以落腳的區域') + '</button></div>';
+    h += '<button class="btn big" data-act="join"' + (ok && !S.joining ? '' : ' disabled') + '>' + (ok ? '在' + t.zh + '的區域建立部落' : '先選一個可以落腳的區域') + '</button>' + aboutCard() + '</div>';
     return h;
   }
   function codexPanel(me) {
@@ -451,7 +470,7 @@
     t.cards.forEach(function (c) { h += '<section class="card"><h3>' + esc(c.t) + '</h3><p>' + esc(c.x) + '</p></section>'; });
     h += '<p class="label">島上的 17 族</p><ul class="tlist">';
     Tribes.LIST.forEach(function (o) { h += '<li><span class="dot" style="background:' + o.color + '"></span><div><b>' + o.zh + '</b><span class="muted"> ' + o.area + '</span><p>' + o.intro + '</p></div></li>'; });
-    h += '</ul><p class="muted">' + Tribes.SOURCE_NOTE + '</p>';
+    h += '</ul>' + aboutCard();
     return h;
   }
   // ---------- 軍事 ----------
@@ -744,8 +763,8 @@
     if (setHTML(el.pbody, S.tab === 'build' ? buildPanel(me) : S.tab === 'army' ? armyPanel(me) : S.tab === 'social' ? socialPanel(me) : S.tab === 'map' ? zonePanel() : S.tab === 'test' ? testPanel(me) : codexPanel(me))) { el.pbody.scrollTop = keep; tickTimers(); restoreSocial(); }
   }
   function restoreForm() {
-    var a = document.getElementById('f-owner'), b = document.getElementById('f-name'), c = document.getElementById('f-code');
-    if (a) a.value = S.form.owner; if (b) b.value = S.form.name; if (c) c.value = S.form.code;
+    var a = document.getElementById('f-owner'), b = document.getElementById('f-name'), c = document.getElementById('f-code'), d = document.getElementById('f-adopt');
+    if (a) a.value = S.form.owner; if (b) b.value = S.form.name; if (c) c.value = S.form.code; if (d) d.value = S.form.adopt;
   }
   function renderTools() {
     setHTML(el.tools, '<div class="zoom"><button data-act="zoom" data-f="1.4" aria-label="放大">＋</button><button data-act="zoom" data-f="0.714" aria-label="縮小">−</button>' +
@@ -767,6 +786,7 @@
     if (e.target.id === 'f-owner') S.form.owner = e.target.value;
     else if (e.target.id === 'f-name') S.form.name = e.target.value;
     else if (e.target.id === 'f-code') S.form.code = e.target.value;
+    else if (e.target.id === 'f-adopt') S.form.adopt = e.target.value;
     else if (e.target.id === 'f-ally') S.form.ally = e.target.value;
     else if (e.target.id === 'o-give') S.form.give = e.target.value;
     else if (e.target.id === 'o-giveN') S.form.giveN = e.target.value;
@@ -806,6 +826,14 @@
     else if (a === 'focus') act({ type: 'idle', focus: b.getAttribute('data-f') });
     else if (a === 'idleup') act({ type: 'idle', upgrade: b.checked }, b.checked ? '離線時會自動升級' : '已關閉自動升級');
     else if (a === 'ack') act({ type: 'ack' });
+    else if (a === 'code-show' || a === 'code-hide') { S.showCode = a === 'code-show'; render(); }
+    else if (a === 'code-copy') {
+      var link = location.origin + location.pathname + '#t=' + Net.code();
+      var done = function () { toast('連結複製好了，貼到另一臺裝置的瀏覽器打開'); }, manual = function () { var box = document.getElementById('codebox'); if (box && window.getSelection) { var rg = document.createRange(); rg.selectNodeContents(box); var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(rg); } toast('這個瀏覽器不能自動複製，請長按上面的代碼自己複製'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(done, manual); else manual();
+    }
+    else if (a === 'adopt-open' || a === 'adopt-close') { S.adopt = a === 'adopt-open'; render(); }
+    else if (a === 'adopt-go') Net.adopt(S.form.adopt, function (r) { if (!r.ok) return toast(r.msg, true); S.adopt = false; S.form.adopt = ''; toast('找到了，正在接回你的部落'); });
     else if (a === 'quest') { var qi = me.qp ? me.qp.i : 0; Net.act({ type: 'quest' }, function (r) { if (!r.ok) return toast(r.msg, true); toast('完成第 ' + (qi + 1) + ' 章！' + rewardText(myTribe(), qi)); }); }
     else if (a === 'bless') act({ type: 'bless' });
     else if (a === 't-quest') Net.test('quest');

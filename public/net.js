@@ -10,11 +10,20 @@ window.Net = (function () {
   function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
   function token() {
     var t = store(TOKEN_KEY) || memToken;
-    if (!t) {
-      t = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
-      memToken = t; store(TOKEN_KEY, t);
-    }
+    if (!t) { t = newToken(); memToken = t; store(TOKEN_KEY, t); }
     return t;
+  }
+  /* 識別碼就是部落的鑰匙，要用猜不到的亂數（瀏覽器提供的安全亂數；太舊的瀏覽器才退回一般亂數） */
+  function newToken() {
+    var abc = 'abcdefghijkmnpqrstuvwxyz23456789', out = 'p', i;   // 去掉容易看錯的 l、o、0、1，抄寫時比較不會錯
+    try { var buf = new Uint8Array(24); window.crypto.getRandomValues(buf); for (i = 0; i < 24; i++) out += abc[buf[i] % 32]; }
+    catch (e) { for (i = 0; i < 24; i++) out += abc[Math.floor(Math.random() * 32)]; }
+    return out;
+  }
+  function validCode(c) { return typeof c === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(c); }
+  function setToken(t) {   // 換成另一個部落的鑰匙；原本的留一份備用，萬一按錯還找得回來
+    var old = store(TOKEN_KEY) || memToken; if (old && old !== t) store(TOKEN_KEY + '_prev', old);
+    memToken = t; store(TOKEN_KEY, t);
   }
 
   // ----- 單機 -----
@@ -53,19 +62,49 @@ window.Net = (function () {
   function startOnline() {
     mode = 'online';
     socket = window.io({ transports: ['websocket', 'polling'] });
+    /* 伺服器只送有變動的部分，這裡把它們合併回完整的狀態再交給畫面：
+     * villages 是完整的部落清單，vd／vx 是有變動與被移除的部落；me 是完整的自己，mp 是自己有變動的欄位；feedAdd 是新的消息 */
+    var cur = null, pubList = [];
+    function applyPubs(m) {
+      if (m.villages) pubList = m.villages.slice();
+      if (m.vx) pubList = pubList.filter(function (p) { return m.vx.indexOf(p.id) < 0; });
+      if (m.vd) {
+        var idx = {}; pubList.forEach(function (p, i) { idx[p.id] = i; });
+        m.vd.forEach(function (p) { if (idx[p.id] != null) pubList[idx[p.id]] = p; else pubList.push(p); });
+      }
+      return pubList.slice();
+    }
     socket.on('connect', function () {
+      cur = null; pubList = [];   // 重新連上之後，伺服器會重新給一份完整的
       fire('status', { online: true, mode: mode });
-      socket.emit('resume', { token: token() }, function (r) { fire('hello', r || { villages: [] }); });   // 伺服器認得就會接著送出部落狀態
+      socket.emit('resume', { token: token() }, function (r) { r = r || {}; r.villages = applyPubs(r); fire('hello', r); });   // 伺服器認得就會接著送出部落狀態
     });
     socket.on('disconnect', function () { fire('status', { online: false, mode: mode }); });
-    socket.on('state', function (s) { fire('state', s); });
-    socket.on('hello', function (h) { fire('hello', h); });
+    socket.on('state', function (s) {
+      var list = applyPubs(s), k;
+      if (s.me) cur = {};
+      if (!cur) return;   // 還沒拿到完整的狀態，零碎的變動先不處理
+      for (k in s) if (k !== 'mp' && k !== 'vd' && k !== 'vx' && k !== 'feedAdd' && k !== 'villages') cur[k] = s[k];
+      if (s.mp) { var me = {}; for (k in cur.me) me[k] = cur.me[k]; for (k in s.mp) me[k] = s.mp[k]; cur.me = me; }
+      if (s.feedAdd) cur.feed = (cur.feed || []).concat(s.feedAdd).slice(-30);
+      cur.villages = list;
+      var out = {}; for (k in cur) out[k] = cur[k];
+      if (!s.tune) delete out.tune;   // 可調數值只在有新的時候才交給畫面
+      fire('state', out);
+    });
+    socket.on('hello', function (h) { h.villages = applyPubs(h); fire('hello', h); });
   }
 
   return {
     on: on,
     mode: function () { return mode; },
-    start: function () { if (window.io) startOnline(); else startLocal(); },
+    start: function () {
+      if (window.io) {
+        var m = /#t=([A-Za-z0-9_-]{16,64})$/.exec(location.hash || '');
+        if (m) { setToken(m[1]); try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { location.hash = ''; } }   // 用完就從網址上拿掉，免得被別人看到
+        startOnline();
+      } else startLocal();
+    },
     join: function (o, cb) {
       if (mode === 'solo') {
         var now = Date.now(), r = local.join('solo', o, now);
@@ -83,6 +122,19 @@ window.Net = (function () {
     },
     view: function (id, cb) {
       if (mode === 'solo') cb(local.detail(id, Date.now())); else socket.emit('view', id, cb);
+    },
+    /* 部落代碼：在另一臺裝置輸入，就能接回同一個部落。只有連線版有 */
+    code: function () { return mode === 'online' ? token() : ''; },
+    adopt: function (code, cb) {
+      code = String(code || '').trim().replace(/^.*#t=/, '');   // 貼上整個連結也可以
+      if (mode !== 'online') return cb({ ok: false, msg: '單機試玩沒有部落代碼' });
+      if (!validCode(code)) return cb({ ok: false, msg: '代碼的格式不對，請再檢查一次' });
+      if (code === token()) return cb({ ok: false, msg: '這就是這臺裝置現在的部落' });
+      socket.emit('has', code, function (yes) {
+        if (!yes) return cb({ ok: false, msg: '找不到這組代碼的部落' });
+        setToken(code); cb({ ok: true });
+        socket.disconnect(); socket.connect();   // 重新連線，伺服器就會把這臺裝置接到那個部落
+      });
     },
     testing: function () { return mode === 'solo' ? { rich: rich } : null; },
     test: function (kind, on) {   // 單機試玩的測試工具；連線版沒有這條路，伺服器不接受
