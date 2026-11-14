@@ -25,7 +25,12 @@
   })();
   var TILE_N = SITES.length, CENTER_TILE = 0;
   var CLEAR = { 1: { food: 25, time: 12, gain: 15, center: 1 }, 2: { food: 60, time: 25, gain: 35, center: 2 } };   // 拓荒：花糧食與時間，清出來的木石變成建材
-  var MULT = [1, 2.2, 4, 7, 11], TMULT = [1, 2, 3.5, 5.5, 8], MAX_LEVEL = 5;
+  /* 建築最高 25 級。1～5 級的花費與時間和原本一樣（舊部落不受影響），6 級以後花費每級 ×1.25、時間每級 ×1.2：
+   * 正式節奏下，最後幾級要十幾個小時到一天多（中心 25 級約 32 小時）；不賣加速，所以不再更長 */
+  var MAX_LEVEL = 25;
+  function MULT(L) { return L <= 5 ? [1, 2.2, 4, 7, 11][L - 1] : 11 * Math.pow(1.25, L - 5); }
+  function TMULT(L) { return L <= 5 ? [1, 2, 3.5, 5.5, 8][L - 1] : 8 * Math.pow(1.2, L - 5); }
+  function eq(L) { return L <= 5 ? L : 5 * Math.pow(1.25, L - 5); }   // 容量類的效果（倉庫、保護量）跟著花費一起長，才存得下高等級的花費
   var TYPES = ['house', 'farm', 'mat', 'special', 'storage', 'barracks', 'tower', 'unique'];   // unique：各族的獨特建築，任務第 3 章解鎖，只能蓋一座
   var DEF = {
     house: { base: { food: 15, mat: 40 }, time: 8 },
@@ -45,6 +50,20 @@
     4: { food: 900, mat: 900, time: 90, kinds: 2, each: 8 },
     5: { food: 1800, mat: 1800, time: 150, kinds: 3, each: 12 }
   };
+  function centerUp(to) {   // 中心升到 to 級要的東西；6 級以後照曲線往上長
+    if (to < 2 || to > MAX_LEVEL) return null;
+    if (to <= 5) return CENTER_UP[to];
+    return { food: r5(1800 * Math.pow(1.25, to - 5)), mat: r5(1800 * Math.pow(1.25, to - 5)), time: Math.round(150 * Math.pow(1.2, to - 5)), kinds: 3, each: 12 + 3 * (to - 5) };
+  }
+  /* 中心升級的前置條件（和那兩款遊戲一樣）：輪流要求一種建築升到前一級；6 級以後圍籬也要跟上 */
+  var REQ_CYCLE = ['house', 'farm', 'storage', 'mat', 'barracks', 'special', 'tower'];
+  function centerReq(to) {
+    var out = [{ type: REQ_CYCLE[(to - 2) % REQ_CYCLE.length], level: to - 1 }];
+    if (to >= 6) out.push({ type: 'wall', level: to - 1 });
+    return out;
+  }
+  function maxLevelOf(v, type) { if (type === 'wall') return v.wall; var m = 0; for (var i = 0; i < TILE_N; i++) if (v.tiles[i] && v.tiles[i].type === type) m = Math.max(m, v.tiles[i].level); return m; }
+  function reqLeft(v, to) { return centerReq(to).filter(function (r) { return maxLevelOf(v, r.type) < r.level; }); }
   var UNIT = {
     w: { zh: '勇士', atk: 10, hp: 30, cost: { food: 30, mat: 0 }, time: 5 },
     a: { zh: '弓手', atk: 12, hp: 18, cost: { food: 20, mat: 20 }, time: 5 }
@@ -65,6 +84,12 @@
     { type: 'trade', n: 2, text: '和別人交換 2 次（市集或中立聚落）' },
     { type: 'units', n: 4, text: '擁有 4 名戰士' },   // 訓練場一級的名額是 6，留兩個位置給解鎖的獨特兵種
     { type: 'point', n: 1, text: '佔領一處野地資源點' }
+  ];
+  /* 部落發展任務（和神話主線分開）：前面幾個是新手引導，之後跟著「中心升下一級要的條件」一步一步走，一路帶到 25 級。
+   * k：build 蓋一座、level 升到幾級（wall 是圍籬）、units 擁有幾名戰士 */
+  var DEV_START = [
+    { k: 'build', type: 'storage', n: 1 }, { k: 'level', type: 'farm', n: 2 }, { k: 'level', type: 'center', n: 2 },
+    { k: 'level', type: 'house', n: 2 }, { k: 'build', type: 'barracks', n: 1 }, { k: 'units', n: 3 }, { k: 'level', type: 'wall', n: 1 }
   ];
   var BUILDERS = 2, SHIELD_MS = 300000, NEWBIE_MS = 600000, OFFER_MS = 600000;
   var UNIT_U = { cost: { food: 30, mat: 20 }, time: 6 };
@@ -122,7 +147,8 @@
   });
   var TUNE_BY = {}; TUNE_DEF.forEach(function (d) { TUNE_BY[d.k] = d; });
   function tuneDefaults() { var o = Object.create(null); TUNE_DEF.forEach(function (d) { o[d.k] = d.def; }); return o; }
-  var TUNE = tuneDefaults();   // 目前生效的數值。每個世界有自己的一份，執行規則前會換成那個世界的
+  var TUNE = tuneDefaults();
+  function r5(n) { return Math.round(n / 5) * 5; }   // 目前生效的數值。每個世界有自己的一份，執行規則前會換成那個世界的
   /* 把 patch 裡認得的數值寫進 target（預設是目前生效的那一份）：超出範圍的夾回範圍內，不認得的略過。回傳有變動的代號 */
   function setTune(patch, target) {
     var changed = []; target = target || TUNE;
@@ -154,22 +180,21 @@
    * 輕則判斷錯誤、重則整個伺服器出錯，所以凡是會被外來名稱查到的表都用這個 */
   function dict(o) { var d = Object.create(null); if (o) Object.keys(o).forEach(function (k) { d[k] = o[k]; }); return d; }
   CLEAR = dict(CLEAR); DEF = dict(DEF); CENTER_UP = dict(CENTER_UP); UNIT = dict(UNIT); POINT = dict(POINT); PHRASES = dict(PHRASES); TUNE_BY = dict(TUNE_BY);
-  function r5(n) { return Math.round(n / 5) * 5; }
   function cost(type, level) {
-    if (type === 'center') { var c = CENTER_UP[level]; return c ? { food: r5(c.food * TUNE.cost), mat: r5(c.mat * TUNE.cost) } : null; }
-    var d = DEF[type], m = MULT[level - 1] * TUNE.cost;
+    if (type === 'center') { var c = centerUp(level); return c ? { food: r5(c.food * TUNE.cost), mat: r5(c.mat * TUNE.cost) } : null; }
+    var d = DEF[type], m = MULT(level) * TUNE.cost;
     return { food: r5(d.base.food * m), mat: r5(d.base.mat * m) };
   }
   function buildTime(type, level) {
-    var base = type === 'center' ? CENTER_UP[level].time : DEF[type].time * TMULT[level - 1];   // 秒數已經算進遊戲節奏
+    var base = type === 'center' ? centerUp(level).time : DEF[type].time * TMULT(level);   // 秒數已經算進遊戲節奏
     return Math.max(1, Math.round(base * TUNE.pace * TUNE.buildTime));
   }
   function limit(type, C, v) {
     switch (type) {
-      case 'house': case 'farm': case 'mat': return C + 1;
-      case 'special': case 'storage': return 1 + Math.floor(C / 2);
+      case 'house': case 'farm': case 'mat': return Math.min(8, C + 1);         // 數量有上限，往後主要靠升級
+      case 'special': case 'storage': return Math.min(4, 1 + Math.floor(C / 2));
       case 'barracks': return 1;
-      case 'tower': return Math.max(0, C - 1);
+      case 'tower': return Math.min(4, Math.max(0, C - 1));
       case 'unique': return v && v.quest >= 3 ? 1 : 0;
     }
     return 0;
@@ -181,9 +206,10 @@
   function popCap(v) { var n = 4; levelsOf(v, 'house').forEach(function (l) { n += 1 + 2 * l; }); return n; }
   function slots(v) { return { food: sumLevels(v, 'farm') * 2, mat: sumLevels(v, 'mat') * 2, special: sumLevels(v, 'special') * 2 }; }
   function caps(v) {
-    var C = centerLevel(v), st = sumLevels(v, 'storage');
+    var C = centerLevel(v), st = sumLevels(v, 'storage'), se = 0;
+    levelsOf(v, 'storage').forEach(function (L) { se += eq(L); });
     var vault = uniq(v) === 'vault';   // 排灣的獨特建築：耐放的存糧，容量多 300、受保護的份量加倍
-    return { res: 300 + 200 * C + 400 * st + (vault ? TUNE.vaultCap : 0), sp: 20 + 20 * C + 20 * st, protect: (50 * C + 100 * st) * (vault ? TUNE.vaultProt : 1) };
+    return { res: Math.round(300 + 200 * eq(C) + 400 * se + (vault ? TUNE.vaultCap : 0)), sp: 20 + 20 * C + 20 * st, protect: Math.round((50 * eq(C) + 100 * se) * (vault ? TUNE.vaultProt : 1)) };
   }
   function uniq(v) {   // 蓋好獨特建築後的效果代號：watch／range／pond／vault
     var t = Tribes.get(v.tribe);
@@ -223,11 +249,19 @@
     for (var i = 0; i < TILE_N; i++) { if (v.tiles[i]) p += v.tiles[i].level * (v.tiles[i].type === 'center' ? 30 : 10); if (v.land[i] && SITES[i].ring > 0) p += 3; }
     return Math.round(p + v.wall * 10 + v.pop * 3 + foreignKinds(v) * 15 + Math.min(40, v.gifts * 2));
   }
+  /* 部落的戰力：建築（每一級都算，越高級越多）、圍籬、所有的戰士。之後可以拿來做排行榜 */
+  var POW_W = { center: 12, unique: 0 };
+  function villagePower(v) {
+    var p = 0, tri = function (L) { return L * (L + 1) / 2; };
+    for (var i = 0; i < TILE_N; i++) { var b = v.tiles[i]; if (b && b.level > 0) p += b.type === 'unique' ? 40 : (POW_W[b.type] || 3) * tri(b.level); }
+    p += 4 * tri(v.wall);
+    return Math.round(p + power({ tribe: v.tribe, w: v.units.w + v.away.w, a: v.units.a + v.away.a, u: (v.units.u || 0) + (v.away.u || 0) }));
+  }
   function derived(v, speed) {
     var c = caps(v);
     var rt = rates(v, speed), eat = eatRate(v, speed);
     return { cap: c.res, spCap: c.sp, protect: c.protect, slots: slots(v), rates: rt, eat: eat, net: rt.food - eat, hungry: !!v.hungry, popCap: popCap(v),
-      armyCap: armyCap(v), builders: BUILDERS, prosperity: prosperity(v), center: centerLevel(v), pointMax: pointMax(v), uniq: uniq(v) };
+      armyCap: armyCap(v), builders: BUILDERS, prosperity: prosperity(v), power: villagePower(v), center: centerLevel(v), pointMax: pointMax(v), uniq: uniq(v) };
   }
   /* 這塊地能不能拓荒：要是山林、緊鄰已開墾的地、部落中心等級夠、有空的工程名額、糧食夠 */
   function clearInfo(v, i) {
@@ -306,7 +340,7 @@
     rng = rng || Math.random;
     var a = mkSide(A.w, A.a, A.u, A.tribe, false), d = mkSide(D.w, D.a, D.u, D.tribe, D.home !== false), na = all3(a), nd = all3(d);
     var tw = D.towers || [], towers = tw.reduce(function (s, L) { return s + TUNE.towerPow * L; }, 0);
-    var dm = (1 + (D.wall || 0) * TUNE.wallPct / 100) * (D.uniq === 'watch' ? 1 + TUNE.watchDefPct / 100 : 1);
+    var dm = wallMul(D.wall || 0) * (D.uniq === 'watch' ? 1 + TUNE.watchDefPct / 100 : 1);
     var heroOf = function (o) { var t = o.hero && Tribes.get(o.tribe); return t && t.hero ? t.hero.ability : null; };
     var hero = { a: heroOf(A), d: heroOf(D) }, used = { a: null, d: null }, log = [], brk = TUNE.breakPct / 100, luck = TUNE.luckPct / 100, outA = false, outD = nd === 0;
     for (var r = 0; r <= FIGHT.rounds && !outA && !outD; r++) {
@@ -337,9 +371,10 @@
    * 守部落時再給 def: true、wall、towers、uniq，圍籬和瞭望台會算進去。出征前的「勝算」就是拿雙方的戰力來比 */
   function power(o) {
     var s = mkSide(o.w || 0, o.a || 0, o.u || 0, o.tribe, !!o.def), atk = output(s, false), hp = s.w * TUNE.hpW + s.a * TUNE.hpA + s.u * uhp(s);
-    if (o.def) atk = atk * (1 + (o.wall || 0) * TUNE.wallPct / 100) * (o.uniq === 'watch' ? 1 + TUNE.watchDefPct / 100 : 1) + (o.towers || []).reduce(function (t, L) { return t + TUNE.towerPow * L; }, 0);
+    if (o.def) atk = atk * wallMul(o.wall || 0) * (o.uniq === 'watch' ? 1 + TUNE.watchDefPct / 100 : 1) + (o.towers || []).reduce(function (t, L) { return t + TUNE.towerPow * L; }, 0);
     return Math.round(Math.sqrt(atk * hp));
   }
+  function wallMul(L) { return 1 + TUNE.wallPct / 100 * (Math.min(L, 5) + 0.5 * Math.max(0, L - 5)); }   // 圍籬：5 級以後每級的加成減半
   var ODDS = { high: 1.2, low: 0.95 };   // 我方戰力是對方的幾倍以上算「高」、幾倍以下算「低」（用模擬校正過，見測試）
   function odds(mine, theirs) {
     if (mine <= 0) return 'low';
@@ -589,7 +624,7 @@
       if (!b || b.busy || b.level >= MAX_LEVEL) continue;
       var c = cost(b.type, b.level + 1);
       if (!can(v, c)) continue;
-      if (b.type === 'center') { var need = CENTER_UP[b.level + 1]; if (FOREIGN_SP ? need.kinds > 0 : (v.sp[v.tribe] || 0) < need.each * need.kinds) continue; }
+      if (b.type === 'center') { var need = centerUp(b.level + 1); if (reqLeft(v, b.level + 1).length || (FOREIGN_SP ? need.kinds > 0 : (v.sp[v.tribe] || 0) < need.each * need.kinds)) continue; }
       else if (b.level >= C || b.type === 'unique') continue;
       var score = b.level * 100000 + c.food + c.mat;
       if (!best || score < best.score) best = { i: i, score: score, type: b.type, to: b.level + 1 };
@@ -651,6 +686,25 @@
     return s;
   };
   /* 目前這一章的進度；全部完成回傳 null */
+  function nextDev(v) {
+    var i = v.dev || 0;
+    if (i < DEV_START.length) return DEV_START[i];
+    var C = centerLevel(v); if (C >= MAX_LEVEL) return null;
+    var miss = reqLeft(v, C + 1)[0];
+    return miss ? { k: 'level', type: miss.type, n: miss.level } : { k: 'level', type: 'center', n: C + 1 };
+  }
+  function devReward(d) {   // 獎勵：升級類的給那一級花費的三成，其他給固定的量
+    if (d.k === 'units') return { food: 120, mat: 0 };
+    var c = cost(d.type, d.k === 'build' ? 1 : d.n) || { food: 0, mat: 0 }, f = d.k === 'build' ? 1 : 0.3;
+    return { food: r5(Math.max(d.type === 'wall' ? 0 : 40, c.food * f)), mat: r5(Math.max(40, c.mat * f)) };
+  }
+  /* 目前的部落發展任務與進度（任務存在部落裡，完成、領完獎勵才換下一個） */
+  World.prototype.devProgress = function (v) {
+    if (v.devCur === undefined) v.devCur = nextDev(v);
+    var d = v.devCur; if (!d) return null;
+    var cur = d.k === 'build' ? levelsOf(v, d.type).length : d.k === 'units' ? all3(v.units) + all3(v.away) : maxLevelOf(v, d.type);
+    return { i: v.dev || 0, k: d.k, type: d.type || null, n: d.n, cur: Math.min(cur, d.n), done: cur >= d.n, reward: devReward(d) };
+  };
   World.prototype.questProgress = function (v) {
     var q = QUESTS[v.quest]; if (!q) return null;
     var cur = q.type === 'land' ? v.land.filter(Boolean).length : q.type === 'have' ? Math.floor(v.res.food) : q.type === 'trade' ? v.stat.trade :
@@ -735,7 +789,9 @@
       if (v.queue.length >= BUILDERS) return { ok: false, msg: '同時只能進行 ' + BUILDERS + ' 項工程' };
       var to = b.level + 1, c = cost(b.type, to), picked = [], ownSp = 0;
       if (b.type === 'center') {
-        var need = CENTER_UP[to];
+        var miss = reqLeft(v, to)[0];
+        if (miss) return { ok: false, msg: '要先把' + (miss.type === 'wall' ? '圍籬' : (Tribes.get(v.tribe).b[miss.type] || {}).zh || miss.type) + '升到等級 ' + miss.level };
+        var need = centerUp(to);
         if (need.kinds > 0) {
           if (!FOREIGN_SP) {
             ownSp = need.each * need.kinds;
@@ -751,13 +807,14 @@
       if (!can(v, c)) return { ok: false, msg: '糧食或建材不足' };
       pay(v, c);
       if (ownSp) addRes(v, 'sp:' + v.tribe, -ownSp);
-      picked.forEach(function (k) { addRes(v, 'sp:' + k, -CENTER_UP[to].each); });
+      picked.forEach(function (k) { addRes(v, 'sp:' + k, -centerUp(to).each); });
       b.busy = true;
       v.queue.push({ id: this.id('q'), tile: tile, type: b.type, to: to, doneAt: now + buildTime(b.type, to) * 1000 / this.speed });
     },
     wall: function (v, a, now) {
       if (v.queue.some(function (q) { return q.type === 'wall'; })) return { ok: false, msg: '還在施工中' };
       var to = v.wall + 1;
+      if (to > MAX_LEVEL) return { ok: false, msg: '已經是最高等級' };
       if (to > centerLevel(v)) return { ok: false, msg: '等級不能超過部落中心' };
       if (v.queue.length >= BUILDERS) return { ok: false, msg: '同時只能進行 ' + BUILDERS + ' 項工程' };
       var c = cost('wall', to);
@@ -784,6 +841,14 @@
       v.units[u] -= n;
       var back = Math.min(n, Math.max(0, popCap(v) - v.pop)); v.pop += back;
       return { ok: true, msg: n + ' 位戰士回家了' + (back ? '，其中 ' + back + ' 位成為族人' : '') };
+    },
+    dev: function (v) {   // 領取部落發展任務的獎勵，換下一個
+      var p = this.devProgress(v);
+      if (!p) return { ok: false, msg: '部落已經發展到頂了' };
+      if (!p.done) return { ok: false, msg: '目標還沒達成' };
+      v.res.food += p.reward.food; v.res.mat += p.reward.mat;
+      v.dev = (v.dev || 0) + 1; v.devCur = nextDev(v);
+      return { ok: true, msg: '領到獎勵了' };
     },
     quest: function (v, a, now) {   // 領取目前這一章的獎勵
       var p = this.questProgress(v);
@@ -1070,6 +1135,9 @@
         if (count(v, ty) < limit(ty, C, v) && can(v, cost(ty, 1))) opts.push({ type: 'build', type2: ty, tile: empty[Math.floor(rng() * empty.length)] });
       });
       if (v.wall < C && can(v, cost('wall', v.wall + 1))) opts.push({ type: 'wall' });
+      var miss = reqLeft(v, C + 1)[0];   // 中心升下一級缺的條件：優先補上
+      if (miss && miss.type === 'wall') { if (v.wall < C && can(v, cost('wall', v.wall + 1))) opts.push({ type: 'wall' }, { type: 'wall' }); }
+      else if (miss) for (var mi = 0; mi < TILE_N; mi++) { var mb = v.tiles[mi]; if (mb && mb.type === miss.type && !mb.busy && mb.level < C && can(v, cost(mb.type, mb.level + 1))) { opts.push({ type: 'upgrade', tile: mi }, { type: 'upgrade', tile: mi }, { type: 'upgrade', tile: mi }); break; } }
       if (opts.length) this.act(v.id, opts[Math.floor(rng() * opts.length)], now);
     }
     var qp = this.questProgress(v); if (qp && qp.done) this.act(v.id, { type: 'quest' }, now);
@@ -1153,6 +1221,7 @@
     delete me.offSnap; delete me.offLog; delete me.cool; delete me.last; delete me.popAcc; delete me.ate;   // 玩家用不到的欄位不傳
     me.d = derived(v, this.speed);
     me.qp = this.questProgress(v);
+    me.dq = this.devProgress(v); delete me.devCur;
     var al = {};
     for (var k in this.alliances) al[k] = { id: k, name: this.alliances[k].name, leader: this.alliances[k].leader, n: this.alliances[k].members.length };
     return {
@@ -1236,7 +1305,7 @@
   World.rules = {
     SITES: SITES, CLEAR: CLEAR, clearInfo: clearInfo, TILE_N: TILE_N, CENTER_TILE: CENTER_TILE, TYPES: TYPES, MAX_LEVEL: MAX_LEVEL, UNIT: UNIT,
     CENTER_UP: CENTER_UP, BUILDERS: BUILDERS, FOREIGN_SP: FOREIGN_SP, cost: cost, buildTime: buildTime, limit: limit, count: count,
-    resName: resName, derived: derived, eatRate: eatRate, perWorker: perWorker, popCap: popCap, LOOT_FRAC: LOOT_FRAC, GRADE: GRADE, FIGHT: FIGHT,
+    resName: resName, derived: derived, eatRate: eatRate, perWorker: perWorker, eq: eq, centerUp: centerUp, centerReq: centerReq, reqLeft: reqLeft, maxLevelOf: maxLevelOf, wallMul: wallMul, villagePower: villagePower, DEV_START: DEV_START, popCap: popCap, LOOT_FRAC: LOOT_FRAC, GRADE: GRADE, FIGHT: FIGHT,
     armyCap: armyCap, mkSide: mkSide, QUESTS: QUESTS, UNIT_U: UNIT_U, BLESS: BLESS, HERO_REST: HERO_REST, pointMax: pointMax, REL: REL, POINT: POINT, POINT_MAX: POINT_MAX, POINT_UNITS: POINT_UNITS, SETTLE: SETTLE,
     autoBattle: autoBattle, power: power, odds: odds, ODDS: ODDS, simBattle: simBattle, simMatrix: simMatrix,
     TUNE_DEF: TUNE_DEF, tuneDefaults: tuneDefaults, setTune: setTune, paced: paced, trainTime: trainTime, marchSecs: marchSecs, shieldMs: shieldMs, pointRate: pointRate, OFFER_MS: OFFER_MS

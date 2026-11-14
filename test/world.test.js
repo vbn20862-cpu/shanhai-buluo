@@ -83,7 +83,9 @@ test('部落中心升到三級要用別族的特產，材料不夠時不會白�
   const w = new World({ rng: seeded(13) });
   let now = 1e6;
   const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'paiwan' }, now).id];
-  v.tiles[0].level = 2; v.res.food = 1000; v.res.mat = 1000; v.sp.paiwan = 20;
+  v.tiles[0].level = 2; v.res.food = 1000; v.res.mat = 1000; v.sp.paiwan = 20; v.sp.amis = 5;
+  assert.equal(w.act(v.id, { type: 'upgrade', tile: 0 }, now).msg, '要先把小米田升到等級 2', '中心升級的前置條件');
+  v.tiles[2].level = 2; delete v.sp.amis;
   assert.equal(w.act(v.id, { type: 'upgrade', tile: 0 }, now).ok, false, '只有自己的特產不夠');
   v.sp.amis = 5; v.res.mat = 100;
   assert.equal(w.act(v.id, { type: 'upgrade', tile: 0 }, now).ok, false);
@@ -722,5 +724,45 @@ test('族人與戰士吃糧食：吃光了不會餓死，只是不長人、工�
   w.setOnline(v.id, false, now); now += 3 * 3600000; w.setOnline(v.id, true, now);
   assert.ok(v.report && v.report.ate > 0, '離線報告有吃掉的糧食');
   assert.equal(w.snapshot(v.id, now).me.ate, undefined, '累計吃掉的量不傳給玩家（每秒都在變）');
+  check(w);
+});
+
+test('建築升到 25 級：花費與時間的曲線、中心的前置條件、容量跟著長、戰力、部落發展任務', () => {
+  const w = new World({ rng: seeded(103) });
+  let now = 1e6;
+  const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'bunun' }, now).id];
+  assert.equal(R.MAX_LEVEL, 25);
+  assert.deepEqual(R.cost('house', 5), { food: 165, mat: 440 }, '1～5 級的花費和原本一樣');
+  for (let L = 6; L <= 25; L++) { assert.ok(R.cost('house', L).mat > R.cost('house', L - 1).mat); assert.ok(R.buildTime('center', L) > R.buildTime('center', L - 1)); }
+  w.setTune({ pace: 20 });
+  assert.ok(R.buildTime('center', 25) * 1000 <= 2 * 86400000, '正式節奏下，最久的一次升級在兩天以內');
+  w.setTune({ pace: 1 });
+  // 容量要存得下最貴的一次升級
+  v.tiles[0].level = 24; v.tiles[1] = { type: 'storage', level: 24 }; v.tiles[3] = { type: 'storage', level: 24 };
+  assert.ok(R.derived(v, 1).cap >= R.cost('center', 25).mat, '倉庫存得下中心 25 級的花費');
+  // 前置條件：輪流要求一種建築升到前一級，6 級以後圍籬也要跟上
+  assert.deepEqual(R.centerReq(3), [{ type: 'farm', level: 2 }]);
+  assert.deepEqual(R.centerReq(6), [{ type: 'barracks', level: 5 }, { type: 'wall', level: 5 }]);
+  // 圍籬 5 級以後每級的加成減半；戰力會隨建築與戰士增加
+  assert.ok(Math.abs(R.wallMul(5) - (1 + 5 * R.TUNE.wallPct / 100)) < 1e-9 && Math.abs(R.wallMul(25) - (1 + 15 * R.TUNE.wallPct / 100)) < 1e-9);
+  const u = w.villages[w.join('b', { owner: 'B', name: '乙', tribe: 'amis' }, now).id], p0 = R.villagePower(u);
+  u.tiles[2].level = 3; const p1 = R.villagePower(u); u.units.w = 5; const p2 = R.villagePower(u);
+  assert.ok(p0 > 0 && p1 > p0 && p2 > p1, '戰力 ' + [p0, p1, p2].join(' → '));
+  assert.equal(R.derived(u, 1).power, p2);
+  // 部落發展任務：一步一步領獎勵，引導完之後跟著中心的前置條件走
+  w.setOnline(u.id, true, now);
+  let q = w.devProgress(u);
+  assert.deepEqual([q.k, q.type, q.n, q.done], ['build', 'storage', 1, false]);
+  assert.equal(w.act(u.id, { type: 'dev' }, now).ok, false, '還沒達成不能領');
+  u.tiles[5] = { type: 'storage', level: 1 };
+  const food0 = u.res.food; assert.ok(w.act(u.id, { type: 'dev' }, now).ok); assert.ok(u.res.food > food0, '領到獎勵');
+  assert.equal(w.devProgress(u).type, 'farm');
+  u.dev = R.DEV_START.length; u.devCur = undefined; u.tiles[0].level = 5;
+  q = w.devProgress(u);
+  assert.deepEqual([q.type, q.n], ['barracks', 5], '引導完：照中心 6 級的條件，先把訓練場升到 5 級');
+  assert.ok(w.snapshot(u.id, now).me.dq, '玩家看得到發展任務'); assert.equal(w.snapshot(u.id, now).me.devCur, undefined);
+  // 存檔讀回來還在
+  const w2 = new World().load(JSON.parse(JSON.stringify(w.toJSON())));
+  assert.equal(w2.devProgress(w2.villages[u.id]).type, 'barracks');
   check(w);
 });

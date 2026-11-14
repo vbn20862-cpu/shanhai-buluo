@@ -17,6 +17,7 @@ window.Art = (function () {
     pop: '<g fill="currentColor"><circle cx="8" cy="4.2" r="2.7"/><path d="M2.8 15c0-3.6 2.3-6 5.2-6s5.2 2.4 5.2 6z"/></g>',
     army: '<path d="M2.5 14 11 5.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"/><path d="M14.6 1.4 13.7 6.9 9.1 2.3z" fill="currentColor"/>',
     star: '<path d="M8 1l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" fill="currentColor"/>',
+    power: '<path d="M8 1.5 14 6 11.6 14H4.4L2 6z" fill="currentColor"/>',
     flag: '<path d="M3.2 15V1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/><path d="M4.2 2.4h9.3l-2.6 3 2.6 3H4.2z" fill="currentColor"/>',
     shield: '<path d="M8 1.2 14 3.5v4.3c0 3.4-2.4 5.9-6 7-3.6-1.1-6-3.6-6-7V3.5z" fill="currentColor"/>',
     fire: '<path d="M8 1.2c3.4 3 4.6 5.6 4.6 8a4.6 4.6 0 0 1-9.2 0c0-1.5.6-2.8 1.7-3.9.2 1.3.8 2.1 1.6 2.4C6.4 5.4 6.8 3.2 8 1.2z" fill="currentColor"/><path d="M2.5 14.6h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
@@ -26,7 +27,7 @@ window.Art = (function () {
    * 有載入、而且沒有被玩家切回「原本的畫法」時，建築和圖示用素材；否則用這個檔案裡程式畫的版本。 */
   var AS = window.ShanhaiArt || null, newArt = !!AS;
   try { if (localStorage.getItem('shanhai_art') === 'old') newArt = false; } catch (e) { /* 讀不到設定就用預設 */ }
-  var ICON_AS = { food: 'food', mat: 'material', pop: 'people', army: 'warrior', star: 'prosperity', shield: 'protect', fire: 'gather', book: 'quest', charge: 'charge', volley: 'volley', hold: 'regroup' };   // 遊戲裡的圖示名稱 → 素材的檔名
+  var ICON_AS = { power: 'power', food: 'food', mat: 'material', pop: 'people', army: 'warrior', star: 'prosperity', shield: 'protect', fire: 'gather', book: 'quest', charge: 'charge', volley: 'volley', hold: 'regroup' };   // 遊戲裡的圖示名稱 → 素材的檔名
   function icon(name, cls) {
     var n = newArt && ICON_AS[name] && AS.icon[ICON_AS[name]];
     if (n) return '<svg class="ic ' + (cls || 'ic-' + name) + '" viewBox="0 0 24 24" aria-hidden="true">' + n + '</svg>';
@@ -211,11 +212,10 @@ window.Art = (function () {
     return s + '<circle cx="' + f1(p[0] + 4) + '" cy="' + f1(p[1] - 8) + '" r="5" fill="#F2EAD6" opacity=".55"/><circle cx="' + f1(p[0] + 10) + '" cy="' + f1(p[1] - 20) + '" r="7" fill="#F2EAD6" opacity=".35"/>';
   };
   var ASSET_SCALE = 0.92;
-  /* 外觀隨等級改變（第二包美術）：中心建築三個階段，家屋、瞭望台兩個階段。
-   * 現在建築最高 5 級，暫定 3 級換第二階段、5 級換第三階段；之後等級拉長再改成 11 級、21 級 */
+  /* 外觀隨等級改變（第二包美術）：中心建築三個階段（11、21 級換圖），家屋、瞭望台兩個階段（11 級換圖） */
   function stage(type, level) {
-    if (type === 'center') return level >= 5 ? '-3' : level >= 3 ? '-2' : '';
-    if (type === 'house' || type === 'tower') return level >= 3 ? '-2' : '';
+    if (type === 'center') return level >= 21 ? '-3' : level >= 11 ? '-2' : '';
+    if (type === 'house' || type === 'tower') return level >= 11 ? '-2' : '';
     return '';
   }
   function asset(t, type, level) {
@@ -279,7 +279,7 @@ window.Art = (function () {
   }
   /* 方形的圍籬（有素材時）：四邊各 13 段，左前方那一邊的正中間是大門，四個角有轉角柱。等級越高，用越堅固的那一款 */
   function wallRing(t, level, items) {
-    var nm = t.id + (level >= 5 && AS.building[t.id + '-wall-3'] ? '-wall-3' : level >= 3 && AS.building[t.id + '-wall-2'] ? '-wall-2' : '-wall'), L = 2.4, n = 13, a = WALL_A, j;
+    var nm = t.id + (level >= 21 && AS.building[t.id + '-wall-3'] ? '-wall-3' : level >= 11 && AS.building[t.id + '-wall-2'] ? '-wall-2' : '-wall'), L = 2.4, n = 13, a = WALL_A, j;
     function put(gx, gy, id, flip) { var p = P(gx, gy); items.push({ y: p[1] - 2, s: '<g transform="translate(' + f1(p[0]) + ' ' + f1(p[1]) + ')' + (flip ? ' scale(-1 1)' : '') + '">' + useB(id, 1) + '</g>' }); }
     for (j = 0; j < n; j++) {
       var o = -a + L * (j + 0.5);
