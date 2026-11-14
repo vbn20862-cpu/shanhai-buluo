@@ -331,7 +331,8 @@ dialog .fld input, dialog .fld select { width: 100%; }
     var h = '<section class="card"><h2>結果' + (simRes.draft ? '（包含還沒套用的修改）' : '') + '</h2>' +
       '<p class="verdict ' + (m.ok ? 'ok' : 'bad') + '">' + (m.ok ? '任兩族之間都在 45%～55% 之內。' : '有組合超出 45%～55%，建議調整數值。') + '最大偏差 ' + pct(m.worst) + '。</p>' +
       '<p class="muted">每一組 ' + m.n + ' 場 · 勇士 ' + m.army.w + '、弓手 ' + m.army.a + '、獨特兵種 ' + m.army.u + ' · 圍籬 ' + m.wall + ' 級' + (m.towers.length ? ' · 瞭望台 ' + m.towers.join('、') + ' 級' : '') +
-      (m.hero ? '' : ' · 沒有英雄') + (m.uniq ? '' : ' · 沒有獨特建築') + ' · 進攻方平均勝率 ' + pct(m.base) + ' · 花了 ' + (simRes.ms / 1000).toFixed(1) + ' 秒</p></section><div class="simgrid">';
+      (m.hero ? '' : ' · 沒有英雄') + (m.uniq ? '' : ' · 沒有獨特建築') + ' · 進攻方平均勝率 ' + pct(m.base) + ' · 花了 ' + (simRes.ms / 1000).toFixed(1) + ' 秒</p>' +
+      '<p class="muted">因為是隨機打的，每次結果會有一點出入：這個場數下，每個數字大約有 ±' + (2 * Math.sqrt(0.125 / m.n) * 100).toFixed(1) + ' 個百分點的誤差。數字剛好在邊緣時，用 5000 場再跑一次比較準。</p></section><div class="simgrid">';
     h += '<section class="card"><h2>兩族之間的整體勝率</h2><div class="scroll"><table><thead><tr><th>這一族</th><th class="l">對上</th><th>整體勝率</th><th class="l">判定</th></tr></thead><tbody>' +
       m.duel.map(function (d) { return '<tr><td>' + nm(d.x) + '</td><td class="l">' + nm(d.y) + '</td><td class="' + cls(d.score) + '">' + pct(d.score) + '</td><td class="l ' + cls(d.score) + '">' + (Math.abs(d.score - 0.5) <= 0.05 ? '在範圍內' : d.score > 0.5 ? '前者偏強' : '後者偏強') + '</td></tr>'; }).join('') +
       '</tbody></table></div><p class="muted">整體勝率 = 前者進攻後者的勝率，加上後者進攻時前者守住的機率，除以二。50% 就是勢均力敵。</p></section>';
