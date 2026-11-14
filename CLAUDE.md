@@ -26,6 +26,7 @@
 - `npm start`：啟動遊戲伺服器，用瀏覽器開 http://localhost:3000 玩；加上 `ADMIN_PASSWORD=密碼` 才會開放後台（`/admin`）
 - `npm test`：跑規則核心的測試
 - `npm run build:solo`：打包成單一檔案 `dist/shanhai-buluo.html`（預覽頁用）
+- `npm run build:art`：把 `art/` 裡的美術素材打包成 `public/assets.js`。換了 `art/` 的檔案之後要跑，產生的檔案要一起提交
 - `npm run sim`：自動模擬對戰，列出各族互打的勝率。改了兵種、英雄或對戰規則之後要跑，任兩族之間要在 45%～55% 之內
 - 連線版預設是正式節奏（很慢）；本機測試時加 `PACE=1` 才會是快速試玩
 

@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="bunun-special" viewBox="-80 -140 160 180" width="160" height="180" data-origin="0,0" data-height="36">
+<title>布農族 獵寮</title>
+<desc>原點(0,0)＝佔地中心。可替換變數：--roof 屋頂、--wall 牆、--deco 裝飾、--ground 地面。#deco 為可開關的裝飾圖層。待查證：獵寮形式、肉乾架形式</desc>
+<style>
+svg.bunun-special{--roof:#646A70;--wall:#868B8E;--deco:#3E8A62;--ground:#A89E86}
+.f-roof{fill:var(--roof)}
+.f-roof-ll{fill:color-mix(in srgb,var(--roof),#FFF1CF 45%)}
+.f-roof-l{fill:color-mix(in srgb,var(--roof),#FFF1CF 22%)}
+.f-roof-d{fill:color-mix(in srgb,var(--roof),#26304A 30%)}
+.f-roof-dd{fill:color-mix(in srgb,var(--roof),#1C2234 52%)}
+.s-roof{stroke:var(--roof)}
+.s-roof-ll{stroke:color-mix(in srgb,var(--roof),#FFF1CF 45%)}
+.s-roof-l{stroke:color-mix(in srgb,var(--roof),#FFF1CF 22%)}
+.s-roof-d{stroke:color-mix(in srgb,var(--roof),#26304A 30%)}
+.s-roof-dd{stroke:color-mix(in srgb,var(--roof),#1C2234 52%)}
+.f-wall{fill:var(--wall)}
+.f-wall-ll{fill:color-mix(in srgb,var(--wall),#FFF1CF 45%)}
+.f-wall-l{fill:color-mix(in srgb,var(--wall),#FFF1CF 22%)}
+.f-wall-d{fill:color-mix(in srgb,var(--wall),#26304A 30%)}
+.f-wall-dd{fill:color-mix(in srgb,var(--wall),#1C2234 52%)}
+.s-wall{stroke:var(--wall)}
+.s-wall-ll{stroke:color-mix(in srgb,var(--wall),#FFF1CF 45%)}
+.s-wall-l{stroke:color-mix(in srgb,var(--wall),#FFF1CF 22%)}
+.s-wall-d{stroke:color-mix(in srgb,var(--wall),#26304A 30%)}
+.s-wall-dd{stroke:color-mix(in srgb,var(--wall),#1C2234 52%)}
+.f-deco{fill:var(--deco)}
+.f-deco-ll{fill:color-mix(in srgb,var(--deco),#FFF1CF 45%)}
+.f-deco-l{fill:color-mix(in srgb,var(--deco),#FFF1CF 22%)}
+.f-deco-d{fill:color-mix(in srgb,var(--deco),#26304A 30%)}
+.f-deco-dd{fill:color-mix(in srgb,var(--deco),#1C2234 52%)}
+.s-deco{stroke:var(--deco)}
+.s-deco-ll{stroke:color-mix(in srgb,var(--deco),#FFF1CF 45%)}
+.s-deco-l{stroke:color-mix(in srgb,var(--deco),#FFF1CF 22%)}
+.s-deco-d{stroke:color-mix(in srgb,var(--deco),#26304A 30%)}
+.s-deco-dd{stroke:color-mix(in srgb,var(--deco),#1C2234 52%)}
+.f-ground{fill:var(--ground)}
+.f-ground-ll{fill:color-mix(in srgb,var(--ground),#FFF1CF 45%)}
+.f-ground-l{fill:color-mix(in srgb,var(--ground),#FFF1CF 22%)}
+.f-ground-d{fill:color-mix(in srgb,var(--ground),#26304A 30%)}
+.f-ground-dd{fill:color-mix(in srgb,var(--ground),#1C2234 52%)}
+.s-ground{stroke:var(--ground)}
+.s-ground-ll{stroke:color-mix(in srgb,var(--ground),#FFF1CF 45%)}
+.s-ground-l{stroke:color-mix(in srgb,var(--ground),#FFF1CF 22%)}
+.s-ground-d{stroke:color-mix(in srgb,var(--ground),#26304A 30%)}
+.s-ground-dd{stroke:color-mix(in srgb,var(--ground),#1C2234 52%)}
+.deco-off #deco{display:none}
+</style>
+<g id="ground"><polygon points="-60.2,0.9 4.2,33.1 4.2,30.1 -60.2,-2.1" class="f-ground"/><polygon points="60.2,5.1 4.2,33.1 4.2,30.1 60.2,2.1" class="f-ground-d"/><polygon points="-4.2,-30.1 60.2,2.1 4.2,30.1 -60.2,-2.1" class="f-ground"/><path d="M-60.2 -2.1L4.2 30.1 60.2 2.1" fill="none" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="s-ground-l"/></g><g id="shadow"><polygon points="-51.8,-3.5 -4.2,-27.3 64.4,7 16.8,30.8 8.4,26.6" fill="#1F2A44" opacity=".26"/></g><g id="body"><polygon points="-7,-24.5 18.2,-11.9 18.2,-35.9 -7,-48.5" fill="#7A5534"/><polygon points="21,-13.3 18.2,-11.9 18.2,-35.9 21,-37.3" fill="#614A3B"/><path d="M-7 -28.5L18.2 -15.9 21 -17.3M-7 -32.5L18.2 -19.9 21 -21.3M-7 -36.5L18.2 -23.9 21 -25.3M-7 -40.5L18.2 -27.9 21 -29.3M-7 -44.5L18.2 -31.9 21 -33.3" fill="none" stroke="#493A34" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/><path d="M-7 -27.1L18.2 -14.5M-7 -31.1L18.2 -18.5M-7 -35.1L18.2 -22.5M-7 -39.1L18.2 -26.5M-7 -43.1L18.2 -30.5M-7 -47.1L18.2 -34.5" fill="none" stroke="#977756" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/><polygon points="-7,-24.5 18.2,-11.9 21,-13.3 23.8,-11.9 18.2,-9.1 -9.8,-23.1" fill="#1F2A44" opacity=".3"/><polygon points="-6,-0.7 -2.4,0.2 -2.4,-23.8 -6,-24.7" fill="#7A5534"/><polygon points="-4.2,-0.3 -2.4,0.2 -2.4,-23.8 -4.2,-24.2" fill="#614A3B"/><polygon points="-31.2,-13.3 -27.6,-12.4 -27.6,-36.4 -31.2,-37.3" fill="#7A5534"/><polygon points="-29.4,-12.8 -27.6,-12.4 -27.6,-36.4 -29.4,-36.8" fill="#614A3B"/><polygon points="-7,-24.5 18.2,-11.9 -4.2,-0.7 -29.4,-13.3" fill="#1F2A44" opacity=".3"/><polygon points="21,-37.3 21,-47.6 -4.2,-24.7" class="f-wall-d"/><path d="M20 -42.2L8.6 -36.5 8.6 -34.7 20 -40.4ZM8.3 -36.4L4.8 -34.6 4.8 -32.8 8.3 -34.6Z" class="f-wall"/><path d="M21 -40.3L4.6 -32.1" fill="none" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="s-wall-dd"/><path d="M8.5 -34L8.5 -37" fill="none" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round" class="s-wall-dd"/><polygon points="-4.2,-66.9 31.1,-49.3 -4.2,-19.7 -39.5,-37.3" class="f-roof"/><path d="M-4.6 -66.2L-0.2 -64 -10.6 -55.3 -14.9 -57.5ZM-4.6 -66.2L-0.2 -64 -10.6 -55.3 -14.9 -57.5ZM1.3 -47.5L5.7 -45.3 -4.7 -36.6 -9 -38.8ZM-7.9 -36.3L-3.6 -34.2 -13.9 -25.5 -18.3 -27.6ZM-23 -43.9L-18.7 -41.7 -29 -33 -33.4 -35.2Z" class="f-roof-l"/><path d="M-16 -57.1L19.3 -39.4M-27.7 -47.2L7.6 -29.5" fill="none" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" class="s-roof-dd"/><path d="M0.8 -64.4L-10.9 -54.5M5.9 -61.9L-5.9 -52M10.9 -59.4L-0.8 -49.5M16 -56.9L4.2 -47M21 -54.3L9.2 -44.5M26 -51.8L14.3 -41.9M-13.4 -55.8L-25.2 -45.9M-8.4 -53.3L-20.2 -43.4M-3.4 -50.8L-15.1 -40.9M1.7 -48.2L-10.1 -38.4M6.7 -45.7L-5 -35.8M11.8 -43.2L0 -33.3M16.8 -40.7L5 -30.8M-22.7 -44.7L-34.4 -34.8M-17.6 -42.1L-29.4 -32.3M-12.6 -39.6L-24.4 -29.7M-7.6 -37.1L-19.3 -27.2M-2.5 -34.6L-14.3 -24.7M2.5 -32.1L-9.2 -22.2" fill="none" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round" class="s-roof-d"/><polygon points="-39.5,-37.3 -4.2,-19.7 -4.2,-16.2 -39.5,-33.8" class="f-roof-d"/><polygon points="31.1,-49.3 -4.2,-19.7 -4.2,-16.2 31.1,-45.8" class="f-roof-dd"/><path d="M-39.5 -37.3L-4.2 -19.7 31.1 -49.3" fill="none" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="s-roof-l"/><path d="M-5.6 4.2L-11.2 -23M-16.8 9.8L-11.2 -23M22.4 18.2L16.8 -9M11.2 23.8L16.8 -9" fill="none" stroke="#7A5534" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M-11.2 -22L16.8 -8M-9.8 -11.3L15.4 1.3" fill="none" stroke="#56392A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M-10 -20.6L-6.8 -20.6 -7.2 -9.6 -9.6 -10.6ZM-5.5 -18.4L-2.3 -18.4 -2.7 -7.4 -5.1 -8.4ZM-1 -16.1L2.2 -16.1 1.8 -5.1 -0.6 -6.1ZM3.4 -13.9L6.6 -13.9 6.2 -2.9 3.8 -3.9ZM7.9 -11.6L11.1 -11.6 10.7 -0.6 8.3 -1.6ZM12.4 -9.4L15.6 -9.4 15.2 1.6 12.8 0.6ZM-7.8 -9.5L-4.6 -9.5 -5 1.5 -7.4 0.5ZM-3.3 -7.2L-0.1 -7.2 -0.5 3.8 -2.9 2.8ZM1.2 -5L4.4 -5 4 6 1.6 5ZM5.7 -2.8L8.9 -2.8 8.5 8.2 6.1 7.2ZM10.2 -0.5L13.4 -0.5 13 10.5 10.6 9.5ZM14.6 1.7L17.8 1.7 17.4 12.7 15 11.7Z" fill="#8E3E2C"/><path d="M-8.4 -20.6L-6.8 -20.6 -7.2 -9.6 -8.4 -10.1ZM-3.9 -18.4L-2.3 -18.4 -2.7 -7.4 -3.9 -7.9ZM0.6 -16.1L2.2 -16.1 1.8 -5.1 0.6 -5.6ZM5 -13.9L6.6 -13.9 6.2 -2.9 5 -3.4ZM9.5 -11.6L11.1 -11.6 10.7 -0.6 9.5 -1.1ZM14 -9.4L15.6 -9.4 15.2 1.6 14 1.1ZM-6.2 -9.5L-4.6 -9.5 -5 1.5 -6.2 1ZM-1.7 -7.2L-0.1 -7.2 -0.5 3.8 -1.7 3.3ZM2.8 -5L4.4 -5 4 6 2.8 5.5ZM7.3 -2.8L8.9 -2.8 8.5 8.2 7.3 7.7ZM11.8 -0.5L13.4 -0.5 13 10.5 11.8 10ZM16.2 1.7L17.8 1.7 17.4 12.7 16.2 12.2Z" fill="#6A2C20"/></g><g id="deco" class="layer-deco"><path d="M-4.2 -29.3L6.8 -27.3 6.8 -20.3 -4.2 -22.3Z" fill="#EDE3C8"/><path d="M-4.2 -28.5L6.8 -26.5 6.8 -23.8 -4.2 -25.8ZM-4.2 -24.5L6.8 -22.5 6.8 -21.4 -4.2 -23.4Z" class="f-deco"/></g>
+</svg>

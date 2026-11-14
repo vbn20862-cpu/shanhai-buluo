@@ -22,7 +22,16 @@ window.Art = (function () {
     fire: '<path d="M8 1.2c3.4 3 4.6 5.6 4.6 8a4.6 4.6 0 0 1-9.2 0c0-1.5.6-2.8 1.7-3.9.2 1.3.8 2.1 1.6 2.4C6.4 5.4 6.8 3.2 8 1.2z" fill="currentColor"/><path d="M2.5 14.6h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
     book: '<path d="M2 3.2c2-.9 4-.9 6 .2 2-1.1 4-1.1 6-.2v9.6c-2-.9-4-.9-6 .2-2-1.1-4-1.1-6-.2z" fill="currentColor"/><path d="M8 3.6v9.4" stroke="#14212A" stroke-width="1"/>'
   };
-  function icon(name, cls) { return '<svg class="ic ' + (cls || 'ic-' + name) + '" viewBox="0 0 16 16" aria-hidden="true">' + ICONS[name] + '</svg>'; }
+  /* 美術素材：art/ 裡的 SVG 由 npm run build:art 打包成 public/assets.js（window.ShanhaiArt）。
+   * 有載入、而且沒有被玩家切回「原本的畫法」時，建築和圖示用素材；否則用這個檔案裡程式畫的版本。 */
+  var AS = window.ShanhaiArt || null, newArt = !!AS;
+  try { if (localStorage.getItem('shanhai_art') === 'old') newArt = false; } catch (e) { /* 讀不到設定就用預設 */ }
+  var ICON_AS = { food: 'food', mat: 'material', pop: 'people', army: 'warrior', star: 'prosperity', shield: 'protect', fire: 'gather', book: 'quest', charge: 'charge', volley: 'volley', hold: 'regroup' };   // 遊戲裡的圖示名稱 → 素材的檔名
+  function icon(name, cls) {
+    var n = newArt && ICON_AS[name] && AS.icon[ICON_AS[name]];
+    if (n) return '<svg class="ic ' + (cls || 'ic-' + name) + '" viewBox="0 0 24 24" aria-hidden="true">' + n + '</svg>';
+    return ICONS[name] ? '<svg class="ic ' + (cls || 'ic-' + name) + '" viewBox="0 0 16 16" aria-hidden="true">' + ICONS[name] + '</svg>' : '';
+  }
 
   function rgba(hex, al) { var n = parseInt(hex.slice(1), 16); return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + al + ')'; }
 
@@ -201,6 +210,14 @@ window.Art = (function () {
     p = q(0, 0, 44);
     return s + '<circle cx="' + f1(p[0] + 4) + '" cy="' + f1(p[1] - 8) + '" r="5" fill="#F2EAD6" opacity=".55"/><circle cx="' + f1(p[0] + 10) + '" cy="' + f1(p[1] - 20) + '" r="7" fill="#F2EAD6" opacity=".35"/>';
   };
+  var ASSET_SCALE = 0.92;
+  function asset(t, type) { var n = t.id + '-' + type; return newArt && AS.building[n] ? n : ''; }
+  /* 畫一棟建築，原點在佔地中心。有素材就用素材（<use> 參照 DEFS 裡的圖形），沒有就用上面程式畫的 */
+  function bld(type, k, t) {
+    var n = asset(t, type);
+    return n ? '<use href="#b-' + n + '" x="-80" y="-140" width="160" height="180" transform="scale(' + ASSET_SCALE + ')"/>' : ISO[type](k, t);   // 素材的地基比建地略大，縮一點相鄰的建築才不會疊在一起
+  }
+  function topOf(type, t) { var n = asset(t, type); return n ? AS.height[n] * ASSET_SCALE + 18 : type === 'unique' && t.id === 'atayal' ? 128 : TOP[type]; }   // 等級標記放多高
   var TOP = { center: 82, house: 58, farm: 26, mat: 36, special: 48, storage: 64, barracks: 56, tower: 104, unique: 56 };   // 各建築大約多高，用來放等級標記
 
   // 樹、石頭、草叢：定義一次，用 <use> 重複放
@@ -209,6 +226,7 @@ window.Art = (function () {
     '<g id="t-b"><ellipse cx="0" cy="1" rx="14" ry="4.2" fill="#000" opacity=".25"/><rect x="-2.5" y="-15" width="5" height="16" fill="#6B4A32"/><circle cx="-8" cy="-23" r="12" fill="#3E7D4E"/><circle cx="8" cy="-25" r="13" fill="#357245"/><circle cx="0" cy="-35" r="13" fill="#4A8E59"/><circle cx="-4" cy="-39" r="6.5" fill="#63A96E" opacity=".85"/></g>' +
     '<g id="t-r"><polygon points="-13,2 -9,-10 3,-15 13,-6 14,2" fill="#8E9196"/><polygon points="3,-15 13,-6 14,2 2,2" fill="#74777C"/></g>' +
     '<g id="t-s"><ellipse cx="0" cy="1" rx="11" ry="3.4" fill="#000" opacity=".2"/><circle cx="-5" cy="-5" r="7" fill="#4F8F55"/><circle cx="5" cy="-6" r="8" fill="#447F4B"/><circle cx="0" cy="-10" r="6" fill="#62A566"/></g>' +
+    (AS ? Object.keys(AS.building).map(function (n) { return '<symbol id="b-' + n + '" viewBox="-80 -140 160 180" overflow="visible">' + AS.building[n] + '</symbol>'; }).join('') : '') +   // 美術素材的建築
     '</defs>';
   function use(id, x, y, sc) { return '<use href="#' + id + '" transform="translate(' + f1(x) + ' ' + f1(y) + ') scale(' + sc.toFixed(2) + ')"/>'; }
   function inWater(k, p) {
@@ -270,10 +288,10 @@ window.Art = (function () {
         [[-1.2, -1.05], [1.2, -1.05], [1.2, 1.05], [-1.2, 1.05]].forEach(function (c) { var g = q(c[0], c[1]); low += seg([p[0] + g[0], p[1] + g[1]], [p[0] + g[0], p[1] + g[1] - 9], '#7A5636', 2.6); });
         if (!plain) top += badge(p[0], p[1] - 2, '<path d="M-6 0H6M0 -6V6" stroke="#E3B341" stroke-width="2.6" stroke-linecap="round"/>', '#E3B341');
       } else {
-        items.push({ y: p[1] + 8, s: '<g' + tx + (b.level === 0 ? ' opacity=".45"' : '') + '>' + ISO[b.type](k, t) + '</g>' });
+        items.push({ y: p[1] + 8, s: '<g' + tx + (b.level === 0 ? ' opacity=".45"' : '') + '>' + bld(b.type, k, t) + '</g>' });
         if (b.busy && w) top += pill(p[0], p[1] + 22, w.doneAt);
-        if (b.level > 0 && b.type === 'unique') top += '<g transform="translate(' + f1(p[0] + 34) + ' ' + f1(p[1] - (t.id === 'atayal' ? 128 : TOP.unique)) + ')"><circle r="12" fill="rgba(20,33,42,.88)" stroke="#E3B341" stroke-width="2"/><path d="M0 -8l2.4 5.2 5.6.6-4.2 3.8 1.2 5.6-5-2.9-5 2.9 1.2-5.6-4.2-3.8 5.6-.6z" fill="#E3B341"/></g>';
-        else if (b.level > 0) top += '<g transform="translate(' + f1(p[0] + 34) + ' ' + f1(p[1] - TOP[b.type]) + ')"><circle r="12" fill="rgba(20,33,42,.88)"/><text y="6" text-anchor="middle" font-size="17" font-weight="700" fill="#F2EAD6">' + b.level + '</text></g>';
+        if (b.level > 0 && b.type === 'unique') top += '<g transform="translate(' + f1(p[0] + 34) + ' ' + f1(p[1] - topOf('unique', t)) + ')"><circle r="12" fill="rgba(20,33,42,.88)" stroke="#E3B341" stroke-width="2"/><path d="M0 -8l2.4 5.2 5.6.6-4.2 3.8 1.2 5.6-5-2.9-5 2.9 1.2-5.6-4.2-3.8 5.6-.6z" fill="#E3B341"/></g>';
+        else if (b.level > 0) top += '<g transform="translate(' + f1(p[0] + 34) + ' ' + f1(p[1] - topOf(b.type, t)) + ')"><circle r="12" fill="rgba(20,33,42,.88)"/><text y="6" text-anchor="middle" font-size="17" font-weight="700" fill="#F2EAD6">' + b.level + '</text></g>';
       }
     }
     items.sort(function (a, c) { return a.y - c.y; });
@@ -341,9 +359,9 @@ window.Art = (function () {
       s += at(p[0], p[1], '<path d="M0 0V-52" stroke="#6B4A32" stroke-width="3" stroke-linecap="round"/><path class="banner"' + dly(n * 400) + ' d="M0 -52l30 9-30 9z" fill="' + ta.look.trim + '" stroke="#F2EAD6" stroke-width="1.2"/>');
     });
     // 守方的部落：小米田、家屋、中心建築、營火
-    s += at(872, 62, '<g transform="scale(.62)">' + ISO.farm(k, td) + '</g>') + at(950, 236, '<g transform="scale(.56)">' + ISO.farm(k, td) + '</g>');
-    [[806, 52, 0.56], [945, 66, 0.56], [800, 262, 0.56]].forEach(function (h) { s += at(h[0], h[1], '<g transform="scale(' + h[2] + ')">' + house(k, { w: 1.9, d: 1.6, h: 22, rh: 20 }) + '</g>'); });
-    s += at(900, 172, '<g transform="scale(.66)">' + ISO.center(k, td) + '</g>') + at(962, 150, '<g transform="scale(.52)">' + ISO.storage(k, td) + '</g>');
+    s += at(872, 62, '<g transform="scale(.62)">' + bld('farm', k, td) + '</g>') + at(950, 236, '<g transform="scale(.56)">' + bld('farm', k, td) + '</g>');
+    [[806, 52, 0.56], [945, 66, 0.56], [800, 262, 0.56]].forEach(function (h) { s += at(h[0], h[1], '<g transform="scale(' + h[2] + ')">' + bld('house', k, td) + '</g>'); });
+    s += at(900, 172, '<g transform="scale(.66)">' + bld('center', k, td) + '</g>') + at(962, 150, '<g transform="scale(.52)">' + bld('storage', k, td) + '</g>');
     s += at(820, 170, '<ellipse cx="0" cy="2" rx="13" ry="5" fill="#000" opacity=".2"/><path d="M-9 2 9 -3M-9 -3 9 2" stroke="#6B4A32" stroke-width="3.2" stroke-linecap="round"/><path class="fire" d="M0 -18c6 6 7 11 4 16h-8c-3 -5 -2 -10 4 -16z" fill="#F0A13A"/>' +
       [0, 1, 2].map(function (n) { return '<circle class="smoke"' + dly(n * 900) + ' cx="0" cy="-20" r="5" fill="#F2EAD6"/>'; }).join(''));
     [[842, 188], [868, 206]].forEach(function (p) { s += at(p[0], p[1], '<g transform="scale(.8)">' + fig('', '#F2EAD6', k.trim, true) + '</g>'); });
@@ -358,7 +376,7 @@ window.Art = (function () {
     if (b.wall) [[28, LANE_Y[1] - 38], [LANE_Y[1] + 38, LANE_Y[0] - 38], [LANE_Y[0] + 38, LANE_Y[2] - 38]].forEach(function (g) {
       s += '<path d="M' + GATE_X + ' ' + g[0] + 'V' + g[1] + '" stroke="' + wcol[0] + '" stroke-width="' + (ww + 5) + '" stroke-linecap="round"/><path d="M' + GATE_X + ' ' + g[0] + 'V' + g[1] + '" stroke="' + wcol[1] + '" stroke-width="' + ww + '" stroke-dasharray="' + wcol[2] + '"/>';
     });
-    for (i = 0; i < Math.min(3, b.towerN); i++) s += at(GATE_X + 26, [LANE_Y[1] + 58, LANE_Y[0] + 58, 50][i], '<g transform="scale(.42)">' + ISO.tower(k) + '</g>');
+    for (i = 0; i < Math.min(3, b.towerN); i++) s += at(GATE_X + 26, [LANE_Y[1] + 58, LANE_Y[0] + 58, 50][i], '<g transform="scale(.42)">' + bld('tower', k, td) + '</g>');
     b.lanes.forEach(function (l, li) {
       var y = LANE_Y[li], p = prev && prev[li], rec = show ? last.lanes[li] : null, active = show && !!p && p.aw + p.aa + (p.au || 0) > 0 && !p.broken, justBroke = !!(rec && rec.broken), g = '';
       [-37, 37].forEach(function (dy, n2) {   // 門柱
@@ -539,6 +557,8 @@ window.Art = (function () {
     return s;
   }
 
-  return { icon: icon, scene: scene, battle: battle, building: function (type, t) { return ISO[type](t.look, t); }, BW: BW, BH: BH, decor: decor, groundURL: groundURL, sitePos: sitePos, person: person, DEFS: DEFS, SW: SW, SH: SH,
+  return { icon: icon, scene: scene, battle: battle, building: function (type, t) { return bld(type, t.look, t); },
+    hasNewArt: function () { return !!AS; }, newArt: function () { return newArt; },
+    setNewArt: function (on) { newArt = !!AS && !!on; try { localStorage.setItem('shanhai_art', newArt ? 'new' : 'old'); } catch (e) { /* 記不住就只在這次有效 */ } }, BW: BW, BH: BH, decor: decor, groundURL: groundURL, sitePos: sitePos, person: person, DEFS: DEFS, SW: SW, SH: SH,
     paintMap: paintMap, mapLabels: mapLabels, shade: shade };
 })();

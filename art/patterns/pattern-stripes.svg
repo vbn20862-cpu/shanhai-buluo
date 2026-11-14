@@ -1,0 +1,1 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 24" width="96" height="24"><title>平行條紋（公用）</title><desc>可橫向重複拼接的紋樣帶，4 個單位寬。紋樣色用 --deco 變數。兩道等寬細條</desc><style>svg{--deco:#2F78C2}.f-deco{fill:var(--deco)}</style><path d="M0 0L96 0 96 24 0 24Z" fill="#EDE3C8"/><path d="M0 4.3L96 4.3 96 8.6 0 8.6ZM0 15.4L96 15.4 96 19.7 0 19.7Z" class="f-deco"/></svg>

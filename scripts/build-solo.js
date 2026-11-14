@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const root = path.join(__dirname, '..');
 const read = f => fs.readFileSync(path.join(root, f), 'utf8');
-const scripts = ['shared/geo.js', 'shared/tribes.js', 'shared/world.js', 'public/art.js', 'public/net.js', 'public/client.js'];
+const scripts = ['shared/geo.js', 'shared/tribes.js', 'shared/world.js', 'public/assets.js', 'public/art.js', 'public/net.js', 'public/client.js'];
 const out = [
   '<title>山海部落</title>',
   '<meta name="claude:viewport-fit-sides" content="cover">',

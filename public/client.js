@@ -215,7 +215,7 @@
     if (!VV.sized || el.vimg._focus !== v.id) {
       if (VV.resize()) { var c = Art.sitePos(R.CENTER_TILE); VV.focus(c[0], c[1] - 10, Math.max(1, Math.min(3.2, VV.vw / 1040))); el.vimg._focus = v.id; }
     }
-    var sig = v.id + '|' + sel + '|' + JSON.stringify(v.tiles) + v.land.join('') + JSON.stringify(v.queue);
+    var sig = v.id + '|' + sel + '|' + Art.newArt() + '|' + JSON.stringify(v.tiles) + v.land.join('') + JSON.stringify(v.queue);
     if (el.vobjs._sig !== sig) { el.vobjs.innerHTML = Art.scene(v, sel, !!S.visit); el.vobjs._sig = sig; tickTimers(); }
     var want = Math.min(v.pop, 14);
     if (folkN !== want || el.folk._t !== v.id) {
@@ -455,6 +455,7 @@
   function codexPanel(me) {
     var t = myTribe(), h = '<section class="card"><h3><span class="dot" style="background:' + t.color + '"></span>' + t.zh + '<span class="lv">' + esc(t.en) + '</span></h3><p>' + t.intro + '</p>' +
       '<dl class="facts"><dt>問候</dt><dd><i class="nat">' + esc(t.hello) + '</i></dd><dt>謝謝</dt><dd><i class="nat">' + esc(t.thanks) + '</i></dd><dt>語別</dt><dd>' + t.lang + '</dd><dt>特長</dt><dd>' + t.bonus.text + '</dd></dl></section>';
+    if (Art.hasNewArt()) h += '<section class="card"><h3>畫面風格<span class="lv">建築與圖示</span></h3>' + seg('art-style', Art.newArt() ? 'new' : 'old', [['new', '新的美術'], ['old', '原本的畫法']]) + '<p class="muted">新的美術是設計稿做成的素材；原本的畫法是程式直接畫的。兩種可以隨時切換比較。</p></section>';
     h += '<section class="card"><h3>' + Art.icon('book') + '神話故事：' + esc(t.story.t) + '<span class="lv">' + Math.min(me.quest, R.QUESTS.length) + ' / ' + R.QUESTS.length + ' 章</span></h3>';
     t.quests.forEach(function (q, i) {
       h += i <= me.quest ? '<p class="story"><b>' + (i + 1) + '. ' + esc(q.t) + '</b>' + esc(q.x) + '</p>' : '<p class="muted">' + (i + 1) + '. 完成前面的章節後就能讀到。</p>';
@@ -582,7 +583,7 @@
     else h += '<p class="bnote">' + (b.mine ? '已下令「' + (b.mine === 'hero' ? mt.hero.abilityZh : R.CMDS[b.mine]) + '」，等對方下令。' : '選一個指令。時間到沒選，會' + (role === 'atk' ? '自動衝鋒' : '照你預設的守備方針') + '。') + (last ? ' 上一階段對方下的是「' + R.CMDS[role === 'atk' ? last.d : last.a] + '」。' : '') + '</p>';
     var heroBtn = b.hero || b.mine === 'hero';   // 英雄可以出戰（或這個階段剛選了英雄能力）才多一顆按鈕
     h += '<div class="cmds' + (heroBtn ? ' h4' : '') + '">' + Object.keys(R.CMDS).map(function (k) {
-      return '<button data-act="cmd" data-c="' + k + '"' + (b.state !== 'pick' || b.mine ? ' disabled' : '') + ' aria-pressed="' + (b.mine === k) + '"><b>' + R.CMDS[k] + '</b><span>' + CMD_TIP[k] + '</span></button>';
+      return '<button data-act="cmd" data-c="' + k + '"' + (b.state !== 'pick' || b.mine ? ' disabled' : '') + ' aria-pressed="' + (b.mine === k) + '"><b>' + Art.icon(k) + R.CMDS[k] + '</b><span>' + CMD_TIP[k] + '</span></button>';
     }).join('') + (heroBtn ? '<button class="hero" data-act="cmd" data-c="hero"' + (b.state !== 'pick' || b.mine ? ' disabled' : '') + ' aria-pressed="' + (b.mine === 'hero') + '"><b>★ ' + esc(mt.hero.abilityZh) + '</b><span>' + esc(mt.hero.zh) + '：' + abilityFx(mt.hero.ability) + '。一場一次，不受相剋影響</span></button>' : '') + '</div>';
     return h + '</div></div>';
   }
@@ -826,6 +827,7 @@
     else if (a === 'focus') act({ type: 'idle', focus: b.getAttribute('data-f') });
     else if (a === 'idleup') act({ type: 'idle', upgrade: b.checked }, b.checked ? '離線時會自動升級' : '已關閉自動升級');
     else if (a === 'ack') act({ type: 'ack' });
+    else if (a === 'art-style') { Art.setNewArt(b.getAttribute('data-v') === 'new'); el.vobjs._sig = null; el.hud._h = null; el.pbody._h = null; el.modal._h = null; render(); toast(Art.newArt() ? '已換成新的美術' : '已換回原本的畫法'); }
     else if (a === 'code-show' || a === 'code-hide') { S.showCode = a === 'code-show'; render(); }
     else if (a === 'code-copy') {
       var link = location.origin + location.pathname + '#t=' + Net.code();
