@@ -159,9 +159,11 @@
       if (st.tune) R.setTune(st.tune);   // 後台調過的數值：顯示的時間、產量、說明都跟著變
       S.me = st.me; S.pubs = st.villages; S.marches = st.marches || [];
       S.rel = st.rel || []; S.nodes = st.nodes || []; S.stock = st.stock || {}; S.market = st.market || []; S.feed = st.feed || []; S.alliances = st.alliances || {};
+      if (st.me) Art.need([st.me.tribe]);   // 自己族群的美術素材
       autoShow(st.me); raidAlert(st.me);
       render();
     });
+    Art.onLoad(function () { el.vobjs._sig = null; el.vimg._t = null; folkN = -1; if (el.mmarks) el.mmarks._h = null; render(); });   // 某一族的美術素材載好了：重畫
     Net.start();
     render();
   }
@@ -237,12 +239,14 @@
   function renderVillage() {
     var v = shown(); if (!v) return;
     var t = Tribes.get(v.tribe), sel = S.visit ? null : S.selTile;
-    if (el.vimg._t !== t.id + Art.newArt()) { el.vimg.setAttribute('href', Art.groundURL(t)); el.vdecor.innerHTML = Art.decor(t); el.vimg._t = t.id + Art.newArt(); folkN = -1; }
+    Art.need([t.id]);
+    var gk = t.id + Art.newArt() + Art.ready(t.id);
+    if (el.vimg._t !== gk) { el.vimg.setAttribute('href', Art.groundURL(t)); el.vdecor.innerHTML = Art.decor(t); el.vimg._t = gk; folkN = -1; }
     if (!VV.sized || el.vimg._focus !== v.id) {
       if (VV.resize()) { var c = Art.sitePos(R.CENTER_TILE); VV.focus(c[0], c[1] - 10, Math.max(1, Math.min(3.2, VV.vw / 1040))); el.vimg._focus = v.id; }
     }
     var bub = !S.visit && S.me && S.me.d ? { farm: '+' + perTime(S.me.d.rates.food), mat: '+' + perTime(S.me.d.rates.mat), special: '+' + perTime(S.me.d.rates.special) } : null;   // 產量的泡泡
-    var sig = v.id + '|' + sel + '|' + Art.newArt() + '|' + JSON.stringify(v.tiles) + v.land.join('') + JSON.stringify(v.queue) + JSON.stringify(bub);
+    var sig = v.id + '|' + sel + '|' + Art.newArt() + Art.ready(t.id) + '|' + JSON.stringify(v.tiles) + v.land.join('') + JSON.stringify(v.queue) + JSON.stringify(bub);
     if (el.vobjs._sig !== sig) { el.vobjs.innerHTML = Art.scene(v, sel, !!S.visit, bub); el.vobjs._sig = sig; tickTimers(); }
     var want = Math.min(v.pop, 14);
     if (folkN !== want || el.folk._t !== v.id) {
@@ -814,7 +818,9 @@
   function startShow() {   // 對戰畫面放進來之後才開始演
     var svg = document.getElementById('bshow'), me = S.me, r = me && showReport(me);
     if (!svg || !r) return;
-    S.showCtl = Art.battleShow(svg, r, { onDone: function () { showDone(S.me); } });
+    Art.need([r.show.aTribe, r.show.dTribe], function () {   // 雙方族群的人物與戰場都載好了才開始演
+      if (svg.isConnected) S.showCtl = Art.battleShow(svg, r, { onDone: function () { showDone(S.me); } });
+    });
   }
   function battleReport(me) {   // 沒有演出可以看的戰報：折返、改版前的舊戰報
     var r = me.reports.filter(function (x) { return x.id === S.report; })[0];

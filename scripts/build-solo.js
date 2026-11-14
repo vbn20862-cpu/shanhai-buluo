@@ -4,7 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const root = path.join(__dirname, '..');
 const read = f => fs.readFileSync(path.join(root, f), 'utf8');
-const scripts = ['shared/geo.js', 'shared/tribes.js', 'shared/world.js', 'public/assets.js', 'public/art.js', 'public/net.js', 'public/client.js'];
+// 單機預覽版沒有伺服器，各族的美術素材全部先包進去（排在 art.js 前面，載入時會先放進佇列）
+const scripts = ['shared/geo.js', 'shared/tribes.js', 'shared/world.js', 'public/assets.js'].concat(fs.readdirSync(path.join(root, 'public/art')).filter(f => f.endsWith('.js')).sort().map(f => 'public/art/' + f)).concat(['public/art.js', 'public/net.js', 'public/client.js']);
 const out = [
   '<title>山海部落</title>',
   '<meta name="claude:viewport-fit-sides" content="cover">',

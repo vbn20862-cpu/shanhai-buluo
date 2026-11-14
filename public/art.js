@@ -30,7 +30,43 @@ window.Art = (function () {
   /* 美術素材：art/ 裡的 SVG 由 npm run build:art 打包成 public/assets.js（window.ShanhaiArt）。
    * 有載入、而且沒有被玩家切回「原本的畫法」時，建築和圖示用素材；否則用這個檔案裡程式畫的版本。 */
   var AS = window.ShanhaiArt || null, newArt = !!AS;
+  /* 各族的素材（public/art/族群.js）用到才載入：載入後呼叫 ShanhaiArtAdd 把內容併進來。單機預覽版會在這之前就全部載好（先排在佇列裡） */
+  var packs = Object.create(null), loading = Object.create(null), waiters = [], onLoad = [];
+  function merge(p) {
+    if (!AS || !p || !p.tribe) return '';
+    ['building', 'height', 'people', 'nature', 'field'].forEach(function (k) { AS[k] = AS[k] || {}; for (var n in p[k] || {}) AS[k][n] = p[k][n]; });
+    packs[p.tribe] = true;
+    decorCacheReset();
+    return Object.keys(p.building || {}).map(function (n) { return '<symbol id="b-' + n + '" viewBox="-80 -140 160 180" overflow="visible">' + p.building[n] + '</symbol>'; }).join('') +
+      Object.keys(p.nature || {}).map(function (n) { return '<g id="n-' + n + '">' + p.nature[n] + '</g>'; }).join('') +
+      Object.keys(p.people || {}).filter(function (n) { return n.indexOf('-villager-') > 0; }).map(function (n) { return '<g id="vp-' + n + '">' + p.people[n] + '</g>'; }).join('');
+  }
+  function addPack(p) {
+    var defs = merge(p), live = typeof document !== 'undefined' && document.querySelector('#vsvg defs');
+    if (live && defs) live.insertAdjacentHTML('beforeend', defs);   // 部落畫面已經開著：把新的圖形加進去
+    delete loading[p.tribe];
+    waiters = waiters.filter(function (w) { if (w.list.every(function (t) { return packs[t] || !AS; })) { w.cb(); return false; } return true; });
+    onLoad.forEach(function (fn) { fn(p.tribe); });
+  }
+  window.ShanhaiArtAdd = addPack;
+  /* 確認這幾族的素材都載入了；還沒有的就去載。cb 在全部好了（或載入失敗）之後呼叫 */
+  function need(list, cb) {
+    list = (list || []).filter(function (t, i, a) { return t && a.indexOf(t) === i; });
+    var miss = AS ? list.filter(function (t) { return !packs[t]; }) : [];
+    if (!miss.length) { if (cb) cb(); return; }
+    if (cb) waiters.push({ list: list, cb: cb });
+    miss.forEach(function (t) {
+      if (loading[t]) return;
+      loading[t] = true;
+      var sc = document.createElement('script'); sc.src = 'art/' + t + '.js'; sc.async = true;
+      sc.onerror = function () { packs[t] = true; addPack({ tribe: t }); packs[t] = false; };   // 載不到就先用程式畫的
+      document.head.appendChild(sc);
+    });
+  }
+  var preDefs = '';
+  (window.ShanhaiArtQueue || []).forEach(function (p) { preDefs += merge(p); }); window.ShanhaiArtQueue = [];
   try { if (localStorage.getItem('shanhai_art') === 'old') newArt = false; } catch (e) { /* 讀不到設定就用預設 */ }
+  function decorCacheReset() { if (typeof decorCache !== 'undefined') { decorCache = {}; groundCache = {}; } }
   var ICON_AS = { power: 'power', build: 'build', march: 'march', alliance: 'alliance', trade: 'specialty', craft: 'craft', map: 'map', level: 'level', food: 'food', mat: 'material', pop: 'people', army: 'warrior', star: 'prosperity', shield: 'protect', fire: 'gather', book: 'quest', charge: 'charge', volley: 'volley', hold: 'regroup' };   // 遊戲裡的圖示名稱 → 素材的檔名
   [['march', 'flag'], ['trade', 'sp'], ['craft', 'book']].forEach(function (p) { ICONS[p[0]] = ICONS[p[1]]; });   // 沒有素材時借用相近的圖示
   /* 地圖上的資源點用的圖示（24 格）：素材裡沒有竹子和石板，這兩個是程式畫的 */
@@ -223,12 +259,8 @@ window.Art = (function () {
     return s + '<circle cx="' + f1(p[0] + 4) + '" cy="' + f1(p[1] - 8) + '" r="5" fill="#F2EAD6" opacity=".55"/><circle cx="' + f1(p[0] + 10) + '" cy="' + f1(p[1] - 20) + '" r="7" fill="#F2EAD6" opacity=".35"/>';
   };
   var ASSET_SCALE = 0.92;
-  /* 外觀隨等級改變（第二包美術）：中心建築三個階段（11、21 級換圖），家屋、瞭望台兩個階段（11 級換圖） */
-  function stage(type, level) {
-    if (type === 'center') return level >= 21 ? '-3' : level >= 11 ? '-2' : '';
-    if (type === 'house' || type === 'tower') return level >= 11 ? '-2' : '';
-    return '';
-  }
+  /* 外觀隨等級改變：每一種建築在 6、11、16、21 級換一次外觀（美術檔名 族群-種類-lv6.svg……） */
+  function stage(type, level) { return level >= 21 ? '-lv21' : level >= 16 ? '-lv16' : level >= 11 ? '-lv11' : level >= 6 ? '-lv6' : ''; }
   function asset(t, type, level) {
     if (!newArt || !AS) return '';
     var n = t.id + '-' + type + stage(type, level || 1);
@@ -255,9 +287,8 @@ window.Art = (function () {
     '<g id="bt-a"><ellipse cx="0" cy="1" rx="17" ry="5" fill="#000" opacity=".25"/><path d="M-5 0C-4 -30 -4 -50 -3 -72h6C4 -50 5 -30 6 0Z" fill="#6B4A32"/><path d="M1 0C2 -30 2 -50 1.5 -72h1.5C4 -50 5 -30 6 0Z" fill="#573A26"/><path d="M-2 -48l-14 -14" stroke="#6B4A32" stroke-width="3" stroke-linecap="round"/><circle cx="-17" cy="-78" r="19" fill="#357245"/><circle cx="15" cy="-82" r="21" fill="#2F6A40"/><circle cx="-2" cy="-98" r="21" fill="#3E7D4E"/><circle cx="-8" cy="-104" r="10" fill="#5A9E64" opacity=".85"/></g>' +
     '<g id="bt-c"><ellipse cx="0" cy="1" rx="15" ry="4.6" fill="#000" opacity=".25"/><rect x="-3.5" y="-46" width="7" height="47" fill="#6B4A32"/><rect x="0" y="-46" width="3.5" height="47" fill="#573A26"/><polygon points="-24,-36 0,-78 24,-36" fill="#2F6B4F"/><polygon points="0,-78 24,-36 0,-36" fill="#25573F"/><polygon points="-19,-62 0,-100 19,-62" fill="#3A7C5B"/><polygon points="0,-100 19,-62 0,-62" fill="#2D6449"/><polygon points="-13,-86 0,-118 13,-86" fill="#468A66"/><polygon points="0,-118 13,-86 0,-86" fill="#357052"/></g>' +
     '<g id="bt-p"><ellipse cx="0" cy="1" rx="11" ry="3.6" fill="#000" opacity=".25"/><path d="M-2.5 0C-1 -40 0 -70 1 -92h3C4 -70 3 -40 3 0Z" fill="#8A7A5A"/><path d="M-1.6 -20h4M-1 -40h4M-.4 -60h3.6M.4 -78h3" stroke="#6E6046" stroke-width="1.4"/><g fill="none" stroke="#3E8A4E" stroke-width="5" stroke-linecap="round"><path d="M2 -92q-16 -14 -30 -2"/><path d="M2 -92q16 -14 30 -2"/><path d="M2 -92q-10 -24 -24 -24"/><path d="M2 -92q10 -24 24 -24"/><path d="M2 -92q0 -20 2 -30"/></g><circle cx="2" cy="-92" r="4" fill="#2F6A40"/></g>' +
-    (AS ? Object.keys(AS.building).map(function (n) { return '<symbol id="b-' + n + '" viewBox="-80 -140 160 180" overflow="visible">' + AS.building[n] + '</symbol>'; }).join('') : '') +   // 美術素材的建築
-    (AS && AS.nature ? Object.keys(AS.nature).map(function (n) { return '<g id="n-' + n + '">' + AS.nature[n] + '</g>'; }).join('') : '') +   // 樹木與地景（原點在底部中央）
-    (AS && AS.people ? Object.keys(AS.people).filter(function (n) { return n.indexOf('-villager-') > 0; }).map(function (n) { return '<g id="vp-' + n + '">' + AS.people[n] + '</g>'; }).join('') : '') +   // 族人
+    (AS ? Object.keys(AS.building).filter(function (n) { return !/^(atayal|bunun|amis|paiwan)-/.test(n) || /-center$/.test(n); }).map(function (n) { return '<symbol id="b-' + n + '" viewBox="-80 -140 160 180" overflow="visible">' + AS.building[n] + '</symbol>'; }).join('') : '') +   // 共用的美術素材：建地、1 級的中心建築
+    preDefs +   // 已經載好的各族素材（單機預覽版）
     '</defs>';
   function use(id, x, y, sc) { return '<use href="#' + id + '" transform="translate(' + f1(x) + ' ' + f1(y) + ') scale(' + sc.toFixed(2) + ')"/>'; }
   function inWater(k, p) {
@@ -290,7 +321,7 @@ window.Art = (function () {
   }
   /* 方形的圍籬（有素材時）：四邊各 13 段，左前方那一邊的正中間是大門，四個角有轉角柱。等級越高，用越堅固的那一款 */
   function wallRing(t, level, items) {
-    var nm = t.id + (level >= 21 && AS.building[t.id + '-wall-3'] ? '-wall-3' : level >= 11 && AS.building[t.id + '-wall-2'] ? '-wall-2' : '-wall'), L = 2.4, n = 13, a = WALL_A, j;
+    var nm = AS.building[t.id + '-wall' + stage('wall', level)] ? t.id + '-wall' + stage('wall', level) : t.id + '-wall', L = 2.4, n = 13, a = WALL_A, j;
     function put(gx, gy, id, flip) { var p = P(gx, gy); items.push({ y: p[1] - 2, s: '<g transform="translate(' + f1(p[0]) + ' ' + f1(p[1]) + ')' + (flip ? ' scale(-1 1)' : '') + '">' + useB(id, 1) + '</g>' }); }
     for (j = 0; j < n; j++) {
       var o = -a + L * (j + 0.5);
@@ -441,7 +472,7 @@ window.Art = (function () {
   }
   /* 有第二包美術素材時：雙方族群的人物（每種兵三個姿勢、英雄）、守方族群的樹木、特效，放進這個 svg 自己的 <defs> */
   var PK = { w: 'warrior', a: 'archer', um: 'unique', ur: 'unique' }, POSE = { run: 'run', lunge: 'attack', loose: 'attack' };
-  function battleArt(td) { return newArt && AS && AS.field && AS.field[td.id] && AS.people && AS.people[td.id + '-warrior-stand'] ? AS : null; }
+  function battleArt(td, ta) { return newArt && AS && AS.field && AS.field[td.id] && AS.people && AS.people[td.id + '-warrior-stand'] && (!ta || AS.people[ta.id + '-warrior-stand']) ? AS : null; }
   function showDefs(A, ta, td) {
     var s = '<defs>';
     [ta.id, td.id].filter(function (x, n, a) { return a.indexOf(x) === n; }).forEach(function (t) {
@@ -464,7 +495,7 @@ window.Art = (function () {
     function n3(o) { return o.w + o.a + (o.u || 0); }
     var fscale = { a: Math.min(1, MAXFIG / Math.max(1, n3(sh.start.a))), d: Math.min(1, MAXFIG / Math.max(1, n3(sh.start.d))) };
     function shown(sd, c) { var o = {}; ['w', 'a', 'u'].forEach(function (k) { o[k] = c[k] > 0 ? Math.max(1, Math.round(c[k] * fscale[sd])) : 0; }); return o; }
-    var ART = battleArt(td), FS = ART ? 1.3 : 1.22, trees = '', i;   // FS：人物放大的倍數（素材的人物比程式畫的高）
+    var ART = battleArt(td, ta), FS = ART ? 1.3 : 1.22, trees = '', i;   // FS：人物放大的倍數（素材的人物比程式畫的高）
     if (ART) [[206, 204, 'tree-big', 0.76], [694, 198, 'tree-big', 0.72], [356, 210, 'tree-a', 1.0], [546, 204, 'tree-c', 0.95], [796, 228, 'tree-b', 1.0], [270, 298, 'bush', 1.3], [452, 262, 'rock', 1.2],
       [612, 318, 'log', 1.1], [744, 352, 'tree-a', 1.2], [134, 356, 'tree-b', 1.25], [524, 388, 'bush', 1.4], [372, 374, 'rock', 1.3]].forEach(function (t) {
       if (ART.nature[td.id + '-' + t[2]]) trees += '<g class="btree" data-y="' + t[1] + '">' + use('bn-' + t[2], t[0], t[1], t[3]) + '</g>';
@@ -802,7 +833,7 @@ window.Art = (function () {
     return s;
   }
 
-  return { icon: icon, iconBody: iconBody, scene: scene, battleShow: battleShow, building: function (type, t, level) { return bld(type, t.look, t, level); },
+  return { need: need, ready: function (t) { return !AS || !!packs[t]; }, onLoad: function (fn) { onLoad.push(fn); }, icon: icon, iconBody: iconBody, scene: scene, battleShow: battleShow, building: function (type, t, level) { return bld(type, t.look, t, level); },
     hasNewArt: function () { return !!AS; }, newArt: function () { return newArt; },
     setNewArt: function (on) { newArt = !!AS && !!on; try { localStorage.setItem('shanhai_art', newArt ? 'new' : 'old'); } catch (e) { /* 記不住就只在這次有效 */ } }, BW: BW, BH: BH, decor: decor, groundURL: groundURL, sitePos: sitePos, person: person, DEFS: DEFS, SW: SW, SH: SH,
     paintMap: paintMap, mapLabels: mapLabels, shade: shade };
