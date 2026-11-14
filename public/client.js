@@ -243,8 +243,8 @@
   }
 
   // ---------- 上方資訊列 ----------
-  function chip(ic, label, val, cap) {
-    return '<div class="chip" title="' + label + '">' + Art.icon(ic) + '<span class="lbl">' + label + '</span><b>' + val + '</b>' + (cap != null ? '<span class="cap">/' + cap + '</span>' : '') + '</div>';
+  function chip(ic, label, val, cap, cls) {
+    return '<div class="chip' + (cls ? ' ' + cls : '') + '" title="' + label + '">' + Art.icon(ic) + '<span class="lbl">' + label + '</span><b>' + val + '</b>' + (cap != null ? '<span class="cap">/' + cap + '</span>' : '') + '</div>';
   }
   function renderHud() {
     var live = S.pubs.filter(function (v) { return v.online && !v.bot; }).length;
@@ -253,7 +253,7 @@
     else {
       var t = myTribe(), d = me.d;
       h = '<div class="vname"><span class="dot" style="background:' + t.color + '"></span><b>' + esc(me.name) + '</b><span class="sub">' + t.zh + '</span></div>' +
-        chip('food', t.res.food, n0(me.res.food), d.cap) + chip('mat', t.res.mat, n0(me.res.mat), d.cap) +
+        chip('food', t.res.food + (d.hungry ? '：吃光了' : d.net < 0 ? '：入不敷出' : ''), n0(me.res.food), d.cap, d.hungry || d.net < 0 ? 'warn' : '') + chip('mat', t.res.mat, n0(me.res.mat), d.cap) +
         chip('sp', t.sp.zh, n0(me.sp[me.tribe]), d.spCap) + chip('pop', '族人', me.pop, d.popCap) + chip('army', '戰士', all3(me.units), d.armyCap) + chip('star', '繁榮', d.prosperity) +
         (Math.max(me.shieldUntil, me.newbieUntil) > Date.now() ? '<div class="chip safe" title="保護中，別人不能出征你">' + Art.icon('shield') + '<b data-until="' + Math.max(me.shieldUntil, me.newbieUntil) + '" data-coarse="1"></b></div>' : '') +
         (me.blessUntil > Date.now() ? '<div class="chip bless" title="族人同心，產量 +15%" role="img" aria-label="族人同心，產量加成中">' + Art.icon('fire') + '</div>' : '') +
@@ -337,7 +337,9 @@
         '<b>' + me.jobs[k] + '/' + d.slots[k] + '</b><button data-act="job" data-k="' + k + '" data-d="1" aria-label="增加' + names[k] + '的人手"' + (me.jobs[k] >= d.slots[k] || used >= me.pop ? ' disabled' : '') + '>＋</button></div>' +
         '<span class="rate">+' + perTime(d.rates[k]) + '</span></div>';
     });
-    return h + '<p class="muted">族人 ' + me.pop + ' 位，待命 ' + (me.pop - used) + ' 位。位置不夠時，多蓋或升級對應的建築。</p></section>';
+    var neg = d.net < 0;
+    return h + '<p class="eatline' + (neg ? ' neg' : '') + '">族人和戰士吃掉 ' + perTime(d.eat).replace(/^\+/, '') + '，' + t.res.food + '實際' + (neg ? '減少 ' + perTime(-d.net) : '增加 ' + perTime(d.net)) + '</p>' +
+      '<p class="muted">族人 ' + me.pop + ' 位，待命 ' + (me.pop - used) + ' 位。位置不夠時，多蓋或升級對應的建築。自動分配會先排夠養活大家的人去種田。</p></section>';
   }
   function queueCard(me) {
     if (!me.queue.length) return '';
@@ -363,11 +365,16 @@
       '<div class="act"><button class="btn sm" data-act="bless"' + (on || wait || why ? ' disabled' : '') + '>舉辦</button>' + costHTML(me, { food: R.BLESS.food, mat: 0 }) +
       '<span class="time">' + (wait ? '<b data-until="' + me.blessNext + '"></b> 後可以再辦' : why) + '</span></div><p class="note">' + esc(t.bless.note) + '</p></section>';
   }
+  function hungryCard(me) {   // 糧食吃光了：說明影響和解決的辦法
+    var t = myTribe();
+    if (!me.d.hungry) return '';
+    return '<section class="card alert"><h3>' + t.res.food + '吃光了</h3><p>族人吃不飽：不再增加、' + t.res.mat + '和' + t.sp.zh + '的工作變慢、不能訓練戰士。不會有人餓死或離開。</p><p class="muted">多派人種田（或打開自動分配）、多蓋田地、去野地採集糧食，或到「軍事」分頁讓一些戰士回家。</p></section>';
+  }
   function buildPanel(me) {
     var h = '', i = S.selTile;
     if (i != null) h += !me.land[i] ? wildCard(me, i) : me.tiles[i] ? buildingCard(me, i, me.tiles[i]) : emptyCard(me, i);
     else h += '<p class="hint">點建築可以升級，點有 ＋ 的空地可以蓋新建築，點外圍有斧頭記號的山林可以拓荒。畫面可以拖曳和縮放。</p>';
-    return h + questCard(me) + jobsCard(me) + queueCard(me) + idleCard(me) + codeCard();
+    return h + hungryCard(me) + questCard(me) + jobsCard(me) + queueCard(me) + idleCard(me) + codeCard();
   }
   function codeCard() {   // 換裝置繼續玩：部落代碼。只有連線版有（單機試玩的進度存在這個瀏覽器裡）
     if (S.mode !== 'online') return '';
@@ -395,9 +402,11 @@
     var t = myTribe(), rows = [[t.res.food, r.food, 'food'], [t.res.mat, r.mat, 'mat'], [t.sp.zh, r.sp, 'sp'], ['族人', r.pop, 'pop']].filter(function (x) { return x[1] !== 0; });
     var h = '<div class="veil"><div class="sheet" role="dialog" aria-label="離線報告"><h2>你不在的時候</h2><p class="muted">離開了 ' + ago(r.to - r.from) + (r.capped ? '，只計算最後 8 小時' : '') + '。</p><ul class="rep">';
     rows.forEach(function (x) { h += '<li>' + Art.icon(x[2]) + '<span>' + x[0] + '</span><b class="' + (x[1] < 0 ? 'neg' : '') + '">' + (x[1] > 0 ? '+' : '') + x[1] + '</b></li>'; });
+    if (r.ate) h += '<li>' + Art.icon('food') + '<span>族人和戰士吃掉</span><b>' + r.ate + '</b></li>';
     if (r.land) h += '<li><span>新開墾的地</span><b>+' + r.land + '</b></li>';
     r.ups.forEach(function (u) { h += '<li><span>' + esc(bdef(t, u.type).zh) + '升級</span><b>等級 ' + u.to + '</b></li>'; });
-    if (!rows.length && !r.land && !r.ups.length) h += '<li><span>倉庫已經滿了，沒有新的收穫。</span></li>';
+    if (r.hungry) h += '<li><span class="neg">' + t.res.food + '吃光了，族人吃不飽，工作變慢。</span></li>';
+    if (!rows.length && !r.land && !r.ups.length && !r.ate) h += '<li><span>倉庫已經滿了，沒有新的收穫。</span></li>';
     return h + '</ul><button class="btn big" data-act="ack">知道了</button></div></div>';
   }
   function tribeCard(t, cells) {
@@ -496,10 +505,11 @@
       ['w', 'a', 'u'].forEach(function (u) {
         if (u === 'u' && me.quest < 4) { h += '<p class="muted">完成任務第 4 章，可以訓練' + t.zh + '的獨特兵種「' + esc(us.zh) + '」。</p>'; return; }
         var def = u === 'u' ? R.UNIT_U : U[u], name = u === 'u' ? esc(us.zh) : U[u].zh;
-        var why = total >= d.armyCap ? '名額已滿' : !affordable(me, def.cost) ? '物資還不夠' : '';
+        var why = d.hungry ? t.res.food + '吃光了' : total >= d.armyCap ? '名額已滿' : !affordable(me, def.cost) ? '物資還不夠' : '';
         h += '<div class="act"><button class="btn sm' + (u === 'u' ? ' uq' : '') + '" data-act="train" data-u="' + u + '"' + (why ? ' disabled' : '') + '>訓練' + name + '</button>' + costHTML(me, def.cost) + '<span class="time">' + (why || dur(R.trainTime(u))) + '</span></div>';
       });
       if (me.train.length) h += '<p class="busyline">下一位還要 <b data-until="' + me.train[0].doneAt + '"></b>，全部完成還要 <b data-until="' + me.train[me.train.length - 1].doneAt + '"></b></p>';
+      if (all3(me.units) > 0) h += '<p class="label">讓戰士回家（每位戰士每分鐘吃 ' + R.TUNE.eatUnit + ' 份' + t.res.food + '）</p><div class="tbtns row">' + ['w', 'a', 'u'].filter(function (u) { return me.units[u] > 0; }).map(function (u) { return '<button class="btn sm ghost" data-act="dismiss" data-u="' + u + '">' + (u === 'u' ? esc(us.zh) : U[u].zh) + '回家 1 位</button>'; }).join('') + '</div>';
       h += '<p class="muted">' + U.w.zh + '站在前面承受攻擊；' + U.a.zh + '攻擊力較高但較脆弱。' + (me.quest >= 4 ? nat(us) + '：' + traitFx(us.trait) + '。' : '') + '</p>';
       if (me.quest >= 4) h += '<p class="note">' + esc(us.note) + '</p>';
     }
@@ -603,6 +613,7 @@
     var A = S.attack;
     if (a === 'train') act({ type: 'train', u: b.getAttribute('data-u') });
     else if (a === 'wall') act({ type: 'wall' }, '開始施工');
+    else if (a === 'dismiss') act({ type: 'dismiss', u: b.getAttribute('data-u'), n: 1 });
     else if (a === 'atk-open') { S.attack = { id: b.getAttribute('data-id'), w: me.units.w, a: me.units.a, u: me.units.u }; render(); }
     else if (a === 'atk-cancel') { S.attack = null; render(); }
     else if (a === 'atk-n') { var u = b.getAttribute('data-u'); A[u] = Math.max(0, Math.min(me.units[u], A[u] + +b.getAttribute('data-d'))); render(); }

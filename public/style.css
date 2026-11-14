@@ -180,6 +180,10 @@ p { margin: 4px 0; }
 .seg.n2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ic-army { color: #E7B9A0; } .ic-shield { color: var(--good); }
 .chip.safe { border-color: var(--good); color: var(--good); }
+.chip.warn { border-color: var(--warn); } .chip.warn b { color: var(--warn); }
+.eatline { margin: 6px 0 2px; font-size: 13px; color: var(--good); } .eatline.neg { color: var(--warn); font-weight: 700; }
+.tbtns.row { flex-direction: row; flex-wrap: wrap; margin-top: 4px; }
+.rep .neg { color: var(--warn); }
 .chip.bless { border-color: var(--gold); color: var(--gold); }
 /* 部落代碼（換裝置用） */
 .codebox { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; letter-spacing: .04em; background: var(--bg); border: 1px dashed var(--gold); border-radius: 8px; padding: 7px 10px; word-break: break-all; user-select: all; -webkit-user-select: all; margin: 4px 0; }

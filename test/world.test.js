@@ -683,3 +683,44 @@ test('舊存檔：打到一半的舊式對戰把人送回去；佈防設定拿�
   assert.equal(w3.tune.wallPct, 12, '新版存檔裡調過的對戰數值會保留'); assert.equal(again.tune.pace, 20);
   check(w2);
 });
+
+test('族人與戰士吃糧食：吃光了不會餓死，只是不長人、工作變慢、不能訓練；可以讓戰士回家', () => {
+  const w = new World({ rng: seeded(101) });
+  let now = 1e6;
+  const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'amis' }, now).id];
+  w.setOnline(v.id, true, now);
+  const d0 = R.derived(v, 1);
+  assert.ok(Math.abs(d0.eat - 4 * R.TUNE.eatPop / 60) < 1e-9, '4 位族人吃的糧食');
+  assert.ok(d0.net > 0 && d0.net < d0.rates.food, '一開始糧食還是會增加');
+  v.tiles[3] = { type: 'barracks', level: 5 }; v.units.w = 20; v.away.a = 6;
+  assert.ok(Math.abs(R.derived(v, 1).eat - (4 * R.TUNE.eatPop + 26 * R.TUNE.eatUnit) / 60) < 1e-9, '戰士也吃，出征中的也算');
+  // 自動分工：先排夠養活大家的人去種田
+  v.tiles[2] = { type: 'farm', level: 5 }; v.tiles[4] = { type: 'house', level: 5 }; v.pop = 12; v.auto = true;
+  w.tick(now += 1000);
+  assert.ok(R.derived(v, 1).net > 0, '自動分工會先排夠人種田：淨收入 ' + R.derived(v, 1).net.toFixed(2) + '，分工 ' + JSON.stringify(v.jobs));
+  // 手動把人都調去採建材：糧食慢慢吃光
+  v.auto = false; v.jobs = { food: 0, mat: 2, special: 0 }; v.res.food = 30; v.res.mat = 0;
+  const pop0 = v.pop; v.popAcc = 0;
+  for (let i = 0; i < 120; i++) w.tick(now += 1000);
+  assert.equal(v.res.food, 0); assert.equal(v.hungry, true); assert.equal(R.derived(v, 1).hungry, true);
+  const popH = v.pop; for (let i = 0; i < 120; i++) w.tick(now += 1000);
+  assert.ok(pop0 <= popH && v.pop === popH && v.hungry, '吃不飽就不長人'); assert.ok(v.units.w === 20 && v.pop > 0, '不會餓死，也不會離開');
+  const r = R.derived(v, 1).rates.mat, full = 2 * R.perWorker(v, 'mat', 1);
+  assert.ok(Math.abs(r - full * R.TUNE.hungryWork) < 1e-9, '建材的工作變慢');
+  assert.equal(w.act(v.id, { type: 'train', u: 'w' }, now).ok, false, '吃不飽不能訓練');
+  // 讓戰士回家：家裡有空房的變回族人
+  assert.equal(w.act(v.id, { type: 'dismiss', u: 'w', n: 21 }, now).ok, false);
+  assert.equal(w.act(v.id, { type: 'dismiss', u: 'x', n: 1 }, now).ok, false);
+  const room = R.popCap(v) - v.pop;
+  assert.ok(w.act(v.id, { type: 'dismiss', u: 'w', n: 15 }, now).ok);
+  assert.equal(v.units.w, 5); assert.equal(v.pop, popH + Math.min(15, room));
+  // 改回自動分工：糧食回來，就不再吃不飽
+  v.auto = true; v.away.a = 0;
+  for (let i = 0; i < 30; i++) w.tick(now += 1000);
+  assert.ok(v.res.food > 0 && !v.hungry, '糧食回來了');
+  // 離線報告寫出吃掉多少
+  w.setOnline(v.id, false, now); now += 3 * 3600000; w.setOnline(v.id, true, now);
+  assert.ok(v.report && v.report.ate > 0, '離線報告有吃掉的糧食');
+  assert.equal(w.snapshot(v.id, now).me.ate, undefined, '累計吃掉的量不傳給玩家（每秒都在變）');
+  check(w);
+});
