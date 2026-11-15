@@ -1,0 +1,66 @@
+/* 遊戲風格（試作）：深色木頭的框、一般幾何的編織紋邊條、暖棕與金色、有厚度的按鈕、視窗彈出 */
+:root {
+  --panel: #3A2819; --raise: #4B3523; --line: #7A5434; --ink: #FAF0DA; --mute: #D2BC98; --gold: #F2B93B; --good: #C6E8A4; --warn: #FFAE8F;
+  --wood1: #5A3B22; --wood2: #3A2717; --wood3: #2A1C10; --rim: #C9963F; --rim2: #F6D27A; --leaf: #6FA142; --leaf2: #4E7A2C;
+  --weave: repeating-linear-gradient(45deg, rgba(246, 210, 122, .55) 0 3px, transparent 3px 6px), repeating-linear-gradient(-45deg, rgba(42, 28, 16, .9) 0 3px, transparent 3px 6px);
+}
+/* 木板與金邊 */
+.pcard, #drawer, .sheet, .trk, .q, .pill, .mecard, .bn, #feedbar button, .zoom button {
+  background: linear-gradient(180deg, var(--wood1), var(--wood2) 60%, var(--wood3)) !important;
+  border: 2px solid var(--rim) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 230, 170, .35), inset 0 -2px 0 rgba(0, 0, 0, .35), 0 3px 0 rgba(20, 10, 4, .55), 0 6px 14px rgba(0, 0, 0, .35) !important;
+}
+.trk, .q { border-width: 1.5px !important; }
+.q.idle { opacity: .92; }
+/* 視窗：標題做成橫幅、下面一條編織紋 */
+#drawer { border-width: 3px !important; border-radius: 14px !important; animation: win-pop .18s cubic-bezier(.3, 1.4, .5, 1) both; }
+#dhead { background: linear-gradient(180deg, #7A4E2A, #5A371C) !important; border-bottom: 0 !important; text-align: center; font-size: 19px !important; letter-spacing: .12em; color: var(--rim2); text-shadow: 0 2px 0 #2A1708; padding: 8px 44px 10px !important; }
+#dhead::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: var(--weave), #6B4526; }
+.pcard { border-radius: 14px !important; animation: win-pop .16s cubic-bezier(.3, 1.4, .5, 1) both; }
+.pcard h3 { color: var(--rim2); text-shadow: 0 2px 0 #2A1708; }
+@keyframes win-pop { from { opacity: 0; transform: scale(.92); } }
+/* 卡片：比較淺的木板，左上一點高光 */
+#pbody .card, .sheet .card { background: linear-gradient(180deg, #4E3825, #3F2C1C) !important; border: 1.5px solid #8A6238 !important; border-radius: 12px !important; box-shadow: inset 0 1px 0 rgba(255, 230, 170, .22), 0 2px 0 rgba(0, 0, 0, .35); }
+#pbody .card h3 { color: var(--rim2); text-shadow: 0 2px 0 #2A1708; }
+/* 關閉：圓形的紅棕色按鈕 */
+.pcard .x, #dhead .x { background: radial-gradient(circle at 35% 30%, #D2704A, #8E3A22) !important; color: #FFF3DC !important; border: 2px solid var(--rim2) !important; box-shadow: 0 2px 0 #3A1408; font-size: 18px !important; top: 5px !important; right: 6px !important; width: 30px !important; height: 30px !important; }
+/* 按鈕：有厚度，按下去會往下壓 */
+.btn, .trk .go, .bbtn { background: linear-gradient(180deg, #FFE08A, #F2B93B 45%, #C7861D) !important; color: #3A2204 !important; border: 1.5px solid #FFF0B8 !important; border-radius: 10px !important; box-shadow: 0 3px 0 #7A4A0C, 0 4px 8px rgba(0, 0, 0, .35) !important; text-shadow: 0 1px 0 rgba(255, 245, 210, .6); transition: transform .06s, box-shadow .06s; }
+.btn:active, .trk .go:active, .bbtn:active { transform: translateY(2px); box-shadow: 0 1px 0 #7A4A0C !important; }
+.btn.ghost, .trk .go.ghost { background: linear-gradient(180deg, #6E4A2B, #4C321E) !important; color: var(--ink) !important; border-color: #A97C48 !important; box-shadow: 0 3px 0 #22140A !important; text-shadow: none; }
+.btn:disabled { filter: grayscale(.7) brightness(.8); opacity: .75 !important; }
+/* 分段選擇：木牌 */
+.seg button { background: linear-gradient(180deg, #5A3D25, #3E2A1A) !important; border: 1.5px solid #8A6238 !important; color: var(--mute) !important; }
+.seg button[aria-pressed="true"] { background: linear-gradient(180deg, #FFE08A, #E3A93A) !important; color: #3A2204 !important; border-color: #FFF0B8 !important; }
+/* 進度條：凹槽加亮面 */
+.bar, .trk .bar { background: #1E140B !important; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .7); border: 1px solid #6B4A2E; height: 8px !important; border-radius: 6px !important; }
+.bar i, .trk .bar i { background: linear-gradient(180deg, #CFEA8C, var(--leaf) 50%, var(--leaf2)) !important; border-radius: 6px !important; }
+/* 上方：自己的頭像框與物資徽章 */
+.mecard { border-radius: 14px 999px 999px 14px !important; padding: 3px 14px 3px 3px !important; }
+.av { width: 34px !important; height: 34px !important; border: 3px solid var(--rim2) !important; box-shadow: 0 0 0 2px #3A2717, 0 2px 4px rgba(0, 0, 0, .5); font-family: var(--display); font-size: 17px !important; }
+.mi b { color: var(--rim2); text-shadow: 0 2px 0 #2A1708; font-size: 15px !important; }
+.pill { border-radius: 999px !important; padding: 2px 10px 2px 3px !important; border-width: 1.5px !important; }
+.pill > .ic, .pill > svg.ic { width: 22px !important; height: 22px !important; padding: 3px; box-sizing: border-box; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #7A5232, #2E1D10); border: 1.5px solid var(--rim2); }
+.pill b { font-family: var(--display); font-size: 15px; letter-spacing: .02em; text-shadow: 0 2px 0 #1A0F06; }
+#hud { background: linear-gradient(rgba(30, 18, 8, .75), rgba(30, 18, 8, 0)) !important; }
+.mode { background: rgba(42, 28, 16, .85); border-color: #7A5434 !important; }
+/* 下方的圓形按鈕：木頭圓章加金邊 */
+.db span { background: radial-gradient(circle at 35% 30%, #7E5634, #3E2816 70%) !important; border: 3px solid var(--rim) !important; box-shadow: inset 0 2px 0 rgba(255, 230, 170, .35), 0 3px 0 #22140A, 0 5px 10px rgba(0, 0, 0, .45) !important; }
+.db span .ic { color: var(--rim2) !important; filter: drop-shadow(0 1px 0 #1A0F06); }
+.db { font-family: var(--display); font-size: 12px !important; color: #FFF3DC !important; text-shadow: 0 1px 0 #1A0F06, 0 0 3px #1A0F06, 0 0 3px #1A0F06 !important; }
+.db[aria-pressed="true"] span { border-color: var(--rim2) !important; box-shadow: 0 0 0 3px rgba(246, 210, 122, .45), 0 3px 0 #22140A !important; }
+.db.big span { background: radial-gradient(circle at 35% 30%, #4E8C3A, #24461A 75%) !important; border-color: var(--rim2) !important; }
+.rdot { background: radial-gradient(circle at 35% 30%, #FF8A70, #D63A2A) !important; border: 2px solid #FFF3DC !important; }
+/* 點建築的圓形按鈕 */
+.rb span { background: radial-gradient(circle at 35% 30%, #7E5634, #3E2816 70%) !important; border: 3px solid var(--rim) !important; box-shadow: inset 0 2px 0 rgba(255, 230, 170, .35), 0 3px 0 #22140A !important; }
+.rb.up span { background: radial-gradient(circle at 35% 30%, #FFE08A, #D99A28 70%) !important; }
+.rb { font-family: var(--display); font-size: 12px !important; }
+/* 追蹤欄的標題、提示訊息 */
+.trk .th { color: var(--rim2) !important; }
+.toast { background: linear-gradient(180deg, #FFE9A8, #F2C45A) !important; color: #3A2204 !important; border: 2px solid #FFF6D0; box-shadow: 0 3px 0 #7A4A0C, 0 6px 16px rgba(0, 0, 0, .4) !important; font-weight: 700 !important; }
+.zoom button { color: var(--rim2) !important; border-radius: 12px !important; }
+#left { top: calc(60px + var(--st)) !important; }
+.rb { color: #FFF3DC !important; text-shadow: 0 1px 0 #1A0F06, 0 0 3px #1A0F06, 0 0 3px #1A0F06 !important; }
+.units div, .gostat, .scout { background: linear-gradient(180deg, #5A3F28, #46301E) !important; border: 1px solid #8A6238; }
+.units b { font-family: var(--display); color: var(--rim2); text-shadow: 0 2px 0 #1A0F06; }
+@media (orientation: portrait) { #left { top: calc(104px + var(--st)) !important; } }
