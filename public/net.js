@@ -164,12 +164,19 @@ window.Net = (function () {
         if (room > 0) { v.units.u += nu; v.units.w += Math.ceil((room - nu) / 2); v.units.a += Math.floor((room - nu) / 2); }
       }
       else if (kind === 'quest') {   // 把這一章的目標直接補到達成，再照正常規則領獎勵
-        var p = local.questProgress(v), q = p && World.rules.QUESTS[p.i];
+        var q = local.questProgress(v);   // 目前這一關的目標
         if (q) {
           if (q.type === 'land') { for (var i = 0; i < v.land.length && v.land.filter(Boolean).length < q.n; i++) v.land[i] = v.land[i] || 1; }
           else if (q.type === 'have') v.res.food = Math.max(v.res.food, q.n);
+          else if (q.type === 'mat') v.res.mat = Math.max(v.res.mat, q.n);
           else if (q.type === 'trade') v.stat.trade = Math.max(v.stat.trade, q.n);
           else if (q.type === 'units') v.units.w = Math.max(v.units.w, q.n - v.units.a - v.units.u);
+          else if (q.type === 'journey') v.qj = v.quest * 3 + (v.qs || 0);
+          else if (q.type === 'build') {   // 有這種建築就升到要的等級，沒有就找一塊空地蓋
+            var bt = -1; v.tiles.forEach(function (b, k) { if (b && b.type === q.b && (bt < 0 || b.level > v.tiles[bt].level)) bt = k; });
+            if (bt < 0) for (var k2 = 1; k2 < v.tiles.length; k2++) if (v.land[k2] && !v.tiles[k2]) { bt = k2; v.tiles[k2] = { type: q.b, level: 0 }; break; }
+            if (bt >= 0) v.tiles[bt].level = Math.max(v.tiles[bt].level, q.n);
+          }
           else v.stat.point = Math.max(v.stat.point, q.n);
           local.act(localId, { type: 'quest' }, now);
         }

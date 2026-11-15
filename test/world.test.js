@@ -437,15 +437,16 @@ test('任務主線：五章依序完成，獎勵是器物、器物、獨特建�
   let now = 1e6;
   const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'amis' }, now).id];
   w.setOnline(v.id, true, now);
+  const fin = () => { v.qs = 2; return w.act(v.id, { type: 'quest' }, now); };   // 直接到每一章的第 3 關（原本的目標）；前兩關另外測
   assert.equal(w.act(v.id, { type: 'quest' }, now).ok, false, '目標沒達成不能領');
   assert.equal(w.act(v.id, { type: 'build', tile: 1, type2: 'unique' }, now).ok, false, '第三章前不能蓋獨特建築');
   const rate0 = R.derived(v, 1).rates.food;
-  v.land[7] = 1; v.land[8] = 1;                                    // 第一章：開墾到 9 塊地
+  v.land[7] = 1; v.land[8] = 1; v.qs = 2;                          // 第一章：開墾到 9 塊地
   assert.deepEqual([w.questProgress(v).cur, w.questProgress(v).done], [9, true]);
-  assert.ok(w.act(v.id, { type: 'quest' }, now).ok);
+  assert.ok(fin().ok);
   assert.ok(Math.abs(R.derived(v, 1).rates.food / rate0 - (1 + R.TUNE.itemBonus)) < 1e-9, '第一件器物讓糧食產量增加');
-  v.res.food = 320; assert.ok(w.act(v.id, { type: 'quest' }, now).ok);      // 第二章：存糧
-  v.stat.trade = 2; assert.ok(w.act(v.id, { type: 'quest' }, now).ok);      // 第三章：交換
+  v.res.food = 320; assert.ok(fin().ok);      // 第二章：存糧
+  v.stat.trade = 2; assert.ok(fin().ok);      // 第三章：交換
   assert.equal(v.quest, 3);
   v.res.food = 500; v.res.mat = 500;
   assert.ok(w.act(v.id, { type: 'build', tile: 1, type2: 'unique' }, now).ok);
@@ -458,12 +459,12 @@ test('任務主線：五章依序完成，獎勵是器物、器物、獨特建�
   assert.equal(v.tiles[1].level, 1);
   assert.ok(Math.abs(R.derived(v, 1).rates.special - R.TUNE.pondSp / 60) < 1e-9 && R.derived(v, 1).rates.food >= R.TUNE.pondFood / 60, '阿美的獨特建築不用人手也有漁獲和糧食');
   assert.equal(w.act(v.id, { type: 'upgrade', tile: 1 }, now).ok, false, '獨特建築不用升級');
-  v.units.w = 6; assert.ok(w.act(v.id, { type: 'quest' }, now).ok);         // 第四章：6 名戰士
+  v.units.w = 6; assert.ok(fin().ok);         // 第四章：6 名戰士
   v.res.food = 500; v.res.mat = 500;
   assert.ok(w.act(v.id, { type: 'train', u: 'u' }, now).ok);
   now = run(w, now, 8); assert.equal(v.units.u, 1);
   assert.equal(w.act(v.id, { type: 'bless' }, now).ok, false, '主線沒完成不能舉行祭儀');
-  v.stat.point = 1; assert.ok(w.act(v.id, { type: 'quest' }, now).ok);      // 第五章：佔領資源點
+  v.stat.point = 1; assert.ok(fin().ok);      // 第五章：佔領資源點
   assert.equal(v.quest, 5); assert.equal(w.questProgress(v), null);
   now = run(w, now, 2);
   assert.equal(v.blessed, true, '完成主線先得到一次祝福');
@@ -1089,5 +1090,44 @@ test('賽季：做事累積季分、達到目標領獎勵、季末排名送加�
   const d = JSON.parse(JSON.stringify(w.toJSON()));
   assert.equal(new World().load(d).season.n, 2);
   delete d.season; const w2 = new World().load(d); w2.tick(now + 1000); assert.equal(w2.season.n, 1);
+  check(w);
+});
+
+test('神話故事關卡：每章 3 關、故事分三段揭開（不新增文字）、出一趟遠門、舊部落接在原本的那一關', () => {
+  const Tribes = require('../shared/tribes.js'), R = World.rules;
+  // 每一章都分得出三段，接起來和原文一樣
+  for (const t of Tribes.playable()) for (const q of t.quests) { const sg = R.storySegs(q.x); assert.equal(sg.length, 3, t.zh + q.t); assert.equal(sg.join(''), q.x); }
+  const w = new World({ speed: 1, rng: seeded(81) });
+  let now = 1e6;
+  const v = w.villages[w.join('qs1', { owner: '甲', name: '甲部落', tribe: 'atayal' }, now).id]; v.online = true;
+  let p = w.questProgress(v);
+  assert.deepEqual([p.i, p.s, p.type], [0, 0, 'build']); assert.ok(/升到 2 級/.test(p.text));
+  v.res.food = v.res.mat = 99999; v.tiles[0].level = 3;
+  v.tiles[2].level = 2; const f0 = v.res.food;
+  assert.ok(w.act(v.id, { type: 'quest' }, now).ok); assert.equal(v.qs, 1); assert.equal(v.res.food, f0 + R.stageReward(v).food, '前兩關有小獎勵');
+  v.tiles[4].level = 2; assert.ok(w.act(v.id, { type: 'quest' }, now).ok); assert.equal(v.qs, 2);
+  p = w.questProgress(v); assert.deepEqual([p.type, p.n], ['land', 9], '第 3 關就是原本那一章的目標');
+  v.land = v.land.map(() => 1); assert.ok(w.act(v.id, { type: 'quest' }, now).ok); assert.deepEqual([v.quest, v.qs], [1, 0]);
+  v.res.food = 99999; assert.ok(w.act(v.id, { type: 'quest' }, now).ok);
+  // 第 2 章第 2 關：出一趟遠門
+  p = w.questProgress(v); assert.equal(p.type, 'journey'); assert.ok(p.dest && p.people === 1);
+  assert.equal(w.act(v.id, { type: 'quest' }, now).msg, '目標還沒達成');
+  assert.equal(w.act(v.id, { type: 'journey', w: 1, a: 0 }, now).msg, '留在部落的人數不夠');
+  v.units.w = 2;
+  assert.ok(w.act(v.id, { type: 'journey', w: 1, a: 0 }, now).ok);
+  assert.equal(w.act(v.id, { type: 'journey', w: 1, a: 0 }, now).msg, '隊伍已經在路上了');
+  const m = w.marches.filter(x => x.kind === 'journey')[0];
+  assert.ok(m.dest && Math.hypot(m.dest[0] - p.dest.x, m.dest[1] - p.dest.y) < 1e-6);
+  assert.equal(w.snapshot(v.id, now).marches.filter(x => x.kind === 'journey')[0].dest.length, 2, '地圖畫得出目的地');
+  while (w.marches.some(x => x.id === m.id)) { now += 1000; w.tick(now); }
+  assert.equal(v.units.w, 2, '人回來了'); assert.ok(w.questProgress(v).done, '走完一趟：這一關達成');
+  assert.ok(w.act(v.id, { type: 'quest' }, now).ok); assert.equal(v.qs, 2);
+  // 舊部落（沒有 qs）：接在這一章的最後一關
+  const d = JSON.parse(JSON.stringify(w.toJSON())); delete d.villages[v.id].qs;
+  assert.equal(new World().load(d).villages[v.id].qs, 2);
+  // 示範部落不用真的出遠門，一樣會往下走
+  const bot = Object.values(w.villages).find(x => x.bot) || (w.ensureBots(now), Object.values(w.villages).find(x => x.bot));
+  bot.quest = 1; bot.qs = 1; bot.res.food = 99999; w.botStep(bot, now);
+  assert.ok(bot.qs === 2 || bot.quest > 1);
   check(w);
 });

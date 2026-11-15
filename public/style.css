@@ -472,3 +472,14 @@ p { margin: 4px 0; }
 .sgoals li .gain { flex: 1; min-width: 0; font-size: 12.5px; flex-wrap: wrap; }
 .sgoals li em { font-style: normal; font-size: 12px; color: var(--mute); white-space: nowrap; }
 .sgoals li.can > b { color: var(--gold); } .sgoals li.got { opacity: .6; } .sgoals li.got em { color: var(--good); }
+/* 神話故事關卡 */
+.sscene { display: block; width: 100%; height: 108px; border-radius: 8px; margin: 4px 0 6px; border: 1px solid var(--line); }
+.spath { display: flex; justify-content: space-between; gap: 4px; margin: 2px 0 6px; }
+.sch { display: inline-flex; align-items: center; gap: 3px; }
+.sch em { font-style: normal; font-size: 10.5px; color: var(--mute); margin-right: 1px; }
+.sch i { width: 9px; height: 9px; border-radius: 50%; background: var(--raise); border: 1.5px solid var(--line); }
+.sch i.done { background: var(--gold); border-color: var(--gold); }
+.sch i.cur { background: var(--bg); border-color: var(--gold); box-shadow: 0 0 0 2px rgba(227, 179, 65, .35); }
+.story .more { color: var(--mute); font-size: 12px; margin-left: 4px; }
+.jdest circle { fill: rgba(227, 179, 65, .25); stroke: var(--gold); stroke-width: 1.6; }
+.jdest path { fill: var(--gold); stroke: #2A1F05; stroke-width: 1.2; stroke-linejoin: round; }

@@ -500,6 +500,20 @@ window.Art = (function () {
     for (i = 0; i < 12; i++) s += at(90 + rnd(i, 91) * 880, 30 + rnd(i, 92) * 60, '<path class="leaf" style="animation-delay:' + Math.round(-rnd(i, 93) * 8000) + 'ms;animation-duration:' + Math.round(6000 + rnd(i, 94) * 5000) + 'ms" d="M0 0q5 -5 10 0q-5 5 -10 0z" fill="' + (i % 3 ? '#D9A441' : '#8FB85A') + '"/>');
     return s;
   }
+  /* 神話故事關卡的插圖：那一族的山林或海邊背景，加上幾位族人。只畫人，不畫太陽、巨人、神靈或故事裡的危險場面 */
+  var STORY_FIG = [
+    [['villager-a-stand', 430, 1], ['villager-b-stand', 560, -1]],
+    [['villager-a-walk', 400, 1], ['warrior-stand', 560, -1]],
+    [['warrior-run', 380, 1], ['archer-run', 500, 1], ['villager-b-stand', 640, -1]],
+    [['warrior-stand', 400, 1], ['archer-stand', 520, 1], ['villager-a-stand', 640, -1]],
+    [['warrior-stand', 360, 1], ['hero-stand', 500, 1], ['archer-stand', 640, -1]]
+  ];
+  function storyScene(tribe, i) {
+    var A = AS; if (!newArt || !A || !A.field || !A.field[tribe] || !A.people) return '';
+    var s = '';
+    (STORY_FIG[i] || STORY_FIG[0]).forEach(function (f) { var b = A.people[tribe + '-' + f[0]]; if (b) s += '<g transform="translate(' + f[1] + ' 356) scale(' + (2.4 * f[2]) + ' 2.4)" style="color:#F2EAD6">' + b + '</g>'; });
+    return '<svg class="sscene" viewBox="0 0 1000 420" preserveAspectRatio="xMidYMid slice" role="img" aria-label="故事插圖：族人">' + A.field[tribe].back + s + A.field[tribe].front + '</svg>';
+  }
   /* 有第二包美術素材時：雙方的人物（每種兵三個姿勢、英雄）、守方族群的樹木、特效，放進這個 svg 自己的 <defs>。
    * 人物照雙方的兵種階級換成第 2、3 階的樣子（sh.aTier、sh.dTier；舊戰報沒有就是第 1 階）。代號用「哪一方」區分，兩邊同一族也不會混在一起 */
   var PK = { w: 'warrior', a: 'archer', um: 'unique', ur: 'unique' }, POSE = { run: 'run', lunge: 'attack', loose: 'attack' };
@@ -871,6 +885,6 @@ window.Art = (function () {
 
   return { need: need, ready: function (t) { return !AS || !!packs[t]; }, onLoad: function (fn) { onLoad.push(fn); }, icon: icon, iconBody: iconBody, scene: scene, battleShow: battleShow, building: function (type, t, level) { return bld(type, t.look, t, level); },
     hasNewArt: function () { return !!AS; }, newArt: function () { return newArt; },
-    setNewArt: function (on) { newArt = !!AS && !!on; try { localStorage.setItem('shanhai_art', newArt ? 'new' : 'old'); } catch (e) { /* 記不住就只在這次有效 */ } }, BW: BW, BH: BH, decor: decor, groundURL: groundURL, sitePos: sitePos, person: person, DEFS: DEFS, SW: SW, SH: SH,
+    storyScene: storyScene, setNewArt: function (on) { newArt = !!AS && !!on; try { localStorage.setItem('shanhai_art', newArt ? 'new' : 'old'); } catch (e) { /* 記不住就只在這次有效 */ } }, BW: BW, BH: BH, decor: decor, groundURL: groundURL, sitePos: sitePos, person: person, DEFS: DEFS, SW: SW, SH: SH,
     paintMap: paintMap, mapLabels: mapLabels, shade: shade };
 })();

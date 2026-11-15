@@ -117,6 +117,36 @@
     { type: 'units', n: 4, text: '擁有 4 名戰士' },   // 訓練場一級的名額是 6，留兩個位置給解鎖的獨特兵種
     { type: 'point', n: 1, text: '到野地的資源點採集一次' }
   ];
+  /* 神話故事關卡：每一章拆成 3 關，第 3 關就是原本那一章的目標（獎勵照舊）；前兩關是新的小目標，其中一關是「出一趟遠門」。
+   * 故事文字不新增，只把原本那一章的文字分成三段，每過一關揭開一段（storySegs） */
+  var QSTAGE = [
+    [{ type: 'build', b: 'farm', n: 2 }, { type: 'build', b: 'house', n: 2 }],
+    [{ type: 'have', n: 150, text: '倉庫裡存到 150 糧食' }, { type: 'journey', n: 1, d: 3 }],
+    [{ type: 'mat', n: 300, text: '倉庫裡存到 300 建材' }, { type: 'journey', n: 2, d: 5 }],
+    [{ type: 'build', b: 'barracks', n: 1 }, { type: 'journey', n: 3, d: 8 }],
+    [{ type: 'build', b: 'storage', n: 2 }, { type: 'journey', n: 4, d: 12 }]
+  ];
+  function stageOf(v) { var i = v.quest, s = v.qs || 0; return QUESTS[i] ? (s >= 2 ? QUESTS[i] : QSTAGE[i][s]) : null; }
+  function stageReward(v) { var f = r5(40 * eq(centerLevel(v)) * TUNE.cost); return { food: f, mat: f }; }
+  /* 把一章的文字分成三段（照句號分，不夠就從最長那句的逗號切開）；接起來和原文一模一樣 */
+  function storySegs(x) {
+    var parts = [], cur = '';
+    for (var i = 0; i < x.length; i++) { cur += x[i]; if (x[i] === '。') { parts.push(cur); cur = ''; } }
+    if (cur) parts.push(cur);
+    while (parts.length < 3) {
+      var li = 0; parts.forEach(function (p, k) { if (p.length > parts[li].length) li = k; });
+      var p = parts[li], mid = p.length / 2, best = -1;
+      for (var j = 0; j < p.length - 1; j++) if (p[j] === '，' && (best < 0 || Math.abs(j - mid) < Math.abs(best - mid))) best = j;
+      if (best < 0) break;
+      parts.splice(li, 1, p.slice(0, best + 1), p.slice(best + 1));
+    }
+    while (parts.length > 3) {   // 太多段：把最短的相鄰兩段併起來
+      var bi = 0, bl2 = 1e9;
+      for (var k2 = 0; k2 < parts.length - 1; k2++) { var L = parts[k2].length + parts[k2 + 1].length; if (L < bl2) { bl2 = L; bi = k2; } }
+      parts.splice(bi, 2, parts[bi] + parts[bi + 1]);
+    }
+    return parts;
+  }
   /* 部落發展任務（和神話主線分開）：前面幾個是新手引導，之後跟著「中心升下一級要的條件」一步一步走，一路帶到 25 級。
    * k：build 蓋一座、level 升到幾級（wall 是圍籬）、units 擁有幾名戰士 */
   var DEV_START = [
@@ -649,7 +679,7 @@
       jobs: { food: 2, mat: 2, special: 0 }, auto: true, tiles: tiles, land: land, wall: 0, queue: [],
       units: { w: 0, a: 0, u: 0 }, away: { w: 0, a: 0, u: 0 }, hurt: { w: 0, a: 0, u: 0 }, tech: dict(), research: null, train: [], quest: 0, stat: { trade: 0, point: 0 }, blessUntil: 0, blessNext: 0, heroRest: 0, glory: 0, wins: 0, losses: 0, gifts: 0,
       shieldUntil: 0, newbieUntil: o.bot ? 0 : now + this.newbieMs * TUNE.pace * TUNE.guardTime, ally: null, reports: [], cool: dict(),
-      lastSay: 0, lastGift: 0, online: !!o.bot, idle: { focus: 'even', upgrade: false, train: false }, offAt: 0, boosts: BOOST_START
+      lastSay: 0, lastGift: 0, online: !!o.bot, idle: { focus: 'even', upgrade: false, train: false }, offAt: 0, boosts: BOOST_START, qs: 0
     };
     this.villages[v.id] = v;
     return v;
@@ -821,10 +851,30 @@
     return { i: v.dev || 0, k: d.k, type: d.type || null, n: d.n, cur: Math.min(cur, d.n), done: cur >= d.n, reward: devReward(d) };
   };
   World.prototype.questProgress = function (v) {
-    var q = QUESTS[v.quest]; if (!q) return null;
-    var cur = q.type === 'land' ? v.land.filter(Boolean).length : q.type === 'have' ? Math.floor(v.res.food) : q.type === 'trade' ? v.stat.trade :
-      q.type === 'units' ? all3(v.units) + all3(v.away) : v.stat.point;
-    return { i: v.quest, cur: Math.min(cur, q.n), n: q.n, done: cur >= q.n, text: q.text };
+    var q = stageOf(v); if (!q) return null;
+    var s = v.qs || 0, key = v.quest * 3 + s, t = Tribes.get(v.tribe), out = { i: v.quest, s: s, type: q.type, n: q.n, text: q.text };
+    var cur = q.type === 'land' ? v.land.filter(Boolean).length : q.type === 'have' ? Math.floor(v.res.food) : q.type === 'mat' ? Math.floor(v.res.mat) : q.type === 'trade' ? v.stat.trade :
+      q.type === 'units' ? all3(v.units) + all3(v.away) : q.type === 'build' ? maxLevelOf(v, q.b) : q.type === 'journey' ? (v.qj === key ? 1 : 0) : v.stat.point;
+    if (q.type === 'build') { var bz = (t && t.b[q.b] && t.b[q.b].zh) || q.b; out.text = q.n <= 1 ? '蓋好' + bz : '把' + bz + '升到 ' + q.n + ' 級'; out.b = q.b; }
+    if (q.type === 'journey') {   // 出一趟遠門：派至少幾人走到遠方的地點再回來
+      out.text = '派 ' + q.n + ' 人以上出一趟遠門，走到地圖上標出的地點再回來'; out.people = q.n; out.n = 1;
+      var dh = this.journeyHex(v, q.d); out.dest = dh ? { hex: dh.id, x: dh.x, y: dh.y } : null;
+      out.going = this.marches.some(function (m) { return m.from === v.id && m.kind === 'journey'; });
+    }
+    out.cur = Math.min(cur, out.n); out.done = cur >= out.n;
+    if (s < 2) out.reward = stageReward(v);
+    return out;
+  };
+  /* 出遠門的目的地：離部落 d 格左右、往東邊（照固定的規則挑，每次都一樣） */
+  World.prototype.journeyHex = function (v, d) {
+    var from = this.map.byId[v.hex], best = null, bs = -1e9;
+    if (!from) return null;
+    this.map.hexes.forEach(function (h) {
+      if (h.settlement || h.islet || h.id === from.id) return;
+      var dd = Geo.hexDist(from, h), sc = -Math.abs(dd - d) * 100 + (h.x - from.x);
+      if (sc > bs) { bs = sc; best = h; }
+    });
+    return best;
   };
 
   // ---------- 上線、離線與離線報告 ----------
@@ -982,6 +1032,9 @@
       var p = this.questProgress(v);
       if (!p) return { ok: false, msg: '任務都完成了' };
       if (!p.done) return { ok: false, msg: '目標還沒達成' };
+      addPts(v, 5);
+      if ((v.qs || 0) < 2) { var rw = stageReward(v); v.res.food += rw.food; v.res.mat += rw.mat; v.qs = (v.qs || 0) + 1; return { ok: true, msg: '過了第 ' + (v.quest + 1) + ' 章第 ' + v.qs + ' 關' }; }
+      v.qs = 0;
       var i = v.quest; v.quest++; v.boosts = (v.boosts || 0) + BOOST_QUEST;
       if (i === 0) v.res.food += 80; else if (i === 1) v.res.mat += 80;
       else if (i === 4) { v.blessUntil = now + this.ms(BLESS.ms); v.blessNext = now + this.ms(BLESS.again); }
@@ -1039,6 +1092,20 @@
         this.relAdd(v.tribe, holder.tribe, REL.point);
       }
       return { ok: true, msg: ev === 'fight' ? '隊伍出發去趕山豬了' : ev === 'work' ? '隊伍出發去搶修了' : holder ? '隊伍出發去搶了' : '隊伍出發去採集了' };
+    },
+    journey: function (v, a, now) {   // 神話故事關卡：出一趟遠門
+      var p = this.questProgress(v), w = int(a.w), ar = int(a.a), uu = int(a.u);
+      if (!p || p.type !== 'journey') return { ok: false, msg: '現在這一關不用出遠門' };
+      if (p.done) return { ok: false, msg: '這一趟已經走完了，去領獎勵吧' };
+      if (p.going) return { ok: false, msg: '隊伍已經在路上了' };
+      if (w < 0 || ar < 0 || uu < 0 || w + ar + uu < p.people) return { ok: false, msg: '至少要派 ' + p.people + ' 人' };
+      if (w > v.units.w || ar > v.units.a || uu > v.units.u) return { ok: false, msg: '留在部落的人數不夠' };
+      if (this.marchesOf(v.id).length >= marchMax(v)) return { ok: false, msg: '同時最多 ' + marchMax(v) + ' 支隊伍在外面' };
+      var dh = p.dest && this.map.byId[p.dest.hex]; if (!dh) return { ok: false, msg: '找不到要去的地方' };
+      v.units.w -= w; v.units.a -= ar; v.units.u -= uu; v.away.w += w; v.away.a += ar; v.away.u += uu;
+      var travel = marchSecs(Geo.travel(this.map.byId[v.hex], dh)) * marchMul(v) * 1000 / this.speed;
+      this.marches.push({ id: this.id('m'), kind: 'journey', from: v.id, to: null, node: null, dest: [dh.x, dh.y], qkey: v.quest * 3 + (v.qs || 0), w: w, a: ar, u: uu, departAt: now, arriveAt: now + travel, travel: travel, phase: 'out', loot: null });
+      return { ok: true, msg: '隊伍出發了' };
     },
     support: function (v, a, now) {   // 派勇士、弓手到盟友的部落幫忙守（獨特兵種不去）
       var t = this.villages[a.to], w = int(a.w), ar = int(a.a);
@@ -1256,9 +1323,11 @@
     if (!v) return false;
     if (m.phase === 'back') {
       ['w', 'a', 'u'].forEach(function (k) { var n = m[k] || 0; v.units[k] += n; v.away[k] = Math.max(0, v.away[k] - n); });
+      if (m.kind === 'journey' && m.qkey === v.quest * 3 + (v.qs || 0)) v.qj = m.qkey;   // 出遠門回來了：這一關達成
       if (m.loot) for (var k in m.loot) addRes(v, k, m.loot[k]);
       return false;
     }
+    if (m.kind === 'journey') { m.phase = 'back'; m.departAt = now; m.arriveAt = now + m.travel; return true; }   // 走到了，回家
     if (m.kind === 'gather') return this.resolveGather(m, v, now);
     if (m.kind === 'boar') return this.resolveBoar(m, v, now);
     if (m.kind === 'repair') return this.resolveRepair(m, v, now);
@@ -1548,7 +1617,8 @@
       else if (miss) for (var mi = 0; mi < TILE_N; mi++) { var mb = v.tiles[mi]; if (mb && mb.type === miss.type && !mb.busy && mb.level < C && can(v, cost(mb.type, mb.level + 1))) { opts.push({ type: 'upgrade', tile: mi }, { type: 'upgrade', tile: mi }, { type: 'upgrade', tile: mi }); break; } }
       if (opts.length) this.act(v.id, opts[Math.floor(rng() * opts.length)], now);
     }
-    var qp = this.questProgress(v); if (qp && qp.done) this.act(v.id, { type: 'quest' }, now);
+    var qp = this.questProgress(v); if (qp && qp.type === 'journey' && !qp.done) { v.qj = v.quest * 3 + (v.qs || 0); qp.done = true; }   // 示範部落不用真的出遠門
+    if (qp && qp.done) this.act(v.id, { type: 'quest' }, now);
     if (armyCap(v) > armyTotal(v) && rng() < 0.5) this.act(v.id, { type: 'train', u: v.quest >= 4 && rng() < 0.3 ? 'u' : rng() < 0.6 || !bl(v, 'archery') ? 'w' : 'a' }, now);
     var mine = this.market.filter(function (o) { return o.from === v.id; });
     if (!mine.length && (v.sp[v.tribe] || 0) >= 6 && rng() < 0.25) {
@@ -1656,7 +1726,7 @@
     return {
       now: now, speed: this.speed, me: me,
       villages: opt && opt.noPubs ? undefined : Object.keys(this.villages).map(function (k) { return self.pub(self.villages[k], now); }),
-      marches: this.marches.map(function (m) { return { id: m.id, from: m.from, to: m.to, node: m.node || null, kind: m.kind || null, departAt: m.departAt, arriveAt: m.arriveAt, phase: m.phase, n: all3(m), carry: m.from === id ? m.carry || 0 : undefined }; }),
+      marches: this.marches.map(function (m) { return { id: m.id, from: m.from, to: m.to, node: m.node || null, dest: m.dest || null, kind: m.kind || null, departAt: m.departAt, arriveAt: m.arriveAt, phase: m.phase, n: all3(m), carry: m.from === id ? m.carry || 0 : undefined }; }),
       nodes: this.nodesList(), nv: this.nodesV,
       shieldMs: shieldMs() / this.speed, tune: this.tune, tv: this.tuneV,
       rel: Tribes.playable().filter(function (t) { return t.id !== v.tribe; }).map(function (t) { return { tribe: t.id, value: self.relOf(v.tribe, t.id), state: self.relState(v.tribe, t.id) }; }),
@@ -1721,6 +1791,7 @@
       delete v.battle; delete v.def;   // 舊版的對戰狀態與佈防設定，現在用不到了
       v.tech = dict(v.tech); if (!v.hurt) v.hurt = { w: 0, a: 0, u: 0 }; if (v.research === undefined) v.research = null;   // 第二批：技藝、療養
       if (v.boosts == null) v.boosts = BOOST_START;   // 第三批：加速道具（舊部落也送 3 個）
+      if (v.qs == null) v.qs = 2;   // 神話故事關卡之前的部落：直接接在這一章的最後一關（原本的目標），不用重做前兩關
     }
     /* 改版前「佔領之後一直有收穫」的資源點：駐守的人送回部落 */
     for (var hk in d.points || {}) {
@@ -1763,7 +1834,7 @@
     SITES: SITES, CLEAR: CLEAR, clearInfo: clearInfo, TILE_N: TILE_N, CENTER_TILE: CENTER_TILE, TYPES: TYPES, MAX_LEVEL: MAX_LEVEL, UNIT: UNIT,
     CENTER_UP: CENTER_UP, BUILDERS: BUILDERS, FOREIGN_SP: FOREIGN_SP, cost: cost, buildTime: buildTime, limit: limit, count: count,
     resName: resName, derived: derived, eatRate: eatRate, perWorker: perWorker, TECH: TECH, TECH_MAX: TECH_MAX, UNLOCK: UNLOCK, techCost: techCost, techTime: techTime, techMax: techMax, battleMod: battleMod, buildMul: buildMul, marchMul: marchMul, healCap: healCap, bl: bl, eq: eq, centerUp: centerUp, centerReq: centerReq, reqLeft: reqLeft, maxLevelOf: maxLevelOf, wallMul: wallMul, villagePower: villagePower, DEV_START: DEV_START, popCap: popCap, LOOT_FRAC: LOOT_FRAC, GRADE: GRADE, FIGHT: FIGHT,
-    armyCap: armyCap, mkSide: mkSide, supportCap: supportCap, SEASON_GOAL: SEASON_GOAL, SEASON_TOP: SEASON_TOP, seasonReward: seasonReward, CHORES: CHORES, CHORE_MIN: CHORE_MIN, CHORE_EVERY: CHORE_EVERY, choreSlots: choreSlots, choreOffers: choreOffers, choreReward: choreReward, TIER: TIER, tiers: tiers, tierMul: tierMul, helpMax: helpMax, BOOST_START: BOOST_START, BOOST_DEV: BOOST_DEV, BOOST_QUEST: BOOST_QUEST, QUESTS: QUESTS, UNIT_U: UNIT_U, BLESS: BLESS, HERO_REST: HERO_REST, marchMax: marchMax, gatherRate: gatherRate, REL: REL, NODE: NODE, NODE_AMT: NODE_AMT, BOAR_N: BOAR_N, boarSide: boarSide, boarPower: boarPower, wildReward: wildReward, REPAIR_WHAT: REPAIR_WHAT, repairRate: repairRate, SETTLE: SETTLE,
+    armyCap: armyCap, mkSide: mkSide, supportCap: supportCap, QSTAGE: QSTAGE, storySegs: storySegs, stageReward: stageReward, SEASON_GOAL: SEASON_GOAL, SEASON_TOP: SEASON_TOP, seasonReward: seasonReward, CHORES: CHORES, CHORE_MIN: CHORE_MIN, CHORE_EVERY: CHORE_EVERY, choreSlots: choreSlots, choreOffers: choreOffers, choreReward: choreReward, TIER: TIER, tiers: tiers, tierMul: tierMul, helpMax: helpMax, BOOST_START: BOOST_START, BOOST_DEV: BOOST_DEV, BOOST_QUEST: BOOST_QUEST, QUESTS: QUESTS, UNIT_U: UNIT_U, BLESS: BLESS, HERO_REST: HERO_REST, marchMax: marchMax, gatherRate: gatherRate, REL: REL, NODE: NODE, NODE_AMT: NODE_AMT, BOAR_N: BOAR_N, boarSide: boarSide, boarPower: boarPower, wildReward: wildReward, REPAIR_WHAT: REPAIR_WHAT, repairRate: repairRate, SETTLE: SETTLE,
     autoBattle: autoBattle, power: power, odds: odds, ODDS: ODDS, simBattle: simBattle, simMatrix: simMatrix,
     TUNE_DEF: TUNE_DEF, tuneDefaults: tuneDefaults, setTune: setTune, paced: paced, trainTime: trainTime, marchSecs: marchSecs, shieldMs: shieldMs, OFFER_MS: OFFER_MS
   };

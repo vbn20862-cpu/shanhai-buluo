@@ -217,8 +217,10 @@
           '<circle cx="' + (n.x + 9 * u).toFixed(3) + '" cy="' + (n.y + 8 * u).toFixed(3) + '" r="' + (5.2 * u).toFixed(3) + '" fill="#E3B341"/><text class="lvt" x="' + (n.x + 9 * u).toFixed(3) + '" y="' + (n.y + 10.6 * u).toFixed(3) + '" style="font-size:' + (7.6 * u).toFixed(3) + 'px">' + n.lv + '</text>'
           : far ? '' : '<text x="' + n.x + '" y="' + (n.y + 2.4 * u).toFixed(2) + '" style="font-size:' + (6.8 * u).toFixed(3) + 'px">' + n.lv + '</text>') + '</g>';
     });
+    var jq = S.me && S.me.qp;   // 神話故事關卡要出遠門：在目的地插一支旗子
+    if (jq && jq.type === 'journey' && jq.dest && !jq.done) s += '<g class="jdest" transform="translate(' + jq.dest.x + ' ' + jq.dest.y + ') scale(' + u.toFixed(4) + ')"><circle r="9"/><path d="M-3 7V-8M-2.4-8h8l-2.2 3 2.2 3h-8"/></g>';
     S.marches.forEach(function (m) {   // 出征中的隊伍：一條線加一個移動的點
-      var nd = m.node && nodeById[m.node], a = byId[m.from], b = m.node ? (nd ? { pos: [nd.x, nd.y] } : null) : byId[m.to]; if (!a || !b) return;
+      var nd = m.node && nodeById[m.node], a = byId[m.from], b = m.node ? (nd ? { pos: [nd.x, nd.y] } : null) : m.dest ? { pos: m.dest } : byId[m.to]; if (!a || !b) return;
       var f = m.phase === 'gather' || m.phase === 'stay' ? 1 : Math.max(0, Math.min(1, (Date.now() - m.departAt) / Math.max(1, m.arriveAt - m.departAt)));
       if (m.phase === 'back') f = 1 - f;
       var x = a.pos[0] + (b.pos[0] - a.pos[0]) * f, y = a.pos[1] + (b.pos[1] - a.pos[1]) * f;
@@ -316,7 +318,7 @@
     var t = myTribe(), h = '', q = me.dq, p = me.qp;
     if (q) h += '<div class="trk' + (q.done ? ' ready' : '') + '"><button class="tt" data-act="tab" data-tab="quest"><span class="th">部落發展 · 第 ' + (q.i + 1) + ' 步</span>' + devText(t, q) + '<span class="bar"><i style="width:' + Math.round(100 * q.cur / q.n) + '%"></i></span></button>' +
       '<button class="go' + (q.done ? '' : ' ghost') + '" data-act="' + (q.done ? 'dev' : 'dev-go') + '">' + (q.done ? '領取' : '前往') + '</button></div>';
-    if (p) h += '<div class="trk' + (p.done ? ' ready' : '') + '"><button class="tt" data-act="tab" data-tab="quest"><span class="th">' + Art.icon('book') + esc(t.story.t) + ' · 第 ' + (p.i + 1) + ' 章</span>' + p.text + ' <b>' + p.cur + '/' + p.n + '</b></button>' + (p.done ? '<button class="go" data-act="quest">完成</button>' : '') + '</div>';
+    if (p) h += '<div class="trk' + (p.done ? ' ready' : '') + '"><button class="tt" data-act="tab" data-tab="quest"><span class="th">' + Art.icon('book') + esc(t.story.t) + ' · ' + (p.i + 1) + '-' + (p.s + 1) + ' 關</span>' + (p.type === 'journey' ? '出一趟遠門（' + p.people + ' 人以上）' : p.text) + ' <b>' + p.cur + '/' + p.n + '</b></button>' + (p.done ? '<button class="go" data-act="quest">' + (p.s >= 2 ? '完成' : '過關') + '</button>' : p.type === 'journey' && !p.going ? '<button class="go ghost" data-act="jr-open">上路</button>' : '') + '</div>';
     else h += '<div class="trk"><button class="tt" data-act="tab" data-tab="quest"><span class="th">' + Art.icon('fire') + esc(t.bless.zh) + '</span>' + (me.blessUntil > Date.now() ? '同心中，還有 <b data-until="' + me.blessUntil + '"></b>' : me.blessNext > Date.now() ? '下次可以舉辦：<b data-until="' + me.blessNext + '"></b>' : '可以舉辦了') + '</button></div>';
     var rows = [], idle = me.d.builders - me.queue.length;   // 進行中的事：閒著的工人排第一（提醒去升級），其次是工程、隊伍、訓練、技藝、療養
     if (idle > 0) rows.push('<div class="q idle">' + Art.icon('build') + '<span>' + (idle > 1 ? idle + ' 位工人閒著' : '工人閒著') + '，點建築升級</span></div>');   // 閒著的工人合成一行
@@ -334,8 +336,8 @@
     });
     S.marches.filter(function (m) { return m.from === me.id; }).forEach(function (m) {
       var n = m.node && S.nodes.filter(function (x) { return x.id === m.node; })[0], tv = m.to && S.pubs.filter(function (v) { return v.id === m.to; })[0];
-      var where = m.node ? (n ? R.NODE[n.k].zh + ' ' + n.lv + ' 級' : m.kind === 'boar' ? '山豬群' : m.kind === 'repair' ? '搶修' : '資源點') : esc(tv ? tv.name : '出征');
-      rows.push('<button class="q" data-act="go-march" data-id="' + m.id + '">' + Art.icon('march') + '<span>' + where + ' · ' + (m.phase === 'back' ? '回程' : m.phase === 'gather' ? (m.kind === 'repair' ? '搶修中' : '採集中') : m.phase === 'stay' ? '支援中' : m.kind === 'support' ? '前往支援' : m.node ? '前往' : '出征') + '</span>' + (m.phase === 'stay' ? '' : '<b data-until="' + m.arriveAt + '"></b>') + '</button>');
+      var where = m.node ? (n ? R.NODE[n.k].zh + ' ' + n.lv + ' 級' : m.kind === 'boar' ? '山豬群' : m.kind === 'repair' ? '搶修' : '資源點') : m.kind === 'journey' ? '出遠門' : esc(tv ? tv.name : '出征');
+      rows.push('<button class="q" data-act="go-march" data-id="' + m.id + '">' + Art.icon('march') + '<span>' + where + ' · ' + (m.phase === 'back' ? '回程' : m.phase === 'gather' ? (m.kind === 'repair' ? '搶修中' : '採集中') : m.phase === 'stay' ? '支援中' : m.kind === 'support' ? '前往支援' : m.kind === 'journey' ? '往遠方走' : m.node ? '前往' : '出征') + '</span>' + (m.phase === 'stay' ? '' : '<b data-until="' + m.arriveAt + '"></b>') + '</button>');
     });
     if (me.train.length) rows.push('<button class="q" data-act="tab" data-tab="army">' + Art.icon('army') + '<span>訓練 ' + me.train.length + ' 位</span><b data-until="' + me.train[me.train.length - 1].doneAt + '"></b></button>');
     if (me.research) { var rt = R.TECH[me.research.id]; rows.push('<button class="q" data-act="tab" data-tab="tech">' + Art.icon('craft') + '<span>學「' + rt.zh + '」→ ' + me.research.to + ' 級</span><b data-until="' + me.research.doneAt + '"></b></button>'); }
@@ -653,12 +655,41 @@
   function questCard(me) {   // 任務主線：目前這一章的故事、目標與獎勵；五章都完成之後換成「共聚」
     var t = myTribe(), p = me.qp;
     if (!p) return blessCard(me);
-    var q = t.quests[p.i];
-    return '<section class="card quest' + (p.done ? ' ready' : '') + '"><h3>' + Art.icon('book') + esc(t.story.t) + '<span class="lv">第 ' + (p.i + 1) + ' 章 / 共 ' + R.QUESTS.length + ' 章</span></h3>' +
-      '<p class="story"><b>' + esc(q.t) + '</b>' + esc(q.x) + '</p>' +
-      '<div class="goal"><span>目標：' + p.text + '</span><b>' + p.cur + ' / ' + p.n + '</b></div><div class="bar" role="img" aria-label="進度 ' + p.cur + ' / ' + p.n + '"><i style="width:' + Math.round(100 * p.cur / p.n) + '%"></i></div>' +
-      '<p class="eff next">獎勵：' + rewardText2(t, p.i) + '</p>' +
-      '<button class="btn' + (p.done ? '' : ' ghost') + '" data-act="quest"' + (p.done ? '' : ' disabled') + '>' + (p.done ? '完成這一章' : '目標還沒達成') + '</button></section>';
+    var q = t.quests[p.i], seg = R.storySegs(q.x), last = p.s >= 2, jr = '';
+    if (p.type === 'journey' && !p.done) {   // 出一趟遠門：還沒出發就給「派人上路」，在路上就顯示還要多久
+      var jm = S.marches.filter(function (m) { return m.from === me.id && m.kind === 'journey'; })[0];
+      jr = jm ? '<p class="eff next">' + Art.icon('march') + ' 隊伍' + (jm.phase === 'back' ? '回程中' : '往遠方走') + '，還要 <b data-until="' + jm.arriveAt + '"></b></p>'
+        : '<div class="act"><button class="btn sm" data-act="jr-open">' + Art.icon('march') + ' 派人上路</button><button class="btn sm ghost" data-act="jr-map">在地圖上看目的地</button></div>';
+    }
+    return '<section class="card quest' + (p.done ? ' ready' : '') + '"><h3>' + Art.icon('book') + esc(t.story.t) + '<span class="lv">第 ' + (p.i + 1) + ' 章 · 第 ' + (p.s + 1) + ' / 3 關</span></h3>' +
+      Art.storyScene(t.id, p.i) + stagePath(p) +
+      '<p class="story"><b>' + esc(q.t) + '</b>' + esc(seg.slice(0, p.s + 1).join('')) + (last ? '' : '<span class="more">（下一關繼續）</span>') + '</p>' +
+      '<div class="goal"><span>目標：' + p.text + '</span><b>' + p.cur + ' / ' + p.n + '</b></div><div class="bar" role="img" aria-label="進度 ' + p.cur + ' / ' + p.n + '"><i style="width:' + Math.round(100 * p.cur / p.n) + '%"></i></div>' + jr +
+      '<p class="eff next">' + (last ? '這一章的獎勵：' + rewardText2(t, p.i) : '過關獎勵：' + Art.icon('food') + p.reward.food + ' ' + t.res.food + '、' + Art.icon('mat') + p.reward.mat + ' ' + t.res.mat) + '</p>' +
+      '<button class="btn' + (p.done ? '' : ' ghost') + '" data-act="quest"' + (p.done ? '' : ' disabled') + '>' + (!p.done ? '目標還沒達成' : last ? '完成這一章' : '過關') + '</button></section>';
+  }
+  /* 15 關的路線：每章 3 關，走過的、現在的、還沒到的 */
+  function stagePath(p) {
+    var h = '<div class="spath" role="img" aria-label="第 ' + (p.i + 1) + ' 章第 ' + (p.s + 1) + ' 關，共 5 章 15 關">';
+    for (var c = 0; c < R.QUESTS.length; c++) {
+      h += '<span class="sch"><em>' + (c + 1) + '</em>';
+      for (var k = 0; k < 3; k++) h += '<i class="' + (c < p.i || (c === p.i && k < p.s) ? 'done' : c === p.i && k === p.s ? 'cur' : '') + '"></i>';
+      h += '</span>';
+    }
+    return h + '</div>';
+  }
+  function journeyModal(me, A) {   // 出一趟遠門：選人數，看路程
+    var p = me.qp; if (!p || p.type !== 'journey' || !p.dest) { S.attack = null; return ''; }
+    var t = myTribe(), cnt = all3(A), secs = R.marchSecs(Geo.travel(G.byId[me.hex], G.byId[p.dest.hex])) * R.marchMul(me);
+    var why = cnt < p.people ? '至少要派 ' + p.people + ' 人' : S.marches.filter(function (m) { return m.from === me.id; }).length >= me.d.marchMax ? '同時最多 ' + me.d.marchMax + ' 支隊伍在外面' : '';
+    function step(u, label, have) {
+      return '<div class="job"><span class="jn">' + label + '</span><div class="stepper"><button data-act="atk-n" data-u="' + u + '" data-d="-1"' + (A[u] <= 0 ? ' disabled' : '') + ' aria-label="少派一位' + label + '">−</button><b>' + A[u] + '/' + have + '</b>' +
+        '<button data-act="atk-n" data-u="' + u + '" data-d="1"' + (A[u] >= have ? ' disabled' : '') + ' aria-label="多派一位' + label + '">＋</button></div><button class="btn sm ghost" data-act="atk-all" data-u="' + u + '">全部</button></div>';
+    }
+    return '<div class="veil"><div class="sheet wide" role="dialog" aria-label="出一趟遠門"><h2>出一趟遠門</h2><p class="muted">' + esc(t.story.t) + ' 第 ' + (p.i + 1) + ' 章 · 往東邊走到地圖上標出的地點再回來，單程約 ' + dur(secs) + '。</p>' +
+      '<p class="label">派多少人（至少 ' + p.people + ' 人）</p>' + step('w', R.UNIT.w.zh, me.units.w) + step('a', R.UNIT.a.zh, me.units.a) + (me.units.u ? step('u', esc(t.uniq.unit.zh), me.units.u) : '') +
+      '<p class="muted">路上不會遇到危險，走完回到部落，這一關就達成了。出門的人回來之前不能守部落。</p>' + (why ? '<p class="why">' + why + '</p>' : '') +
+      '<div class="act two"><button class="btn ghost" data-act="atk-cancel">取消</button><button class="btn" data-act="atk-go"' + (why ? ' disabled' : '') + '>出發</button></div></div></div>';
   }
   function blessCard(me) {
     var t = myTribe(), now = Date.now(), on = me.blessUntil > now, wait = me.blessNext > now, why = on || wait ? '' : me.res.food < R.BLESS.food ? '糧食不夠' : '';
@@ -780,7 +811,7 @@
       '<dl class="facts"><dt>問候</dt><dd><i class="nat">' + esc(t.hello) + '</i></dd><dt>謝謝</dt><dd><i class="nat">' + esc(t.thanks) + '</i></dd><dt>語別</dt><dd>' + t.lang + '</dd><dt>特長</dt><dd>' + t.bonus.text + '</dd></dl></section>';
     h += '<section class="card"><h3>' + Art.icon('book') + '神話故事：' + esc(t.story.t) + '<span class="lv">' + Math.min(me.quest, R.QUESTS.length) + ' / ' + R.QUESTS.length + ' 章</span></h3>';
     t.quests.forEach(function (q, i) {
-      h += i <= me.quest ? '<p class="story"><b>' + (i + 1) + '. ' + esc(q.t) + '</b>' + esc(q.x) + '</p>' : '<p class="muted">' + (i + 1) + '. 完成前面的章節後就能讀到。</p>';
+      h += i < me.quest ? '<p class="story"><b>' + (i + 1) + '. ' + esc(q.t) + '</b>' + esc(q.x) + '</p>' : i === me.quest ? '<p class="story"><b>' + (i + 1) + '. ' + esc(q.t) + '</b>' + esc(R.storySegs(q.x).slice(0, (me.qs || 0) + 1).join('')) + '<span class="more">（過關之後繼續）</span></p>' : '<p class="muted">' + (i + 1) + '. 完成前面的章節後就能讀到。</p>';
     });
     h += '<p class="note">' + esc(t.story.credit) + '</p></section>';
     var got = [];   // 任務拿到的東西：器物、獨特建築、獨特兵種、英雄與共聚
@@ -847,8 +878,8 @@
       h += '<section class="card"><h3>外面的隊伍<span class="lv">' + mine.length + ' / ' + d.marchMax + '</span></h3>';
       mine.forEach(function (m) {
         var n = m.node && S.nodes.filter(function (x) { return x.id === m.node; })[0], tv = m.to && S.pubs.filter(function (v) { return v.id === m.to; })[0];
-        var where = m.node ? (n ? R.NODE[n.k].zh + '（' + n.lv + ' 級）' : '資源點') : '「' + esc(tv ? tv.name : '對方') + '」';
-        var what = m.phase === 'back' ? '回程中' + (m.carry ? '，帶著 ' + m.carry + ' 份' : '') : m.phase === 'gather' ? (m.kind === 'repair' ? '搶修中' : '採集中') : m.kind === 'boar' ? '前往趕山豬' : m.kind === 'repair' ? '前往搶修' : m.phase === 'stay' ? '駐守支援中' : m.kind === 'support' ? '前往支援' : m.node ? '前往採集' : '出征中';
+        var where = m.node ? (n ? R.NODE[n.k].zh + '（' + n.lv + ' 級）' : '資源點') : m.kind === 'journey' ? '神話故事的遠門' : '「' + esc(tv ? tv.name : '對方') + '」';
+        var what = m.phase === 'back' ? '回程中' + (m.carry ? '，帶著 ' + m.carry + ' 份' : '') : m.phase === 'gather' ? (m.kind === 'repair' ? '搶修中' : '採集中') : m.kind === 'boar' ? '前往趕山豬' : m.kind === 'repair' ? '前往搶修' : m.kind === 'journey' ? '往遠方走' : m.phase === 'stay' ? '駐守支援中' : m.kind === 'support' ? '前往支援' : m.node ? '前往採集' : '出征中';
         h += '<div class="qrow"><span>' + where + ' · ' + m.n + ' 人 · ' + what + '</span>' + (m.phase === 'stay' ? '' : '<b data-until="' + m.arriveAt + '"></b>') + (m.phase === 'gather' || (m.kind === 'support' && m.phase !== 'back') ? '<button class="btn sm ghost" data-act="recall" data-id="' + m.id + '">叫回來</button>' : '') + '</div>';
       });
       h += '<p class="muted">同時最多 ' + d.marchMax + ' 支隊伍在外面。到地圖上點資源點（彩色圓點）可以派人去採。</p></section>';
@@ -887,6 +918,7 @@
     var A = S.attack;
     if (A.node) return gatherModal(me, A);
     if (A.sup) return supportModal(me, A);
+    if (A.jr) return journeyModal(me, A);
     var v = S.pubs.filter(function (x) { return x.id === A.id; })[0];
     if (!v) { S.attack = null; return ''; }
     var t = Tribes.get(v.tribe), safe = v.safe > Date.now(), d = Geo.travel(G.byId[me.hex], G.byId[v.hex]), secs = R.marchSecs(d, v.uq === 'watch') * R.marchMul(me);
@@ -974,11 +1006,14 @@
     else if (a === 'wall') act({ type: 'wall' }, '開始施工');
     else if (a === 'dismiss') act({ type: 'dismiss', u: b.getAttribute('data-u'), n: 1 });
     else if (a === 'atk-open') { S.attack = { id: b.getAttribute('data-id'), w: me.units.w, a: me.units.a, u: me.units.u }; render(); }
+    else if (a === 'jr-open') { var need = me.qp ? me.qp.people : 1; S.attack = { jr: true, w: Math.min(me.units.w, need), a: Math.min(me.units.a, Math.max(0, need - me.units.w)), u: 0 }; render(); }
+    else if (a === 'jr-map') { var dq = me.qp && me.qp.dest; if (dq) { S.view = 'map'; S.tab = 'map'; S.node = null; S.zone = null; render(); MV.focus(dq.x, dq.y, Math.max(MV.k, 3)); render(); } }
     else if (a === 'sup-open') { S.attack = { id: b.getAttribute('data-id'), sup: true, w: Math.min(5, me.units.w), a: Math.min(5, me.units.a), u: 0 }; render(); }
     else if (a === 'send-home') act({ type: 'sendHome', id: b.getAttribute('data-id') });
     else if (a === 'atk-cancel') { S.attack = null; render(); }
     else if (a === 'atk-n') { var u = b.getAttribute('data-u'); A[u] = Math.max(0, Math.min(me.units[u], A[u] + +b.getAttribute('data-d'))); render(); }
     else if (a === 'atk-all') { var u2 = b.getAttribute('data-u'); A[u2] = me.units[u2]; render(); }
+    else if (a === 'atk-go' && A.jr) Net.act({ type: 'journey', w: Math.min(A.w, me.units.w), a: Math.min(A.a, me.units.a), u: Math.min(A.u, me.units.u) }, function (r) { if (!r.ok) return toast(r.msg, true); S.attack = null; toast('隊伍出發了，走到遠方再回來'); render(); });
     else if (a === 'atk-go' && A.sup) Net.act({ type: 'support', to: A.id, w: Math.min(A.w, me.units.w), a: Math.min(A.a, me.units.a) }, function (r) { if (!r.ok) return toast(r.msg, true); S.attack = null; toast(r.msg); render(); });
     else if (a === 'atk-go' && A.node) Net.act({ type: 'gather', node: A.node, w: Math.min(A.w, me.units.w), a: Math.min(A.a, me.units.a), u: Math.min(A.u, me.units.u) }, function (r) { if (!r.ok) return toast(r.msg, true); S.attack = null; toast(r.msg || '隊伍出發了'); render(); });
     else if (a === 'atk-go') Net.act({ type: 'attack', to: A.id, w: Math.min(A.w, me.units.w), a: Math.min(A.a, me.units.a), u: Math.min(A.u, me.units.u) }, function (r) { if (!r.ok) return toast(r.msg, true); S.attack = null; S.tab = 'army'; toast('隊伍出發了'); render(); });
