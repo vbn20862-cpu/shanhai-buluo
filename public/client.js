@@ -176,7 +176,7 @@
       S.season = st.season || null;
       S.rel = st.rel || []; S.nodes = st.nodes || []; S.stock = st.stock || {}; S.market = st.market || []; S.feed = st.feed || []; S.alliances = st.alliances || {};
       if (st.me) Art.need([st.me.tribe]);   // 自己族群的美術素材
-      autoShow(st.me); raidAlert(st.me);
+      autoShow(st.me); raidAlert(st.me); flyGains(st.me);
       render();
     });
     Art.onLoad(function () { el.vobjs._sig = null; el.vimg._t = null; folkN = -1; if (el.mmarks) el.mmarks._h = null; render(); });   // 某一族的美術素材載好了：重畫
@@ -277,6 +277,19 @@
     var open = []; for (var i = 0; i < R.TILE_N; i++) if (v.land[i]) open.push(i);
     var p = Art.sitePos(open[Math.floor(Math.random() * open.length)]);
     return [Math.round(p[0] - 44 + Math.random() * 88), Math.round(p[1] + 24 + Math.random() * 16)];
+  }
+  /* 領到的東西從按鈕往上飄（+糧食、+建材、+特產、+加速） */
+  function flyGains(me) {
+    var f = S.fly; if (!f || !me || !f.ready) return;   // 動作成功了才飄（ready 在動作的回應裡設）
+    if (Date.now() - f.t > 4000) { S.fly = null; return; }
+    var got = [['food', Math.round(me.res.food - f.food)], ['mat', Math.round(me.res.mat - f.mat)], ['sp', Math.round((me.sp[me.tribe] || 0) - f.sp)], ['speed', (me.boosts || 0) - f.boosts]].filter(function (x) { return x[1] > 0; });
+    if (!got.length) return;   // 狀態還沒更新：等下一次
+    S.fly = null;
+    got.forEach(function (x, i) {
+      var d = document.createElement('div'); d.className = 'fly'; d.innerHTML = Art.icon(x[0]) + '+' + x[1];
+      d.style.left = f.x + 'px'; d.style.top = (f.y - 8 - i * 22) + 'px'; d.style.animationDelay = (i * 0.12) + 's';
+      document.body.appendChild(d); setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 1700);
+    });
   }
   function moveFolk() {
     if (!shown() || scene() !== 'village' || document.hidden || P.calm) return;   // 減少動畫：族人站著不走動
@@ -1354,7 +1367,8 @@
   });
 
   // ---------- 操作 ----------
-  function act(a, okMsg) { Net.act(a, function (r) { if (r && !r.ok) toast(r.msg || '沒有成功', true); else if (okMsg || (r && r.msg)) toast(okMsg || r.msg); }); }
+  function act(a, okMsg) { Net.act(a, function (r) { if (r && !r.ok) { S.fly = null; toast(r.msg || '沒有成功', true); } else { flyReady(); if (okMsg || (r && r.msg)) toast(okMsg || r.msg); } }); }
+  function flyReady() { if (S.fly) { S.fly.ready = true; flyGains(S.me); } }
   function onInput(e) {
     if (e.target.id === 'f-owner') S.form.owner = e.target.value;
     else if (e.target.id === 'f-name') S.form.name = e.target.value;
@@ -1372,6 +1386,10 @@
     var foc = document.activeElement;   // 按了按鈕就離開輸入框，面板才會照新的狀態重畫（手機上按鈕不一定會搶走焦點）
     if (foc && foc !== b && /^(INPUT|SELECT)$/.test(foc.tagName) && foc.type !== 'checkbox') foc.blur();
     var a = b.getAttribute('data-act'), me = S.me, tile = +b.getAttribute('data-tile');
+    if (me && /^(dev|quest|chore-done|season-claim)$/.test(a)) {   // 領獎勵：記下按鈕的位置和現在的物資，等新的狀態來了，把多出來的東西從按鈕往上飄
+      var br = b.getBoundingClientRect();
+      S.fly = { x: br.left + br.width / 2, y: br.top, t: Date.now(), food: me.res.food, mat: me.res.mat, sp: me.sp[me.tribe] || 0, boosts: me.boosts || 0 };
+    }
     if (a === 'tab') {
       var tb = b.getAttribute('data-tab'), wasMap = S.view === 'map';
       S.visit = null;
@@ -1443,7 +1461,7 @@
     else if (a === 'adopt-go') Net.adopt(S.form.adopt, function (r) { if (!r.ok) return toast(r.msg, true); S.adopt = false; S.form.adopt = ''; toast('找到了，正在接回你的部落'); });
     else if (a === 'dev') act({ type: 'dev' });
     else if (a === 'research') act({ type: 'research', id: b.getAttribute('data-id') });
-    else if (a === 'quest') { var qi = me.qp ? me.qp.i : 0; Net.act({ type: 'quest' }, function (r) { if (!r.ok) return toast(r.msg, true); toast('完成第 ' + (qi + 1) + ' 章！' + rewardText2(myTribe(), qi)); }); }
+    else if (a === 'quest') { var qi = me.qp ? me.qp.i : 0; Net.act({ type: 'quest' }, function (r) { if (!r.ok) { S.fly = null; return toast(r.msg, true); } flyReady(); toast('完成第 ' + (qi + 1) + ' 章！' + rewardText2(myTribe(), qi)); }); }
     else if (a === 'bless') act({ type: 'bless' });
     else if (a === 't-quest') Net.test('quest');
     else if (a === 't-pace') { Net.test('pace', b.getAttribute('data-v') === 'formal' ? 20 : 1); toast(b.getAttribute('data-v') === 'formal' ? '已切換成正式節奏' : '已切換成快速試玩'); }

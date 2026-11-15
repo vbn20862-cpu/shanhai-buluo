@@ -2,10 +2,15 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
 <style>
-/* 山海部落 — 版面：全螢幕的畫面（部落或大地圖），資訊都疊在畫面上（上方資訊列、左邊追蹤欄、點了東西跳出的小視窗、下方按鈕列、提醒橫幅、蓋在畫面上的視窗）。單一深色主題。 */
+/* 山海部落 — 版面：全螢幕的畫面（部落或大地圖），資訊都疊在畫面上（上方資訊列、左邊追蹤欄、點了東西跳出的小視窗、下方按鈕列、提醒橫幅、蓋在畫面上的視窗）。
+ * 遊戲風格：深色木頭的框、金色的邊、一般幾何的編織紋，暖棕、金色與竹葉綠；按鈕有厚度。最後面的「遊戲風格」一段把各個元件換成木框與徽章 */
 :root {
-  --bg: #14212A; --sea: #0F2430; --panel: #1C2E38; --raise: #24394A; --line: #30495A;
-  --ink: #F2EAD6; --mute: #9DB0B8; --gold: #E3B341; --red: #D0503A; --good: #BFE3C4; --warn: #F0A48F;
+  --bg: #1A130C; --sea: #0F2430; --panel: #3A2819; --raise: #4B3523; --line: #7A5434;
+  --ink: #FAF0DA; --mute: #D2BC98; --gold: #F2B93B; --red: #D0503A; --good: #C6E8A4; --warn: #FFAE8F;
+  --wood1: #5A3B22; --wood2: #3A2717; --wood3: #2A1C10; --rim: #C9963F; --rim2: #F6D27A; --leaf: #6FA142; --leaf2: #4E7A2C; --ember: #2A1708;
+  --woodbg: linear-gradient(180deg, var(--wood1), var(--wood2) 60%, var(--wood3));
+  --bevel: inset 0 1px 0 rgba(255, 230, 170, .35), inset 0 -2px 0 rgba(0, 0, 0, .35), 0 3px 0 rgba(20, 10, 4, .55), 0 6px 14px rgba(0, 0, 0, .35);
+  --weave: repeating-linear-gradient(45deg, rgba(246, 210, 122, .55) 0 3px, transparent 3px 6px), repeating-linear-gradient(-45deg, rgba(42, 28, 16, .9) 0 3px, transparent 3px 6px);
   --display: "LXGW WenKai TC", "Noto Serif TC", "PMingLiU", serif;
   --body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
   color-scheme: dark;
@@ -487,6 +492,97 @@ p { margin: 4px 0; }
 .story .more { color: var(--mute); font-size: 12px; margin-left: 4px; }
 .jdest circle { fill: rgba(227, 179, 65, .25); stroke: var(--gold); stroke-width: 1.6; }
 .jdest path { fill: var(--gold); stroke: #2A1F05; stroke-width: 1.2; stroke-linejoin: round; }
+
+/* ================= 遊戲風格：木框、金邊、徽章與有厚度的按鈕 ================= */
+/* 木板：上方資訊、追蹤欄、橫幅、小視窗、視窗 */
+.mecard, .pill, .trk, .q, .bn.info, #feedbar button, .zoom button, .pcard, #drawer, .sheet { background: var(--woodbg); border: 2px solid var(--rim); box-shadow: var(--bevel); }
+.trk, .q, .pill, .zoom button, #feedbar button { border-width: 1.5px; }
+.bn { background: linear-gradient(180deg, #8A3A26, #5E2416); border: 2px solid var(--warn); box-shadow: var(--bevel); }
+.bn.info { border-color: var(--rim); }
+#hud { background: linear-gradient(rgba(30, 18, 8, .75), rgba(30, 18, 8, 0)); }
+#left { top: calc(60px + var(--st)); }
+.trk .th { color: var(--rim2); }
+.q.idle { color: var(--mute); }
+.q b, .trk b { color: var(--rim2); }
+/* 自己的頭像框與物資徽章 */
+.mecard { border-radius: 14px 999px 999px 14px; padding: 3px 14px 3px 3px; }
+.av { width: 34px; height: 34px; border: 3px solid var(--rim2); box-shadow: 0 0 0 2px var(--wood2), 0 2px 4px rgba(0, 0, 0, .5); font-family: var(--display); font-size: 17px; }
+.mi b { color: var(--rim2); text-shadow: 0 2px 0 var(--ember); font-size: 15px; }
+.pill { padding: 2px 10px 2px 3px; }
+.pill > .ic { width: 22px; height: 22px; padding: 3px; box-sizing: border-box; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #7A5232, #2E1D10); border: 1.5px solid var(--rim2); }
+.pill b { font-family: var(--display); font-size: 15px; letter-spacing: .02em; text-shadow: 0 2px 0 #1A0F06; }
+.pill.warn { border-color: var(--warn); }
+.mode { background: rgba(42, 28, 16, .85); border-color: var(--line); }
+/* 下方的圓形按鈕：木頭圓章加金邊；大地圖是綠色的大圓章 */
+.db span { background: radial-gradient(circle at 35% 30%, #7E5634, #3E2816 70%); border: 3px solid var(--rim); box-shadow: inset 0 2px 0 rgba(255, 230, 170, .35), 0 3px 0 #22140A, 0 5px 10px rgba(0, 0, 0, .45); transition: transform .06s; }
+.db span .ic { color: var(--rim2); filter: drop-shadow(0 1px 0 #1A0F06); }
+.db, .rb { font-family: var(--display); font-size: 12px; color: #FFF3DC; text-shadow: 0 1px 0 #1A0F06, 0 0 3px #1A0F06, 0 0 3px #1A0F06; }
+.db[aria-pressed="true"] span { border-color: var(--rim2); box-shadow: 0 0 0 3px rgba(246, 210, 122, .45), 0 3px 0 #22140A; }
+.db.big span { background: radial-gradient(circle at 35% 30%, #4E8C3A, #24461A 75%); border-color: var(--rim2); }
+.db:active span, .rb:active span { transform: translateY(2px); }
+.rdot { background: radial-gradient(circle at 35% 30%, #FF8A70, #D63A2A); border: 2px solid #FFF3DC; }
+.rb span { background: radial-gradient(circle at 35% 30%, #7E5634, #3E2816 70%); border: 3px solid var(--rim); box-shadow: inset 0 2px 0 rgba(255, 230, 170, .35), 0 3px 0 #22140A; }
+.rb.up span { background: radial-gradient(circle at 35% 30%, #FFE08A, #D99A28 70%); }
+.rb:disabled span { background: #4A3F36; border-color: #7C6D5E; }
+.zoom button { color: var(--rim2); border-radius: 12px; }
+/* 視窗：彈出來，標題放在橫幅上，下面一條編織紋（一般的斜紋，不是任何一族的紋樣） */
+#drawer { border-width: 3px; border-radius: 14px; animation: win-pop .18s cubic-bezier(.3, 1.4, .5, 1) both; }
+#dhead { background: linear-gradient(180deg, #7A4E2A, #5A371C); border-bottom: 0; text-align: center; font-size: 19px; letter-spacing: .12em; color: var(--rim2); text-shadow: 0 2px 0 var(--ember); padding: 8px 44px 12px; }
+#dhead::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: var(--weave), #6B4526; }
+.pcard { border-radius: 14px; animation: win-pop .16s cubic-bezier(.3, 1.4, .5, 1) both; }
+.sheet { border-width: 3px; border-radius: 14px; animation: win-pop .18s cubic-bezier(.3, 1.4, .5, 1) both; }
+.sheet h2, .pcard h3, #pbody .card h3 { color: var(--rim2); text-shadow: 0 2px 0 var(--ember); }
+@keyframes win-pop { from { opacity: 0; transform: scale(.92); } }
+#pbody .card, .sheet .card { background: linear-gradient(180deg, #4E3825, #3F2C1C); border: 1.5px solid #8A6238; border-radius: 12px; box-shadow: inset 0 1px 0 rgba(255, 230, 170, .22), 0 2px 0 rgba(0, 0, 0, .35); }
+#pbody .card.sel, #pbody .card.quest.ready, #pbody .card.dev.ready { border-color: var(--rim2); }
+.pcard .card { background: none; border: 0; box-shadow: none; }
+.pcard .x, #dhead .x { top: 5px; right: 6px; width: 30px; height: 30px; background: radial-gradient(circle at 35% 30%, #D2704A, #8E3A22); color: #FFF3DC; border: 2px solid var(--rim2); box-shadow: 0 2px 0 #3A1408; font-size: 18px; }
+/* 按鈕：金色是主要的動作，木頭色是次要的；按下去會往下壓 */
+.btn, .trk .go, .bbtn { background: linear-gradient(180deg, #FFE08A, #F2B93B 45%, #C7861D); color: #3A2204; border: 1.5px solid #FFF0B8; border-radius: 10px; box-shadow: 0 3px 0 #7A4A0C, 0 4px 8px rgba(0, 0, 0, .35); text-shadow: 0 1px 0 rgba(255, 245, 210, .6); transition: transform .06s, box-shadow .06s; }
+.btn:active:not(:disabled), .trk .go:active, .bbtn:active { transform: translateY(2px); box-shadow: 0 1px 0 #7A4A0C; }
+.btn.ghost, .trk .go.ghost { background: linear-gradient(180deg, #6E4A2B, #4C321E); color: var(--ink); border-color: #A97C48; box-shadow: 0 3px 0 #22140A; text-shadow: none; }
+.btn:disabled { filter: grayscale(.7) brightness(.8); opacity: .75; }
+.stepper button { background: linear-gradient(180deg, #6E4A2B, #4C321E); border: 1.5px solid #A97C48; color: var(--rim2); box-shadow: 0 2px 0 #22140A; font-weight: 700; }
+.stepper button:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
+.seg button { background: linear-gradient(180deg, #5A3D25, #3E2A1A); border: 1.5px solid #8A6238; color: var(--mute); }
+.seg button[aria-pressed="true"] { background: linear-gradient(180deg, #FFE08A, #E3A93A); color: #3A2204; border-color: #FFF0B8; }
+.pick { background: linear-gradient(180deg, #4E3825, #3F2C1C); border-color: #8A6238; }
+.pick[aria-pressed="true"] { background: linear-gradient(180deg, #6E4A2B, #4C321E); border-color: var(--rim2); box-shadow: 0 0 0 2px rgba(246, 210, 122, .35); }
+.fields input, .adopt input, #pbody select, #pbody input[type="number"], #pbody input:not([type]), .sheet select { background: #24170D; border: 1.5px solid #8A6238; box-shadow: inset 0 2px 3px rgba(0, 0, 0, .5); }
+/* 進度條：凹槽加綠色亮面 */
+.bar, .trk .bar { height: 8px; background: #1E140B; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .7); border: 1px solid #6B4A2E; border-radius: 6px; }
+.bar i, .trk .bar i { background: linear-gradient(180deg, #CFEA8C, var(--leaf) 50%, var(--leaf2)); border-radius: 6px; }
+.sumbar { background: #1E140B; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .7); }
+/* 數字格、戰報、排行、聯盟 */
+.units div, .gostat, .scout { background: linear-gradient(180deg, #5A3F28, #46301E); border: 1px solid #8A6238; }
+.units b { font-family: var(--display); color: var(--rim2); text-shadow: 0 2px 0 #1A0F06; }
+.units .uq b { color: var(--gold); }
+.tag.win { background: linear-gradient(180deg, #CFEA8C, var(--leaf)); color: #1E3010; } .tag.lose { background: linear-gradient(180deg, #8A3A26, #5E2416); color: #FFE2D6; }
+.rk.me { background: rgba(246, 210, 122, .16); }
+.helpbox { background: rgba(111, 161, 66, .12); }
+.chip { background: var(--woodbg); border-color: var(--rim); }
+.relbar { background: linear-gradient(90deg, #8A3A26, #5A3D25 40%, #5A3D25 60%, #4E7A2C); }
+.about { border-color: #8A6238; background: rgba(42, 28, 16, .5); }
+.codebox { background: #24170D; }
+.bscene, .sscene { border-color: #8A6238; }
+/* 提示訊息：金色的橫幅 */
+.toast { background: linear-gradient(180deg, #FFE9A8, #F2C45A); color: #3A2204; border: 2px solid #FFF6D0; box-shadow: 0 3px 0 #7A4A0C, 0 6px 16px rgba(0, 0, 0, .4); font-weight: 700; }
+.toast.bad { background: linear-gradient(180deg, #FFD2C2, #F29A7C); color: #3A1408; box-shadow: 0 3px 0 #7A2A12, 0 6px 16px rgba(0, 0, 0, .4); }
+/* 領獎勵：拿到的東西從按鈕往上飄 */
+.fly { position: fixed; z-index: 30; pointer-events: none; display: inline-flex; align-items: center; gap: 3px; transform: translate(-50%, 0); font-family: var(--display); font-size: 16px; font-weight: 700; color: #FFF3DC; text-shadow: 0 2px 0 #1A0F06, 0 0 4px #1A0F06; white-space: nowrap; animation: fly-up 1.3s ease-out both; }
+.fly .ic { width: 18px; height: 18px; filter: drop-shadow(0 1px 0 #1A0F06); }
+@keyframes fly-up { 0% { opacity: 0; transform: translate(-50%, 6px) scale(.8); } 15% { opacity: 1; transform: translate(-50%, -6px) scale(1.1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -60px) scale(1); } }
+@media (orientation: portrait) { #left { top: calc(104px + var(--st)); } }
+/* 減少動畫：視窗不彈、獎勵不飄 */
+.calm #drawer, .calm .pcard, .calm .sheet { animation: none; }
+.calm .fly { animation-duration: .01s; opacity: 0; }
+@media (prefers-reduced-motion: reduce) { #drawer, .pcard, .sheet { animation: none; } .fly { display: none; } }
+.start .btn.big { box-shadow: 0 3px 0 #7A4A0C, 0 -10px 12px 4px var(--wood2); }
+.bchip { fill: rgba(42, 28, 16, .88); stroke: rgba(246, 210, 122, .45); }
+.bchip.mid { stroke: rgba(246, 210, 122, .7); }
+.shout rect { fill: rgba(42, 28, 16, .94); }
+#feedbar { max-width: min(340px, calc(100% - 470px)); }
+#feedbar button { padding: 5px 12px; }
 </style>
 <div id="app"></div>
 <script>
@@ -4106,7 +4202,7 @@ window.Net = (function () {
       S.season = st.season || null;
       S.rel = st.rel || []; S.nodes = st.nodes || []; S.stock = st.stock || {}; S.market = st.market || []; S.feed = st.feed || []; S.alliances = st.alliances || {};
       if (st.me) Art.need([st.me.tribe]);   // 自己族群的美術素材
-      autoShow(st.me); raidAlert(st.me);
+      autoShow(st.me); raidAlert(st.me); flyGains(st.me);
       render();
     });
     Art.onLoad(function () { el.vobjs._sig = null; el.vimg._t = null; folkN = -1; if (el.mmarks) el.mmarks._h = null; render(); });   // 某一族的美術素材載好了：重畫
@@ -4207,6 +4303,19 @@ window.Net = (function () {
     var open = []; for (var i = 0; i < R.TILE_N; i++) if (v.land[i]) open.push(i);
     var p = Art.sitePos(open[Math.floor(Math.random() * open.length)]);
     return [Math.round(p[0] - 44 + Math.random() * 88), Math.round(p[1] + 24 + Math.random() * 16)];
+  }
+  /* 領到的東西從按鈕往上飄（+糧食、+建材、+特產、+加速） */
+  function flyGains(me) {
+    var f = S.fly; if (!f || !me || !f.ready) return;   // 動作成功了才飄（ready 在動作的回應裡設）
+    if (Date.now() - f.t > 4000) { S.fly = null; return; }
+    var got = [['food', Math.round(me.res.food - f.food)], ['mat', Math.round(me.res.mat - f.mat)], ['sp', Math.round((me.sp[me.tribe] || 0) - f.sp)], ['speed', (me.boosts || 0) - f.boosts]].filter(function (x) { return x[1] > 0; });
+    if (!got.length) return;   // 狀態還沒更新：等下一次
+    S.fly = null;
+    got.forEach(function (x, i) {
+      var d = document.createElement('div'); d.className = 'fly'; d.innerHTML = Art.icon(x[0]) + '+' + x[1];
+      d.style.left = f.x + 'px'; d.style.top = (f.y - 8 - i * 22) + 'px'; d.style.animationDelay = (i * 0.12) + 's';
+      document.body.appendChild(d); setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 1700);
+    });
   }
   function moveFolk() {
     if (!shown() || scene() !== 'village' || document.hidden || P.calm) return;   // 減少動畫：族人站著不走動
@@ -5284,7 +5393,8 @@ window.Net = (function () {
   });
 
   // ---------- 操作 ----------
-  function act(a, okMsg) { Net.act(a, function (r) { if (r && !r.ok) toast(r.msg || '沒有成功', true); else if (okMsg || (r && r.msg)) toast(okMsg || r.msg); }); }
+  function act(a, okMsg) { Net.act(a, function (r) { if (r && !r.ok) { S.fly = null; toast(r.msg || '沒有成功', true); } else { flyReady(); if (okMsg || (r && r.msg)) toast(okMsg || r.msg); } }); }
+  function flyReady() { if (S.fly) { S.fly.ready = true; flyGains(S.me); } }
   function onInput(e) {
     if (e.target.id === 'f-owner') S.form.owner = e.target.value;
     else if (e.target.id === 'f-name') S.form.name = e.target.value;
@@ -5302,6 +5412,10 @@ window.Net = (function () {
     var foc = document.activeElement;   // 按了按鈕就離開輸入框，面板才會照新的狀態重畫（手機上按鈕不一定會搶走焦點）
     if (foc && foc !== b && /^(INPUT|SELECT)$/.test(foc.tagName) && foc.type !== 'checkbox') foc.blur();
     var a = b.getAttribute('data-act'), me = S.me, tile = +b.getAttribute('data-tile');
+    if (me && /^(dev|quest|chore-done|season-claim)$/.test(a)) {   // 領獎勵：記下按鈕的位置和現在的物資，等新的狀態來了，把多出來的東西從按鈕往上飄
+      var br = b.getBoundingClientRect();
+      S.fly = { x: br.left + br.width / 2, y: br.top, t: Date.now(), food: me.res.food, mat: me.res.mat, sp: me.sp[me.tribe] || 0, boosts: me.boosts || 0 };
+    }
     if (a === 'tab') {
       var tb = b.getAttribute('data-tab'), wasMap = S.view === 'map';
       S.visit = null;
@@ -5373,7 +5487,7 @@ window.Net = (function () {
     else if (a === 'adopt-go') Net.adopt(S.form.adopt, function (r) { if (!r.ok) return toast(r.msg, true); S.adopt = false; S.form.adopt = ''; toast('找到了，正在接回你的部落'); });
     else if (a === 'dev') act({ type: 'dev' });
     else if (a === 'research') act({ type: 'research', id: b.getAttribute('data-id') });
-    else if (a === 'quest') { var qi = me.qp ? me.qp.i : 0; Net.act({ type: 'quest' }, function (r) { if (!r.ok) return toast(r.msg, true); toast('完成第 ' + (qi + 1) + ' 章！' + rewardText2(myTribe(), qi)); }); }
+    else if (a === 'quest') { var qi = me.qp ? me.qp.i : 0; Net.act({ type: 'quest' }, function (r) { if (!r.ok) { S.fly = null; return toast(r.msg, true); } flyReady(); toast('完成第 ' + (qi + 1) + ' 章！' + rewardText2(myTribe(), qi)); }); }
     else if (a === 'bless') act({ type: 'bless' });
     else if (a === 't-quest') Net.test('quest');
     else if (a === 't-pace') { Net.test('pace', b.getAttribute('data-v') === 'formal' ? 20 : 1); toast(b.getAttribute('data-v') === 'formal' ? '已切換成正式節奏' : '已切換成快速試玩'); }
