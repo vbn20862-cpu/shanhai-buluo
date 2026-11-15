@@ -173,6 +173,7 @@
     Net.on('state', function (st) {
       if (st.tune) R.setTune(st.tune);   // 後台調過的數值：顯示的時間、產量、說明都跟著變
       S.me = st.me; S.pubs = st.villages; S.marches = st.marches || [];
+      S.season = st.season || null;
       S.rel = st.rel || []; S.nodes = st.nodes || []; S.stock = st.stock || {}; S.market = st.market || []; S.feed = st.feed || []; S.alliances = st.alliances || {};
       if (st.me) Art.need([st.me.tribe]);   // 自己族群的美術素材
       autoShow(st.me); raidAlert(st.me);
@@ -319,6 +320,8 @@
     else h += '<div class="trk"><button class="tt" data-act="tab" data-tab="quest"><span class="th">' + Art.icon('fire') + esc(t.bless.zh) + '</span>' + (me.blessUntil > Date.now() ? '同心中，還有 <b data-until="' + me.blessUntil + '"></b>' : me.blessNext > Date.now() ? '下次可以舉辦：<b data-until="' + me.blessNext + '"></b>' : '可以舉辦了') + '</button></div>';
     var rows = [], idle = me.d.builders - me.queue.length;   // 進行中的事：閒著的工人排第一（提醒去升級），其次是工程、隊伍、訓練、技藝、療養
     if (idle > 0) rows.push('<div class="q idle">' + Art.icon('build') + '<span>' + (idle > 1 ? idle + ' 位工人閒著' : '工人閒著') + '，點建築升級</span></div>');   // 閒著的工人合成一行
+    var sgi = seasonReady(me);
+    if (sgi >= 0) rows.push('<button class="q help" data-act="season-claim" data-i="' + sgi + '">' + Art.icon('star') + '<span>本季第 ' + (sgi + 1) + ' 個目標達成</span><b>領取</b></button>');
     if (me.chores && R.bl(me, 'plaza')) {   // 定時任務：做完的可以領；沒在做的話提醒可以選一件
       var cdone = me.chores.cur.filter(function (o) { return o.doneAt <= Date.now(); });
       if (cdone.length) rows.push('<button class="q help" data-act="chore-done" data-id="' + esc(cdone[0].id) + '">' + Art.icon('fire') + '<span>「' + R.CHORES[cdone[0].k] + '」做完了</span><b>領取</b></button>');
@@ -389,7 +392,7 @@
     else if (dn === 'social') html = socialPanel(me, 'social');
     else if (dn === 'trade') html = socialPanel(me, 'trade');
     else if (dn === 'tribe') html = hungryCard(me) + jobsCard(me) + queueCard(me) + idleCard(me) + codeCard() + prefsCard();
-    else if (dn === 'quest') html = devCard(me) + choreCard(me) + questCard(me);
+    else if (dn === 'quest') html = devCard(me) + seasonCard(me) + choreCard(me) + questCard(me);
     else if (dn === 'tech') html = techPanel(me);
     else if (dn === 'rank') html = rankPanel(me);
     else if (dn === 'test') html = testPanel(me);
@@ -999,8 +1002,42 @@
     });
     return h + '<p class="muted">升階之後，部落裡所有這種兵一起變強，對戰時的樣子也會換。</p></section>';
   }
-  /* 排行：全島或同一族的部落，照戰力排 */
+  /* 賽季：這一季的季分、五個目標（領獎勵）、還有多久換季、怎麼拿季分 */
+  function seasonReady(me) { for (var i = 0; i < R.SEASON_GOAL.length; i++) if ((me.spts || 0) >= R.SEASON_GOAL[i] && (me.sgot || []).indexOf(i) < 0) return i; return -1; }
+  function seasonCard(me) {
+    var se = S.season; if (!se) return '';
+    var t = myTribe(), pts = me.spts || 0, got = me.sgot || [], goals = R.SEASON_GOAL, next = goals.filter(function (g) { return g > pts; })[0];
+    var h = '<section class="card season"><h3>' + Art.icon('star') + '第 ' + se.n + ' 季<span class="lv">還有 <b data-until="' + se.end + '" data-coarse="1"></b> 換季</span></h3>' +
+      '<div class="goal"><span>本季的季分</span><b>' + pts + (next ? ' / ' + next : '') + '</b></div><div class="bar" role="img" aria-label="季分 ' + pts + '"><i style="width:' + Math.round(100 * Math.min(1, pts / goals[goals.length - 1])) + '%"></i></div><ul class="sgoals">';
+    goals.forEach(function (g, i) {
+      var rw = R.seasonReward(me, i), have = got.indexOf(i) >= 0, can = pts >= g && !have;
+      h += '<li class="' + (have ? 'got' : can ? 'can' : '') + '"><b>' + g + ' 分</b><span class="gain">' + Art.icon('food') + rw.food + '　' + Art.icon('mat') + rw.mat + '　' + Art.icon('speed') + '加速 ' + rw.boost + '</span>' +
+        (have ? '<em>已領</em>' : can ? '<button class="btn sm" data-act="season-claim" data-i="' + i + '">領取</button>' : '<em>差 ' + (g - pts) + ' 分</em>') + '</li>';
+    });
+    return h + '</ul><p class="muted">季分怎麼來：建築升到幾級加幾分、學會技藝、訓練戰士、做定時任務、趕山豬、搶修、採集、出征打贏或守住部落、幫盟友。季末照季分排名，前三名分別送 ' + R.SEASON_TOP.join('、') + ' 個加速道具；換季時季分歸零，部落的其他東西都不變。</p></section>';
+  }
+  /* 排行：全島或同一族的部落，照戰力或本季的季分排 */
   function rankPanel(me) {
+    var kind = S.rankKind === 'season' ? 'season' : 'power', top = seg('rank-kind', kind, [['power', '戰力'], ['season', '本季']]);
+    if (kind === 'season') return '<section class="card">' + top + '</section>' + seasonCard(me) + seasonRank(me);
+    return '<section class="card">' + top + '</section>' + powerRank(me);
+  }
+  function seasonRank(me) {
+    var list = S.pubs.filter(function (v) { return !v.bot; }).sort(function (a, b) { return (b.ss || 0) - (a.ss || 0); }), mine = 0, se = S.season;
+    for (var i = 0; i < list.length; i++) if (list[i].id === me.id) { mine = i + 1; break; }
+    var row = function (v, n) { var vt = Tribes.get(v.tribe); return '<button class="rk' + (v.id === me.id ? ' me' : '') + '" data-act="rank-go" data-id="' + v.id + '"><b class="no">' + n + '</b><i class="dot" style="background:' + vt.color + '"></i><span>' + esc(v.name) + '</span><b>' + (v.ss || 0) + '</b></button>'; };
+    var h = '<section class="card"><h3>' + Art.icon('star') + '本季排行<span class="lv">' + (mine ? '你是第 ' + mine + ' 名' : '') + '</span></h3>';
+    list.slice(0, 30).forEach(function (v, n) { h += row(v, n + 1); });
+    if (mine > 30) h += '<p class="muted">⋯</p>' + row(list[mine - 1], mine);
+    h += '<p class="muted">照這一季的季分排，示範部落不算。</p></section>';
+    if (se && se.n > 1 && se.last && se.last.length) {
+      h += '<section class="card"><h3>第 ' + (se.n - 1) + ' 季的前三名</h3>';
+      se.last.forEach(function (x, i) { var xt = Tribes.get(x.tribe); h += '<div class="rk"><b class="no">' + (i + 1) + '</b><i class="dot" style="background:' + (xt ? xt.color : '#888') + '"></i><span>' + esc(x.name) + '</span><b>' + x.pts + '</b></div>'; });
+      h += '</section>';
+    }
+    return h;
+  }
+  function powerRank(me) {
     var t = myTribe(), by = S.rankBy === 'tribe' ? 'tribe' : 'all', all = S.pubs.slice().sort(function (a, b) { return (b.vp || 0) - (a.vp || 0); });
     var list = all.filter(function (v) { return by === 'all' || v.tribe === me.tribe; }), mine = 0, h;
     for (var i = 0; i < list.length; i++) if (list[i].id === me.id) { mine = i + 1; break; }
@@ -1336,6 +1373,8 @@
     else if (a === 't-allybot') { Net.test('allybot'); toast('有一個示範部落加入了聯盟'); }
     else if (a === 't-guests') { Net.test('guests'); toast('盟友派人出發了'); }
     else if (a === 'rank-by') { S.rankBy = b.getAttribute('data-v'); render(); }
+    else if (a === 'rank-kind') { S.rankKind = b.getAttribute('data-v'); render(); }
+    else if (a === 'season-claim') act({ type: 'seasonClaim', i: +b.getAttribute('data-i') });
     else if (a === 'rank-go') {   // 排行裡的部落：到地圖上看
       var rv = S.pubs.filter(function (x) { return x.id === b.getAttribute('data-id'); })[0];
       if (rv) { S.view = 'map'; S.tab = 'map'; S.node = null; S.zone = rv.hex; render(); MV.focus(rv.pos[0], rv.pos[1], Math.max(MV.k, 4.5)); render(); }

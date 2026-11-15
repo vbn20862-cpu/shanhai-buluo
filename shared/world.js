@@ -134,6 +134,7 @@
   var TUNE_DEF = [
     { k: 'pace', g: '節奏', zh: '遊戲節奏', min: 1, max: 100, step: 1, def: 1, note: '數字越大越慢：產量除以它，建設、訓練、路程、保護、共聚的時間乘以它。1 是快速試玩，20 是正式。' },
     { k: 'buildTime', g: '節奏', zh: '建設與拓荒時間倍率', min: 0.2, max: 5, step: 0.1, def: 1 },
+    { k: 'seasonDays', g: '節奏', zh: '一季幾天（節奏 20 時）', min: 1, max: 60, step: 1, def: 7, note: '季末照季分排名，前三名送加速道具；換季時季分歸零，部落的其他東西不受影響。改了從下一季開始生效。' },
     { k: 'trainTime', g: '節奏', zh: '訓練時間倍率', min: 0.2, max: 5, step: 0.1, def: 1 },
     { k: 'marchTime', g: '節奏', zh: '出征路程倍率', min: 0.2, max: 5, step: 0.1, def: 1 },
     { k: 'guardTime', g: '節奏', zh: '保護時間倍率', min: 0, max: 10, step: 0.1, def: 1, note: '新部落的保護，以及被攻破之後的保護。' },
@@ -733,13 +734,13 @@
     var self = this;
     v.queue = v.queue.filter(function (q) {
       if (q.doneAt > now) return true;
-      if (q.type === 'wall') v.wall = q.to;
-      else if (q.type === 'clear') { v.land[q.tile] = 1; v.res.mat += q.gain; }
-      else if (v.tiles[q.tile]) { v.tiles[q.tile].level = q.to; delete v.tiles[q.tile].busy; }
+      if (q.type === 'wall') { v.wall = q.to; addPts(v, q.to); }
+      else if (q.type === 'clear') { v.land[q.tile] = 1; v.res.mat += q.gain; addPts(v, 3); }
+      else if (v.tiles[q.tile]) { v.tiles[q.tile].level = q.to; delete v.tiles[q.tile].busy; addPts(v, q.to); }   // 季分：升到幾級就加幾分
       return false;
     });
-    v.train = v.train.filter(function (q) { if (q.doneAt > now) return true; v.units[q.u]++; return false; });
-    if (v.research && v.research.doneAt <= now) { v.tech = v.tech || dict(); v.tech[v.research.id] = v.research.to; v.research = null; }   // 技藝學會了
+    v.train = v.train.filter(function (q) { if (q.doneAt > now) return true; v.units[q.u]++; addPts(v, 1); return false; });
+    if (v.research && v.research.doneAt <= now) { v.tech = v.tech || dict(); v.tech[v.research.id] = v.research.to; addPts(v, 10 * v.research.to); v.research = null; }   // 技藝學會了
     if (v.hurt && all3(v.hurt) > 0) {   // 療養屋：負傷的人休養好就回到隊伍（名額滿了先等著）
       v.healAcc = Math.min(1, (v.healAcc || 0) + dt * healRate(v) * self.speed) ;
       while (v.healAcc >= 1 && all3(v.hurt) > 0 && armyTotal(v) < armyCap(v)) {
@@ -802,6 +803,10 @@
     var miss = reqLeft(v, C + 1)[0];
     return miss ? { k: 'level', type: miss.type, n: miss.level } : { k: 'level', type: 'center', n: C + 1 };
   }
+  /* 賽季：一季（節奏 20 時 7 天）裡做的事累積季分。季分到了各個目標可以領獎勵；季末照季分排名，前三名送加速道具 */
+  var SEASON_GOAL = [100, 250, 500, 800, 1200], SEASON_BOOST = [1, 1, 2, 2, 3], SEASON_TOP = [5, 3, 2];
+  function seasonReward(v, i) { var f = r5(60 * eq(centerLevel(v)) * (i + 1) * TUNE.cost); return { food: f, mat: f, boost: SEASON_BOOST[i] }; }
+  function addPts(v, n) { if (v && n > 0) v.spts = (v.spts || 0) + Math.round(n); }
   var BOOST_START = 3, BOOST_DEV = 1, BOOST_QUEST = 2;   // 加速道具：新部落送 3 個；部落發展每一步送 1 個、神話主線每一章送 2 個（不賣）
   function devReward(d) {   // 獎勵：升級類的給那一級花費的三成，其他給固定的量
     if (d.k === 'units') return { food: 120, mat: 0 };
@@ -1152,9 +1157,18 @@
       var c = v.chores, id = String(a.id || ''), o = c && c.cur.filter(function (x) { return x.id === id; })[0];
       if (!o) return { ok: false, msg: '找不到這件工作' };
       if (o.doneAt > now) return { ok: false, msg: '還沒做完' };
-      c.cur = c.cur.filter(function (x) { return x !== o; }); c.n = (c.n || 0) + 1;
+      c.cur = c.cur.filter(function (x) { return x !== o; }); c.n = (c.n || 0) + 1; addPts(v, 5 * o.star);
       v.res.food += o.rw.food; v.res.mat += o.rw.mat; if (o.rw.sp) addRes(v, 'sp:' + v.tribe, o.rw.sp); v.boosts = (v.boosts || 0) + (o.rw.boost || 0);
       return { ok: true, msg: '「' + CHORES[o.k] + '」做完了，領到獎勵' };
+    },
+    seasonClaim: function (v, a) {   // 領這一季的目標獎勵
+      var i = int(a.i);
+      if (i < 0 || i >= SEASON_GOAL.length) return { ok: false, msg: '沒有這個目標' };
+      v.sgot = v.sgot || [];
+      if (v.sgot.indexOf(i) >= 0) return { ok: false, msg: '已經領過了' };
+      if ((v.spts || 0) < SEASON_GOAL[i]) return { ok: false, msg: '季分還不夠' };
+      var rw = seasonReward(v, i); v.res.food += rw.food; v.res.mat += rw.mat; v.boosts = (v.boosts || 0) + rw.boost; v.sgot.push(i);
+      return { ok: true, msg: '領到本季第 ' + (i + 1) + ' 個目標的獎勵' };
     },
     askHelp: function (v, a) {   // 請盟友幫忙這項工程
       if (!v.ally || !this.alliances[v.ally]) return { ok: false, msg: '加入聯盟才能請盟友幫忙' };
@@ -1219,7 +1233,7 @@
       o.queue.forEach(function (q) {
         if (!q.ask || q.hn >= q.hmax || q.doneAt <= now || (q.hby || []).indexOf(v.id) >= 0) return;
         var cut = Math.max(self.ms(TUNE.helpMin * 3000), (q.doneAt - now) * TUNE.helpPct / 100);
-        q.doneAt = Math.max(now, q.doneAt - cut); q.hn++; (q.hby = q.hby || []).push(v.id); n++;
+        q.doneAt = Math.max(now, q.doneAt - cut); q.hn++; (q.hby = q.hby || []).push(v.id); n++; addPts(v, 2);
       });
     });
     return n;
@@ -1280,6 +1294,7 @@
       var total = want.food + want.mat, f = total > carry ? carry / total : 1;
       take('food', Math.floor(want.food * f)); take('mat', Math.floor(want.mat * f));
     }
+    addPts(win ? v : t, win ? 10 + 5 * r.grade : 15);   // 季分：打贏的一方（進攻贏、或守住）
     if (win) {
       t.losses++; t.glory = Math.max(0, t.glory - 3); t.shieldUntil = now + shieldMs() / this.speed;
       v.wins++; v.glory += Math.round(((r.grade === 3 ? 15 : 10) + 2 * centerLevel(t)) * (m.hostile ? 1.5 : 1)); this.relAdd(v.tribe, t.tribe, REL.win);
@@ -1350,6 +1365,7 @@
     if (nd && nd.amt < 1) { delete this.nodes[nd.id]; this.nodesV++; }
     var k = nd ? NODE[nd.k].res : (m.res || 'food'); m.res = k;
     if (m.carry > 0) { m.loot = {}; m.loot[k] = m.carry; }
+    if (v && m.carry > 0) addPts(v, 5);
     if (v && m.carry > 0 && !early) {
       v.stat.point++;
       this.pushReport(v, { t: now, role: 'atk', point: nd ? NODE[nd.k].zh : '資源點', other: '', otherTribe: v.tribe, win: true, note: '採集完成，帶著 ' + m.carry + ' ' + resName(k) + '回部落。' });
@@ -1405,6 +1421,7 @@
     var care = hospitalize(v, { w: m.w - r.left.w, a: m.a - r.left.a, u: (m.u || 0) - r.left.u });
     ['w', 'a', 'u'].forEach(function (k) { v.away[k] = Math.max(0, v.away[k] - ((m[k] || 0) - r.left[k])); m[k] = r.left[k]; });
     var rw = null;
+    addPts(v, r.win ? 8 * nd.lv : 2);
     if (r.win) { rw = wildReward('boar', nd.lv); delete this.nodes[nd.id]; v.stat.point++; v.boosts = (v.boosts || 0) + rw.boost; m.loot = { food: rw.food, mat: rw.mat }; }
     else nd.bn = Math.max(1, r.home.w);
     this.nodesV++;
@@ -1421,7 +1438,7 @@
     if (m.phase === 'gather') {   // 修好了
       var lv = nd ? nd.lv : 1, rw = wildReward('repair', lv), hx = nd && this.map.byId[nd.hex], ht = hx && hx.tribe;
       if (nd) { delete this.nodes[nd.id]; this.nodesV++; }
-      v.stat.point++; v.boosts = (v.boosts || 0) + rw.boost; m.loot = { food: rw.food, mat: rw.mat };
+      v.stat.point++; v.boosts = (v.boosts || 0) + rw.boost; m.loot = { food: rw.food, mat: rw.mat }; addPts(v, 8 * lv);
       if (ht && ht !== v.tribe && Tribes.get(ht) && Tribes.get(ht).playable) this.relAdd(v.tribe, ht, REL.gift);   // 幫別族的區域搶修：兩族的關係變好
       this.pushReport(v, { t: now, role: 'atk', point: '颱風後搶修', ev: 'repair', other: '', otherTribe: v.tribe, win: true,
         note: '修好了' + (nd ? REPAIR_WHAT[nd.what || 0] : '') + '，帶回謝禮：' + rw.food + ' ' + resName('food') + '、' + rw.mat + ' ' + resName('mat') + (rw.boost ? '，另外得到 ' + rw.boost + ' 個加速' : '') + '。' + (ht && ht !== v.tribe ? '這裡是' + Tribes.get(ht).zh + '的區域，兩族的關係變好了。' : '') });
@@ -1549,9 +1566,25 @@
   };
 
   // ---------- 世界時間推進 ----------
+  World.prototype.seasonLen = function () { return this.ms(TUNE.seasonDays * 864e5 / 20); };
+  /* 季末：照季分排名（示範部落不算），前三名送加速道具並記在消息裡；所有部落的季分歸零，開始下一季 */
+  World.prototype.endSeason = function (now) {
+    var S = this.season, self = this, list = Object.keys(this.villages).map(function (k) { return self.villages[k]; })
+      .filter(function (v) { return !v.bot && (v.spts || 0) > 0; }).sort(function (a, b) { return b.spts - a.spts; });
+    var top = list.slice(0, SEASON_TOP.length).map(function (v) { return { v: v, pts: v.spts }; });
+    top.forEach(function (x, i) {
+      x.v.boosts = (x.v.boosts || 0) + SEASON_TOP[i];
+      self.pushReport(x.v, { t: now, role: 'atk', point: '第 ' + S.n + ' 季', other: '', otherTribe: x.v.tribe, win: true, note: '第 ' + S.n + ' 季結束，你的部落季分第 ' + (i + 1) + ' 名（' + x.pts + ' 分），得到 ' + SEASON_TOP[i] + ' 個加速道具。' });
+    });
+    if (top.length) this.log('第 ' + S.n + ' 季結束：' + top.map(function (x, i) { return '第 ' + (i + 1) + ' 名「' + x.v.name + '」'; }).join('、') + '。新的一季開始了。', now, 'season');
+    for (var k in this.villages) { this.villages[k].spts = 0; this.villages[k].sgot = []; }
+    this.season = { n: S.n + 1, start: now, end: now + this.seasonLen(), last: top.map(function (x) { return { id: x.v.id, name: x.v.name, tribe: x.v.tribe, pts: x.pts }; }) };
+  };
   World.prototype.tick = function (now) {
     var self = this, id;
     TUNE = this.tune;
+    if (!this.season) this.season = { n: 1, start: now, end: now + this.seasonLen(), last: [] };
+    else if (now >= this.season.end) this.endSeason(now);
     for (id in this.villages) { var v = this.villages[id]; if (v.online || v.bot) this.tickVillage(v, now); }
     this.marches = this.marches.filter(function (m) { return m.arriveAt > now ? true : self.resolveMarch(m, now); });
     this.marches = this.marches.filter(function (m) { return m.kind !== 'support' || all3(m) > 0; });   // 支援的人都負傷撤退了：隊伍解散
@@ -1591,7 +1624,7 @@
     var guard = all3(v.units);
     return { id: v.id, name: v.name, owner: v.owner, tribe: v.tribe, hex: v.hex, pos: v.pos, bot: v.bot, online: v.online || v.bot,
       c: centerLevel(v), wall: v.wall, towers: levelsOf(v, 'tower').length, guard: guard === 0 ? 0 : guard <= 4 ? 1 : guard <= 10 ? 2 : 3,
-      pros: prosperity(v), glory: v.glory, ally: v.ally, safe: Math.max(v.shieldUntil, v.newbieUntil), uq: uniq(v), vp: villagePower(v),   // vp：部落的戰力（排行榜）
+      pros: prosperity(v), glory: v.glory, ally: v.ally, safe: Math.max(v.shieldUntil, v.newbieUntil), uq: uniq(v), vp: villagePower(v), ss: v.spts || 0,   // vp：部落的戰力、ss：這一季的季分（排行榜）
       pw: (function (g) { return power({ tribe: v.tribe, w: v.units.w + g.w, a: v.units.a + g.a, u: v.units.u, def: true, wall: v.wall, towers: levelsOf(v, 'tower'), uniq: uniq(v), mod: battleMod(v, true) }); })(this.guestSum(v.id)) };   // pw：守在部落裡的戰力（含駐守的盟友），別人用它估勝算
   };
   World.prototype.guestSum = function (id) { var o = { w: 0, a: 0 }; this.guestsOf(id).forEach(function (g) { o.w += g.w; o.a += g.a; }); return o; };
@@ -1629,7 +1662,7 @@
       rel: Tribes.playable().filter(function (t) { return t.id !== v.tribe; }).map(function (t) { return { tribe: t.id, value: self.relOf(v.tribe, t.id), state: self.relState(v.tribe, t.id) }; }),
       stock: (function () { var o = {}; self.map.settlements.forEach(function (s) { o[s.id] = self.stockOf(s.id); }); return o; })(),
       market: this.market.map(function (o) { return { id: o.id, from: o.from, fromName: (self.villages[o.from] || {}).name || '', give: o.give, giveN: o.giveN, want: o.want, wantN: o.wantN }; }),
-      feed: this.feed.slice(-30), alliances: al
+      feed: this.feed.slice(-30), alliances: al, season: this.season ? { n: this.season.n, end: this.season.end, last: this.season.last } : null
     };
   };
   /* 全部的資源點（所有玩家看到的都一樣，只有變動時才重算） */
@@ -1660,7 +1693,7 @@
   };
   World.prototype.toJSON = function () {
     return { villages: this.villages, tokens: this.tokens, marches: this.marches, market: this.market, feed: this.feed, alliances: this.alliances,
-      stats: this.stats, rel: this.rel, nodes: this.nodes, stock: this.stock, seq: this.seq, tune: this.tune, tuneRev: TUNE_REV, mapRev: MAP_REV, adminLog: this.adminLog, lastTyphoon: this.lastTyphoon || 0 };
+      stats: this.stats, rel: this.rel, nodes: this.nodes, stock: this.stock, seq: this.seq, tune: this.tune, tuneRev: TUNE_REV, mapRev: MAP_REV, adminLog: this.adminLog, lastTyphoon: this.lastTyphoon || 0, season: this.season || null };
   };
   World.prototype.load = function (d) {
     if (!d || !d.villages) return this;
@@ -1675,7 +1708,7 @@
     }
     this.adminLog = d.adminLog || [];
     this.villages = dict(d.villages); this.tokens = dict(d.tokens); this.marches = d.marches || []; this.market = d.market || [];
-    this.feed = d.feed || []; this.alliances = dict(d.alliances); this.seq = d.seq || 1; this.lastTyphoon = d.lastTyphoon || 0;
+    this.feed = d.feed || []; this.alliances = dict(d.alliances); this.seq = d.seq || 1; this.lastTyphoon = d.lastTyphoon || 0; this.season = d.season || null;   // 改版前的存檔沒有賽季：下一次推進時開始第 1 季
     this.stats = dict(d.stats); this.rel = dict(d.rel); this.nodes = (d.mapRev || 1) < MAP_REV ? dict() : dict(d.nodes); this.nodesV++; this.stock = dict(d.stock);
     for (var sk0 in this.stock) this.stock[sk0] = dict(this.stock[sk0]);
     for (var id in this.villages) {
@@ -1730,7 +1763,7 @@
     SITES: SITES, CLEAR: CLEAR, clearInfo: clearInfo, TILE_N: TILE_N, CENTER_TILE: CENTER_TILE, TYPES: TYPES, MAX_LEVEL: MAX_LEVEL, UNIT: UNIT,
     CENTER_UP: CENTER_UP, BUILDERS: BUILDERS, FOREIGN_SP: FOREIGN_SP, cost: cost, buildTime: buildTime, limit: limit, count: count,
     resName: resName, derived: derived, eatRate: eatRate, perWorker: perWorker, TECH: TECH, TECH_MAX: TECH_MAX, UNLOCK: UNLOCK, techCost: techCost, techTime: techTime, techMax: techMax, battleMod: battleMod, buildMul: buildMul, marchMul: marchMul, healCap: healCap, bl: bl, eq: eq, centerUp: centerUp, centerReq: centerReq, reqLeft: reqLeft, maxLevelOf: maxLevelOf, wallMul: wallMul, villagePower: villagePower, DEV_START: DEV_START, popCap: popCap, LOOT_FRAC: LOOT_FRAC, GRADE: GRADE, FIGHT: FIGHT,
-    armyCap: armyCap, mkSide: mkSide, supportCap: supportCap, CHORES: CHORES, CHORE_MIN: CHORE_MIN, CHORE_EVERY: CHORE_EVERY, choreSlots: choreSlots, choreOffers: choreOffers, choreReward: choreReward, TIER: TIER, tiers: tiers, tierMul: tierMul, helpMax: helpMax, BOOST_START: BOOST_START, BOOST_DEV: BOOST_DEV, BOOST_QUEST: BOOST_QUEST, QUESTS: QUESTS, UNIT_U: UNIT_U, BLESS: BLESS, HERO_REST: HERO_REST, marchMax: marchMax, gatherRate: gatherRate, REL: REL, NODE: NODE, NODE_AMT: NODE_AMT, BOAR_N: BOAR_N, boarSide: boarSide, boarPower: boarPower, wildReward: wildReward, REPAIR_WHAT: REPAIR_WHAT, repairRate: repairRate, SETTLE: SETTLE,
+    armyCap: armyCap, mkSide: mkSide, supportCap: supportCap, SEASON_GOAL: SEASON_GOAL, SEASON_TOP: SEASON_TOP, seasonReward: seasonReward, CHORES: CHORES, CHORE_MIN: CHORE_MIN, CHORE_EVERY: CHORE_EVERY, choreSlots: choreSlots, choreOffers: choreOffers, choreReward: choreReward, TIER: TIER, tiers: tiers, tierMul: tierMul, helpMax: helpMax, BOOST_START: BOOST_START, BOOST_DEV: BOOST_DEV, BOOST_QUEST: BOOST_QUEST, QUESTS: QUESTS, UNIT_U: UNIT_U, BLESS: BLESS, HERO_REST: HERO_REST, marchMax: marchMax, gatherRate: gatherRate, REL: REL, NODE: NODE, NODE_AMT: NODE_AMT, BOAR_N: BOAR_N, boarSide: boarSide, boarPower: boarPower, wildReward: wildReward, REPAIR_WHAT: REPAIR_WHAT, repairRate: repairRate, SETTLE: SETTLE,
     autoBattle: autoBattle, power: power, odds: odds, ODDS: ODDS, simBattle: simBattle, simMatrix: simMatrix,
     TUNE_DEF: TUNE_DEF, tuneDefaults: tuneDefaults, setTune: setTune, paced: paced, trainTime: trainTime, marchSecs: marchSecs, shieldMs: shieldMs, OFFER_MS: OFFER_MS
   };

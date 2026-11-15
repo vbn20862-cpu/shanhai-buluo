@@ -464,3 +464,11 @@ p { margin: 4px 0; }
 .chore .time { margin: 0; }
 .chore.cur { border-top-style: solid; }
 .chore.done b { color: var(--good); }
+/* 賽季 */
+.card.season { border-color: rgba(227, 179, 65, .55); }
+.sgoals { list-style: none; margin: 4px 0 0; padding: 0; }
+.sgoals li { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px dashed var(--line); }
+.sgoals li > b { width: 4.2em; flex: none; font-variant-numeric: tabular-nums; color: var(--mute); }
+.sgoals li .gain { flex: 1; min-width: 0; font-size: 12.5px; flex-wrap: wrap; }
+.sgoals li em { font-style: normal; font-size: 12px; color: var(--mute); white-space: nowrap; }
+.sgoals li.can > b { color: var(--gold); } .sgoals li.got { opacity: .6; } .sgoals li.got em { color: var(--good); }

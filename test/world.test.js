@@ -1053,3 +1053,41 @@ test('野地事件：山豬群（趕回山裡）與颱風後搶修，一個人�
   if (rp2) { rp2.until = now - 1; now += 31000; w.tick(now); assert.equal(w.nodes[rp2.id], undefined); }
   check(w);
 });
+
+test('賽季：做事累積季分、達到目標領獎勵、季末排名送加速、換季季分歸零', () => {
+  const w = new World({ speed: 1, rng: seeded(71) }), R = World.rules;
+  let now = 1e6;
+  const a = w.villages[w.join('ss1', { owner: '甲', name: '甲部落', tribe: 'atayal' }, now).id];
+  const b = w.villages[w.join('ss2', { owner: '乙', name: '乙部落', tribe: 'bunun' }, now).id];
+  a.online = b.online = true; w.ensureBots(now);
+  w.tick(now += 1000);
+  assert.equal(w.season.n, 1); assert.equal(w.season.end - w.season.start, w.ms(R.TUNE.seasonDays * 864e5 / 20));
+  // 升級建築：升到幾級加幾分
+  a.res.food = a.res.mat = 99999; a.tiles[0].level = 3;
+  assert.ok(w.act(a.id, { type: 'upgrade', tile: 4 }, now).ok);
+  const s0 = a.spts || 0; now = a.queue[0].doneAt + 1; w.tick(now);
+  assert.equal(a.spts, s0 + 2, '家屋升到 2 級：+2');
+  // 季目標
+  assert.equal(w.act(a.id, { type: 'seasonClaim', i: 0 }, now).msg, '季分還不夠');
+  a.spts = 260; const f0 = a.res.food, b0 = a.boosts;
+  assert.ok(w.act(a.id, { type: 'seasonClaim', i: 0 }, now).ok); assert.ok(w.act(a.id, { type: 'seasonClaim', i: 1 }, now).ok);
+  assert.equal(w.act(a.id, { type: 'seasonClaim', i: 1 }, now).msg, '已經領過了');
+  assert.equal(w.act(a.id, { type: 'seasonClaim', i: 'toString' }, now).ok, false);
+  assert.equal(a.boosts, b0 + 2); assert.ok(a.res.food > f0);
+  assert.equal(w.pub(a, now).ss, 260, '排行用的季分');
+  // 季末：甲第一、乙第二，示範部落不算
+  b.spts = 120; Object.values(w.villages).filter(v => v.bot)[0].spts = 9999;
+  const ab = a.boosts, bb = b.boosts;
+  now = w.season.end + 1; w.tick(now);
+  assert.equal(w.season.n, 2);
+  assert.deepEqual(w.season.last.map(x => x.name), ['甲部落', '乙部落']); assert.equal(w.season.last[0].pts, 260);
+  assert.equal(a.boosts, ab + R.SEASON_TOP[0]); assert.equal(b.boosts, bb + R.SEASON_TOP[1]);
+  assert.equal(a.spts, 0); assert.deepEqual(a.sgot, []);
+  assert.ok(w.feed.some(f => /第 1 季結束/.test(JSON.stringify(f))));
+  assert.equal(w.snapshot(a.id, now).season.n, 2);
+  // 存檔讀回來還在；舊存檔沒有賽季就從第 1 季開始
+  const d = JSON.parse(JSON.stringify(w.toJSON()));
+  assert.equal(new World().load(d).season.n, 2);
+  delete d.season; const w2 = new World().load(d); w2.tick(now + 1000); assert.equal(w2.season.n, 1);
+  check(w);
+});
