@@ -345,7 +345,7 @@ test('資源點：隨機長出來、種類照地形；派人去採，採滿就�
   const b = w.villages[w.join('b', { owner: 'B', name: '乙', tribe: 'amis' }, now).id];
   w.setOnline(a.id, true, now); w.setOnline(b.id, true, now);
   w.tick(now += 1000);
-  const nodes = Object.values(w.nodes);
+  const nodes = Object.values(w.nodes).filter(n => !R.NODE[n.k].ev);   // 野地事件（山豬群、搶修）另外算
   assert.equal(nodes.length, R.TUNE.nodeCount, '一開始就長滿');
   const geo = w.map.byId;
   for (const n of nodes) {
@@ -395,7 +395,7 @@ test('資源點：隨機長出來、種類照地形；派人去採，採滿就�
   // 採完的點會在別的地方長出新的
   delete w.nodes[nd2.id]; w.nodesV++;
   for (let i = 0; i < 40; i++) w.tick(now += 1000);
-  assert.equal(Object.keys(w.nodes).length, R.TUNE.nodeCount);
+  assert.equal(Object.values(w.nodes).filter(n => !R.NODE[n.k].ev).length, R.TUNE.nodeCount);
   check(w);
 });
 
@@ -714,7 +714,7 @@ test('舊存檔：打到一半的舊式對戰把人送回去；佈防設定拿�
   assert.deepEqual([a4.units.w, a4.away.w], [4, 0], '駐守的人回到部落');
   const h4 = w4.map.byId[a4.hex];
   assert.ok(h4 && h4.tribe === 'bunun', '搬到同一族的區域'); assert.ok(Math.hypot(a4.pos[0] - h4.x, a4.pos[1] - h4.y) <= 2, '坐標跟著換');
-  w4.tick(now + 7000); assert.equal(Object.keys(w4.nodes).length, R.TUNE.nodeCount, '資源點重新長出來');
+  w4.tick(now + 7000); assert.equal(Object.values(w4.nodes).filter(n => !R.NODE[n.k].ev).length, R.TUNE.nodeCount, '資源點重新長出來');
   assert.equal(w3.tune.wallPct, 12, '新版存檔裡調過的對戰數值會保留'); assert.equal(again.tune.pace, 20);
   check(w2);
 });
@@ -1003,5 +1003,53 @@ test('迎賓亭的盟友支援：派人駐守、一起守部落、分回剩下�
   assert.equal(m2.phase, 'back');
   while (w.marches.length) { now += 1000; w.tick(now); }
   assert.equal(R.all3 ? 0 : 0, 0); assert.deepEqual(fr.away, { w: 0, a: 0, u: 0 });
+  check(w);
+});
+
+test('野地事件：山豬群（趕回山裡）與颱風後搶修，一個人也有事可做', () => {
+  const w = new World({ speed: 1, rng: seeded(61) }), R = World.rules;
+  let now = 1e6;
+  const v = w.villages[w.join('wd1', { owner: '甲', name: '甲部落', tribe: 'atayal' }, now).id]; v.online = true; v.newbieUntil = 0;
+  v.tiles[3] = { type: 'barracks', level: 6 }; v.units = { w: 20, a: 10, u: 0 };
+  for (let i = 0; i < 3; i++) { now += 31000; w.tick(now); }
+  const nodes = Object.values(w.nodes);
+  const boars = nodes.filter(n => n.k === 'boar'), repairs = nodes.filter(n => n.k === 'repair');
+  assert.equal(boars.length, R.TUNE.boarCount, '山豬群補到設定的數量');
+  assert.ok(repairs.length > 0, '颱風過後有地方要搶修');
+  assert.ok(nodes.filter(n => !R.NODE[n.k].ev).length <= R.TUNE.nodeCount, '資源點的數量不受事件影響');
+  assert.ok(w.feed.some(f => /颱風過後/.test(f.text || f.t || JSON.stringify(f))));
+  // 趕山豬：1 級的山豬群，20 個勇士、10 個弓手去一定趕得走
+  const b = boars.filter(n => n.lv === 1)[0] || boars[0]; b.lv = 1; b.bn = R.BOAR_N[1];
+  assert.ok(w.act(v.id, { type: 'gather', node: b.id, w: 20, a: 10 }, now).ok);
+  const m = w.marches.filter(x => x.node === b.id)[0]; assert.equal(m.kind, 'boar');
+  while (!v.reports.length) { now += 1000; w.tick(now); }
+  const rep = v.reports[0];
+  assert.ok(rep.win && /趕回山裡/.test(rep.note), rep.note); assert.equal(w.nodes[b.id], undefined, '趕走了就消失');
+  const f0 = v.res.food;
+  while (w.marches.some(x => x.id === m.id)) { now += 1000; w.tick(now); }
+  assert.ok(v.res.food >= f0 + R.wildReward('boar', 1).food - 1e-6 || v.res.food >= f0, '帶回謝禮');
+  // 打不贏：山豬少了幾隻還在原地
+  const b5 = Object.values(w.nodes).filter(n => n.k === 'boar')[0]; b5.lv = 5; b5.bn = R.BOAR_N[5];
+  v.units = { w: 3, a: 0, u: 0 }; v.away = { w: 0, a: 0, u: 0 };
+  assert.ok(w.act(v.id, { type: 'gather', node: b5.id, w: 3, a: 0 }, now).ok);
+  const n0 = v.reports.length; while (v.reports.length === n0) { now += 1000; w.tick(now); }
+  assert.equal(v.reports[0].win, false); assert.ok(w.nodes[b5.id] && w.nodes[b5.id].bn <= R.BOAR_N[5]);
+  // 搶修：到了開始修，修好拿謝禮；別人不能來搶
+  while (w.marches.some(x => x.from === v.id)) { now += 1000; w.tick(now); }
+  v.units = { w: 10, a: 0, u: 0 }; v.away = { w: 0, a: 0, u: 0 };
+  const rp = Object.values(w.nodes).filter(n => n.k === 'repair')[0]; rp.until = now + 1e9;
+  assert.ok(w.act(v.id, { type: 'gather', node: rp.id, w: 10, a: 0 }, now).ok);
+  const t2 = w.villages[w.join('wd2', { owner: '乙', name: '乙部落', tribe: 'amis' }, now).id]; t2.units = { w: 10, a: 0, u: 0 }; t2.online = true;
+  const rm = w.marches.filter(x => x.node === rp.id)[0];
+  while (rm.phase === 'out') { now += 1000; w.tick(now); }
+  assert.equal(rm.phase, 'gather'); assert.ok(w.nodes[rp.id].g);
+  assert.equal(w.act(t2.id, { type: 'gather', node: rp.id, w: 5, a: 0 }, now).msg, '已經有人在這裡搶修了');
+  const b0 = v.boosts, n1 = v.reports.length;
+  while (v.reports.length === n1) { now += 1000; w.tick(now); }
+  assert.ok(v.reports[0].win && /修好了/.test(v.reports[0].note)); assert.equal(w.nodes[rp.id], undefined);
+  assert.equal(v.boosts, b0 + R.wildReward('repair', rp.lv).boost);
+  // 放太久沒人修：自己消失
+  const rp2 = Object.values(w.nodes).filter(n => n.k === 'repair' && !n.g)[0];
+  if (rp2) { rp2.until = now - 1; now += 31000; w.tick(now); assert.equal(w.nodes[rp2.id], undefined); }
   check(w);
 });

@@ -78,7 +78,8 @@ window.Art = (function () {
   /* 地圖上的資源點用的圖示（24 格）：素材裡沒有竹子和石板，這兩個是程式畫的 */
   var ICON24 = {
     bamboo: '<g fill="currentColor"><rect x="5" y="3" width="3.2" height="18" rx="1.2"/><rect x="10.4" y="1.5" width="3.2" height="19.5" rx="1.2"/><rect x="15.8" y="4" width="3.2" height="17" rx="1.2"/></g><path d="M5 9h3.2M5 15h3.2M10.4 7h3.2M10.4 13.5h3.2M15.8 10h3.2M15.8 16h3.2" stroke="#14212A" stroke-width="1.2"/><path d="M13.6 5.5c3-2 5-2 6.5-1.5-1.4 1.6-3.6 2.2-6.5 1.5z" fill="currentColor"/>',
-    stone: '<g fill="currentColor"><path d="M3 18.5 5 15h14l2 3.5z"/><path d="M4.5 13.5 6.5 10h11l2 3.5z"/><path d="M7 8.5 8.8 5h6.4l1.8 3.5z"/></g>'
+    stone: '<g fill="currentColor"><path d="M3 18.5 5 15h14l2 3.5z"/><path d="M4.5 13.5 6.5 10h11l2 3.5z"/><path d="M7 8.5 8.8 5h6.4l1.8 3.5z"/></g>',
+    boar: '<g fill="currentColor"><path d="M4 15.5c0-4 3.4-7 8-7 3 0 5.2 1 6.6 2.8l2.4.4-.6 2.4-1.6.3c-.4 1.8-1.8 3.1-3.8 3.6v2h-2.2v-1.8h-4.6v1.8H6v-2.3c-1.2-.6-2-1.7-2-3.2z"/><path d="M8.5 8.8 10 5.5l1.6 3"/></g><circle cx="17.6" cy="12" r=".9" fill="#14212A"/><path d="M20.2 14.6l1.6 1" stroke="#F2EAD6" stroke-width="1.2" stroke-linecap="round"/>'
   };
   function iconBody(name) { return (AS && newArt && AS.icon[name]) || ICON24[name] || (AS && AS.icon[name]) || ''; }
   function icon(name, cls) {
