@@ -262,6 +262,9 @@
       tw: tierMul(t.w), ta: tierMul(t.a), tu: tierMul(t.u) };
   }
   function helpMax(v) { return 3 + Math.floor(bl(v, 'guest') / 2); }   // 迎賓亭：一項工程最多讓盟友幫幾次
+  function supportCap(v) { return 5 * bl(v, 'guest'); }                 // 迎賓亭：最多接待幾位來支援的盟友戰士
+  var STAY = 3650 * 864e5;   // 支援的隊伍駐守時沒有抵達時間：用很久以後代替，叫回來時才改
+  function sendBack(m, now) { var gone = m.phase === 'out' ? Math.min(m.travel || 0, now - m.departAt) : m.travel || 0; m.phase = 'back'; m.departAt = now; m.arriveAt = now + gone; }
   /* 聚會廣場的定時任務：部落裡的日常工作（一般的說法，不是祭儀）。每隔一段時間換一批，選一件做，做完領獎勵。
    * 星等 1～3：時間是節奏 20 時的 30、60、120 分鐘；三星的另外送一個加速道具 */
   var CHORES = ['修補家屋的屋頂', '整理柴薪', '到溪邊取水', '曬乾收成的作物', '編竹簍', '修整田埂', '照顧剛發芽的作物', '磨利工具', '整理倉庫', '清理部落的步道', '修補圍籬', '準備大家的飯菜'];
@@ -1015,8 +1018,30 @@
       }
       return { ok: true, msg: holder ? '隊伍出發去搶了' : '隊伍出發去採集了' };
     },
-    recall: function (v, a, now) {   // 把採集中的隊伍叫回來，帶著已經採到的
+    support: function (v, a, now) {   // 派勇士、弓手到盟友的部落幫忙守（獨特兵種不去）
+      var t = this.villages[a.to], w = int(a.w), ar = int(a.a);
+      if (!t || t.id === v.id) return { ok: false, msg: '找不到目標' };
+      if (!v.ally || v.ally !== t.ally) return { ok: false, msg: '只能支援同一個聯盟的部落' };
+      if (w < 0 || ar < 0 || w + ar < 1) return { ok: false, msg: '至少要派出一個人' };
+      if (w > v.units.w || ar > v.units.a) return { ok: false, msg: '留在部落的人數不夠' };
+      if (!supportCap(t)) return { ok: false, msg: '對方還沒有迎賓亭，沒辦法接待支援的人' };
+      var room = supportCap(t) - this.guestsOf(t.id, true).reduce(function (n, m) { return n + all3(m); }, 0);
+      if (w + ar > room) return { ok: false, msg: room > 0 ? '對方的迎賓亭只能再接待 ' + room + ' 人' : '對方的迎賓亭已經住滿了' };
+      if (this.marchesOf(v.id).length >= marchMax(v)) return { ok: false, msg: '同時最多 ' + marchMax(v) + ' 支隊伍在外面' };
+      v.units.w -= w; v.units.a -= ar; v.away.w += w; v.away.a += ar;
+      var travel = marchSecs(Geo.travel(this.map.byId[v.hex], this.map.byId[t.hex]), false) * marchMul(v) * 1000 / this.speed;
+      this.marches.push({ id: this.id('m'), from: v.id, to: t.id, w: w, a: ar, u: 0, kind: 'support', departAt: now, arriveAt: now + travel, travel: travel, phase: 'out', loot: null });
+      return { ok: true, msg: '支援的隊伍出發了' };
+    },
+    sendHome: function (v, a, now) {   // 主人請來支援的盟友回去
+      var m = this.marches.filter(function (x) { return x.id === a.id && x.to === v.id && x.kind === 'support' && x.phase !== 'back'; })[0];
+      if (!m) return { ok: false, msg: '找不到這支支援的隊伍' };
+      sendBack(m, now);
+      return { ok: true, msg: '謝謝盟友，他們回去了' };
+    },
+    recall: function (v, a, now) {   // 把採集中的隊伍叫回來，帶著已經採到的；支援盟友的隊伍也可以叫回來
       var m = this.marches.filter(function (x) { return x.id === a.id && x.from === v.id; })[0];
+      if (m && m.kind === 'support' && m.phase !== 'back') { sendBack(m, now); return { ok: true, msg: '支援的隊伍回來了' }; }
       if (!m || m.kind !== 'gather' || m.phase !== 'gather') return { ok: false, msg: '這支隊伍不在採集' };
       this.finishGather(m, now, true);
       return { ok: true, msg: '隊伍帶著採到的東西回來了' };
@@ -1147,11 +1172,12 @@
       this.log('「' + v.name + '」加入了聯盟「' + al.name + '」。', now, 'ally');
       return { ok: true, msg: '加入了' + al.name };
     },
-    allyLeave: function (v) {
+    allyLeave: function (v, a, now) {
       var al = this.alliances[v.ally];
       if (!al) { v.ally = null; return { ok: false, msg: '你不在聯盟裡' }; }
       al.members = al.members.filter(function (m) { return m !== v.id; }); v.ally = null;
       if (!al.members.length) delete this.alliances[al.id]; else if (al.leader === v.id) al.leader = al.members[0];
+      this.marches.forEach(function (m) { if (m.kind === 'support' && m.phase !== 'back' && (m.from === v.id || m.to === v.id)) sendBack(m, now); });   // 不同盟了：支援的隊伍各自回家
       return { ok: true, msg: '已離開聯盟' };
     },
     say: function (v, a, now) {
@@ -1202,6 +1228,10 @@
       return false;
     }
     if (m.kind === 'gather') return this.resolveGather(m, v, now);
+    if (m.kind === 'support') {   // 支援的隊伍到了：駐守在盟友的部落，直到被叫回或請回
+      if (!t || !v.ally || v.ally !== t.ally) { sendBack(m, now); return true; }
+      m.phase = 'stay'; m.departAt = now; m.arriveAt = now + STAY; return true;
+    }
     if (m.kind === 'point') { m.phase = 'back'; m.departAt = now; m.arriveAt = now + (m.travel || 0); return true; }   // 改版前的佔領隊伍：直接回家
     var why = !t ? '找不到對方的部落' : now < t.shieldUntil ? '對方正受到保護' : (v.ally && v.ally === t.ally) ? '對方現在是同盟' : '';
     if (why) {
@@ -1211,11 +1241,14 @@
     this.tickVillage(v, now); this.tickVillage(t, now);
     m.u = m.u || 0;
     var heroOk = function (x) { return x.quest >= QUESTS.length && now >= (x.heroRest || 0); };
+    var guests = this.guestsOf(t.id), gw = 0, ga = 0;   // 駐守在這裡的盟友一起守（照主人部落的加成算）
+    guests.forEach(function (g) { gw += g.w; ga += g.a; });
     var r = autoBattle({ tribe: v.tribe, w: m.w, a: m.a, u: m.u, hero: heroOk(v), mod: battleMod(v, false) },
-      { tribe: t.tribe, w: t.units.w, a: t.units.a, u: t.units.u, hero: heroOk(t), wall: t.wall, towers: levelsOf(t, 'tower'), uniq: uniq(t), mod: battleMod(t, true) }, this.rng);
-    var careA = hospitalize(v, { w: m.w - r.left.w, a: m.a - r.left.a, u: m.u - r.left.u }), careD = hospitalize(t, { w: t.units.w - r.home.w, a: t.units.a - r.home.a, u: t.units.u - r.home.u });
+      { tribe: t.tribe, w: t.units.w + gw, a: t.units.a + ga, u: t.units.u, hero: heroOk(t), wall: t.wall, towers: levelsOf(t, 'tower'), uniq: uniq(t), mod: battleMod(t, true) }, this.rng);
+    var home = this.splitGuests(t, guests, r, now, v);   // 剩下的人照比例分回主人與各支援隊伍
+    var careA = hospitalize(v, { w: m.w - r.left.w, a: m.a - r.left.a, u: m.u - r.left.u }), careD = hospitalize(t, { w: t.units.w - home.w, a: t.units.a - home.a, u: t.units.u - home.u });
     var win = r.win, left = r.left, loot = {}, txt = [];
-    t.units.w = r.home.w; t.units.a = r.home.a; t.units.u = r.home.u;
+    t.units.w = home.w; t.units.a = home.a; t.units.u = home.u;
     ['w', 'a', 'u'].forEach(function (k) { v.away[k] = Math.max(0, v.away[k] - (m[k] - left[k])); });
     if (r.used.a) v.heroRest = now + this.ms(HERO_REST);   // 英雄出過力之後要休息
     if (r.used.d) t.heroRest = now + this.ms(HERO_REST);
@@ -1233,7 +1266,7 @@
     } else { t.wins++; t.glory += 5; v.losses++; v.glory = Math.max(0, v.glory - 2); }
     // 戰報：雙方各一份，裡面帶著每一回合的紀錄，畫面用它重播這一場
     var bid = this.id('b'), show = { aName: v.name, dName: t.name, aTribe: v.tribe, dTribe: t.tribe, wall: r.wall, towerN: r.towerN, start: r.start, aTier: tiers(v), dTier: tiers(t) };
-    this.pushReport(t, { id: bid, t: now, role: 'def', other: v.name, otherTribe: v.tribe, win: !win, grade: r.grade, loot: loot, lost: r.lostD, hurt: r.lostA, care: careD, log: r.log, show: show });
+    this.pushReport(t, { id: bid, t: now, role: 'def', other: v.name, otherTribe: v.tribe, win: !win, grade: r.grade, loot: loot, lost: r.lostD, hurt: r.lostA, care: careD, log: r.log, show: show, guests: gw + ga });
     this.pushReport(v, { id: bid, t: now, role: 'atk', other: t.name, otherTribe: t.tribe, win: win, grade: r.grade, loot: loot, lost: r.lostA, hurt: r.lostD, care: careA, log: r.log, show: show });
     var key = v.tribe + '>' + t.tribe, st = this.stats[key] = this.stats[key] || { n: 0, win: 0 };   // 後台用：各族對戰的場數與攻方勝場
     st.n++; if (win) st.win++;
@@ -1253,6 +1286,33 @@
     return n;
   }
   World.prototype.marchesOf = function (id) { return this.marches.filter(function (m) { return m.from === id; }); };
+  /* 駐守在某個部落的盟友隊伍（withOut：連路上還沒到的也算，用來算迎賓亭還剩幾個位置） */
+  World.prototype.guestsOf = function (id, withOut) {
+    return this.marches.filter(function (m) { return m.kind === 'support' && m.to === id && (m.phase === 'stay' || (withOut && m.phase === 'out')) && all3(m) > 0; });
+  };
+  /* 守方打完後剩下的人（r.home）照開打時的比例分回主人與各支援隊伍；支援的人負傷的話回自己部落的療養屋，並收到一份戰報。回傳主人留下的人數 */
+  World.prototype.splitGuests = function (t, guests, r, now, atk) {
+    var home = { w: r.home.w, a: r.home.a, u: r.home.u }, self = this;
+    if (!guests.length) return home;
+    var tot = { w: t.units.w, a: t.units.a }, keep = guests.map(function () { return { w: 0, a: 0 }; });
+    guests.forEach(function (g) { tot.w += g.w; tot.a += g.a; });
+    ['w', 'a'].forEach(function (k) {
+      var left = r.home[k];
+      guests.forEach(function (g, i) { keep[i][k] = tot[k] ? Math.min(g[k], Math.floor(g[k] * r.home[k] / tot[k])) : 0; left -= keep[i][k]; });
+      var extra = left - t.units[k];   // 四捨五入多出來的人不能算到主人頭上：補回給支援的隊伍
+      guests.forEach(function (g, i) { var x = Math.min(Math.max(0, extra), g[k] - keep[i][k]); keep[i][k] += x; extra -= x; left -= x; });
+      home[k] = Math.max(0, Math.min(t.units[k], left));
+    });
+    guests.forEach(function (g, i) {
+      var o = self.villages[g.from], lost = { w: g.w - keep[i].w, a: g.a - keep[i].a, u: 0 };
+      g.w = keep[i].w; g.a = keep[i].a;
+      if (!o) return;
+      o.away.w = Math.max(0, o.away.w - lost.w); o.away.a = Math.max(0, o.away.a - lost.a);
+      var care = hospitalize(o, lost), n = lost.w + lost.a;
+      self.pushReport(o, { t: now, role: 'def', other: atk.name, otherTribe: atk.tribe, win: !r.win, note: '你派去支援「' + t.name + '」的隊伍一起守部落，' + (r.win ? '沒有守住' : '守住了') + '。' + (n ? n + ' 人負傷撤退' + (care ? '，其中 ' + care + ' 人回到療養屋休養' : '') + '。' : '沒有人負傷。') + (all3(g) ? '其他人繼續駐守。' : '') });
+    });
+    return home;
+  };
   function n3(m) { return { w: m.w, a: m.a, u: m.u || 0 }; }
   /* 在資源點開始（或重新開始）採：算出速度、還背得下多少，排好採完的時間 */
   World.prototype.startGather = function (m, nd, v, now) {
@@ -1389,6 +1449,7 @@
     TUNE = this.tune;
     for (id in this.villages) { var v = this.villages[id]; if (v.online || v.bot) this.tickVillage(v, now); }
     this.marches = this.marches.filter(function (m) { return m.arriveAt > now ? true : self.resolveMarch(m, now); });
+    this.marches = this.marches.filter(function (m) { return m.kind !== 'support' || all3(m) > 0; });   // 支援的人都負傷撤退了：隊伍解散
     if (now - this.lastRel >= this.ms(REL.decayMs)) {   // 族群關係慢慢回到中立
       this.lastRel = now;
       for (var rk in this.rel) { this.rel[rk] -= Math.sign(this.rel[rk]); if (!this.rel[rk]) delete this.rel[rk]; }
@@ -1426,8 +1487,9 @@
     return { id: v.id, name: v.name, owner: v.owner, tribe: v.tribe, hex: v.hex, pos: v.pos, bot: v.bot, online: v.online || v.bot,
       c: centerLevel(v), wall: v.wall, towers: levelsOf(v, 'tower').length, guard: guard === 0 ? 0 : guard <= 4 ? 1 : guard <= 10 ? 2 : 3,
       pros: prosperity(v), glory: v.glory, ally: v.ally, safe: Math.max(v.shieldUntil, v.newbieUntil), uq: uniq(v), vp: villagePower(v),   // vp：部落的戰力（排行榜）
-      pw: power({ tribe: v.tribe, w: v.units.w, a: v.units.a, u: v.units.u, def: true, wall: v.wall, towers: levelsOf(v, 'tower'), uniq: uniq(v), mod: battleMod(v, true) }) };   // pw：守在部落裡的戰力，別人用它估勝算
+      pw: (function (g) { return power({ tribe: v.tribe, w: v.units.w + g.w, a: v.units.a + g.a, u: v.units.u, def: true, wall: v.wall, towers: levelsOf(v, 'tower'), uniq: uniq(v), mod: battleMod(v, true) }); })(this.guestSum(v.id)) };   // pw：守在部落裡的戰力（含駐守的盟友），別人用它估勝算
   };
+  World.prototype.guestSum = function (id) { var o = { w: 0, a: 0 }; this.guestsOf(id).forEach(function (g) { o.w += g.w; o.a += g.a; }); return o; };
   World.prototype.pubs = function (now) { var self = this; TUNE = this.tune; return Object.keys(this.villages).map(function (k) { return self.pub(self.villages[k], now); }); };
   World.prototype.detail = function (id, now) {
     TUNE = this.tune;
@@ -1563,7 +1625,7 @@
     SITES: SITES, CLEAR: CLEAR, clearInfo: clearInfo, TILE_N: TILE_N, CENTER_TILE: CENTER_TILE, TYPES: TYPES, MAX_LEVEL: MAX_LEVEL, UNIT: UNIT,
     CENTER_UP: CENTER_UP, BUILDERS: BUILDERS, FOREIGN_SP: FOREIGN_SP, cost: cost, buildTime: buildTime, limit: limit, count: count,
     resName: resName, derived: derived, eatRate: eatRate, perWorker: perWorker, TECH: TECH, TECH_MAX: TECH_MAX, UNLOCK: UNLOCK, techCost: techCost, techTime: techTime, techMax: techMax, battleMod: battleMod, buildMul: buildMul, marchMul: marchMul, healCap: healCap, bl: bl, eq: eq, centerUp: centerUp, centerReq: centerReq, reqLeft: reqLeft, maxLevelOf: maxLevelOf, wallMul: wallMul, villagePower: villagePower, DEV_START: DEV_START, popCap: popCap, LOOT_FRAC: LOOT_FRAC, GRADE: GRADE, FIGHT: FIGHT,
-    armyCap: armyCap, mkSide: mkSide, CHORES: CHORES, CHORE_MIN: CHORE_MIN, CHORE_EVERY: CHORE_EVERY, choreSlots: choreSlots, choreOffers: choreOffers, choreReward: choreReward, TIER: TIER, tiers: tiers, tierMul: tierMul, helpMax: helpMax, BOOST_START: BOOST_START, BOOST_DEV: BOOST_DEV, BOOST_QUEST: BOOST_QUEST, QUESTS: QUESTS, UNIT_U: UNIT_U, BLESS: BLESS, HERO_REST: HERO_REST, marchMax: marchMax, gatherRate: gatherRate, REL: REL, NODE: NODE, NODE_AMT: NODE_AMT, SETTLE: SETTLE,
+    armyCap: armyCap, mkSide: mkSide, supportCap: supportCap, CHORES: CHORES, CHORE_MIN: CHORE_MIN, CHORE_EVERY: CHORE_EVERY, choreSlots: choreSlots, choreOffers: choreOffers, choreReward: choreReward, TIER: TIER, tiers: tiers, tierMul: tierMul, helpMax: helpMax, BOOST_START: BOOST_START, BOOST_DEV: BOOST_DEV, BOOST_QUEST: BOOST_QUEST, QUESTS: QUESTS, UNIT_U: UNIT_U, BLESS: BLESS, HERO_REST: HERO_REST, marchMax: marchMax, gatherRate: gatherRate, REL: REL, NODE: NODE, NODE_AMT: NODE_AMT, SETTLE: SETTLE,
     autoBattle: autoBattle, power: power, odds: odds, ODDS: ODDS, simBattle: simBattle, simMatrix: simMatrix,
     TUNE_DEF: TUNE_DEF, tuneDefaults: tuneDefaults, setTune: setTune, paced: paced, trainTime: trainTime, marchSecs: marchSecs, shieldMs: shieldMs, OFFER_MS: OFFER_MS
   };

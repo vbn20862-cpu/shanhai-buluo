@@ -175,6 +175,13 @@ window.Net = (function () {
         }
       }
       else if (kind === 'rest') { v.heroRest = 0; v.blessNext = 0; }
+      else if (kind === 'allybot' && v.ally) {   // 找一個示範部落加入你的聯盟，並幫它蓋好迎賓亭（試支援用）
+        var al = local.alliances[v.ally], bot = Object.keys(local.villages).map(function (id) { return local.villages[id]; }).filter(function (o) { return o.bot && !o.ally; })[0];
+        if (al && bot) { bot.ally = al.id; al.members.push(bot.id); var gi = bot.tiles.indexOf(null); if (gi > 0 && !bot.tiles.some(function (b) { return b && b.type === 'guest'; })) { bot.land[gi] = 1; bot.tiles[gi] = { type: 'guest', level: 2 }; } }
+      }
+      else if (kind === 'guests' && v.ally) {   // 聯盟裡的示範部落派人來支援你
+        local.alliances[v.ally].members.forEach(function (id) { var o = local.villages[id]; if (!o || !o.bot) return; o.units.w = Math.max(o.units.w, 4); o.units.a = Math.max(o.units.a, 3); local.act(o.id, { type: 'support', to: localId, w: 3, a: 2 }, now); });
+      }
       else if (kind === 'help') for (var hk = 1; hk <= 30; hk++) local.helpAll({ id: 'test-ally-' + hk }, { members: [localId] }, now);   // 假裝有很多位盟友各按一下，幫到上限
       else if (kind === 'pace') local.setTune({ pace: +on || 1 });   // 試試正式節奏的快慢
       else if (kind === 'bots') Object.keys(local.villages).forEach(function (id) {   // 讓示範部落有守軍，對戰才有東西可以打

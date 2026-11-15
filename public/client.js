@@ -216,12 +216,12 @@
     });
     S.marches.forEach(function (m) {   // 出征中的隊伍：一條線加一個移動的點
       var nd = m.node && nodeById[m.node], a = byId[m.from], b = m.node ? (nd ? { pos: [nd.x, nd.y] } : null) : byId[m.to]; if (!a || !b) return;
-      var f = m.phase === 'gather' ? 1 : Math.max(0, Math.min(1, (Date.now() - m.departAt) / Math.max(1, m.arriveAt - m.departAt)));
+      var f = m.phase === 'gather' || m.phase === 'stay' ? 1 : Math.max(0, Math.min(1, (Date.now() - m.departAt) / Math.max(1, m.arriveAt - m.departAt)));
       if (m.phase === 'back') f = 1 - f;
       var x = a.pos[0] + (b.pos[0] - a.pos[0]) * f, y = a.pos[1] + (b.pos[1] - a.pos[1]) * f;
       s += '<path class="mline" d="M' + a.pos[0] + ' ' + a.pos[1] + 'L' + b.pos[0] + ' ' + b.pos[1] + '" style="stroke-width:' + (1.6 * u).toFixed(3) + ';stroke-dasharray:' + (5 * u).toFixed(3) + ' ' + (4 * u).toFixed(3) + '"/>' +
         '<circle class="mdot' + (m.phase === 'gather' ? ' fight' : '') + '" cx="' + x.toFixed(2) + '" cy="' + y.toFixed(2) + '" r="' + (4 * u).toFixed(3) + '" style="stroke-width:' + (1.4 * u).toFixed(3) + '"/>' +
-        (S.me && m.from === S.me.id && MV.k >= 2 ? '<text class="mtime" x="' + x.toFixed(2) + '" y="' + (y - 7 * u).toFixed(2) + '" style="font-size:' + (8.5 * u).toFixed(3) + 'px;stroke-width:' + (2.6 * u).toFixed(3) + '">' + (m.phase === 'gather' ? '採集中 ' : m.phase === 'back' ? '回程 ' : '') + dur((m.arriveAt - Date.now()) / 1000) + '</text>' : '');
+        (S.me && m.from === S.me.id && MV.k >= 2 ? '<text class="mtime" x="' + x.toFixed(2) + '" y="' + (y - 7 * u).toFixed(2) + '" style="font-size:' + (8.5 * u).toFixed(3) + 'px;stroke-width:' + (2.6 * u).toFixed(3) + '">' + (m.phase === 'stay' ? '支援中' : (m.phase === 'gather' ? '採集中 ' : m.phase === 'back' ? '回程 ' : '') + dur((m.arriveAt - Date.now()) / 1000)) + '</text>' : '');
     });
     S.pubs.forEach(function (v) {
       var mine = S.me && v.id === S.me.id, t = Tribes.get(v.tribe), r = (mine ? 6.5 : MV.k < 1.9 ? 3 : 4.2) * u;
@@ -330,7 +330,7 @@
     S.marches.filter(function (m) { return m.from === me.id; }).forEach(function (m) {
       var n = m.node && S.nodes.filter(function (x) { return x.id === m.node; })[0], tv = m.to && S.pubs.filter(function (v) { return v.id === m.to; })[0];
       var where = m.node ? (n ? R.NODE[n.k].zh + ' ' + n.lv + ' 級' : '資源點') : esc(tv ? tv.name : '出征');
-      rows.push('<button class="q" data-act="go-march" data-id="' + m.id + '">' + Art.icon('march') + '<span>' + where + ' · ' + (m.phase === 'back' ? '回程' : m.phase === 'gather' ? '採集中' : m.node ? '前往' : '出征') + '</span><b data-until="' + m.arriveAt + '"></b></button>');
+      rows.push('<button class="q" data-act="go-march" data-id="' + m.id + '">' + Art.icon('march') + '<span>' + where + ' · ' + (m.phase === 'back' ? '回程' : m.phase === 'gather' ? '採集中' : m.phase === 'stay' ? '支援中' : m.kind === 'support' ? '前往支援' : m.node ? '前往' : '出征') + '</span>' + (m.phase === 'stay' ? '' : '<b data-until="' + m.arriveAt + '"></b>') + '</button>');
     });
     if (me.train.length) rows.push('<button class="q" data-act="tab" data-tab="army">' + Art.icon('army') + '<span>訓練 ' + me.train.length + ' 位</span><b data-until="' + me.train[me.train.length - 1].doneAt + '"></b></button>');
     if (me.research) { var rt = R.TECH[me.research.id]; rows.push('<button class="q" data-act="tab" data-tab="tech">' + Art.icon('craft') + '<span>學「' + rt.zh + '」→ ' + me.research.to + ' 級</span><b data-until="' + me.research.doneAt + '"></b></button>'); }
@@ -358,7 +358,7 @@
     var me = S.me, h = '';
     if (S.visit) { var v = S.visit.v, vt = Tribes.get(v.tribe); h = '<div class="bn info">正在拜訪「<b>' + esc(v.name) + '</b>」（' + vt.zh + '，' + esc(vt.b.center.zh) + ' ' + v.c + ' 級）<button class="bbtn" data-act="leave">回我的部落</button></div>'; }
     else if (me) {
-      var coming = S.marches.filter(function (m) { return m.to === me.id && m.phase === 'out'; })[0], th = threats(me)[0];
+      var coming = S.marches.filter(function (m) { return m.to === me.id && m.phase === 'out' && m.kind !== 'support'; })[0], th = threats(me)[0];
       if (coming) { var fv = S.pubs.filter(function (x) { return x.id === coming.from; })[0]; h = '<div class="bn">⚠ 「<b>' + esc(fv ? fv.name : '有人') + '</b>」派出 ' + coming.n + ' 人朝你的部落來了，<b data-until="' + coming.arriveAt + '"></b> 後抵達<button class="bbtn" data-act="tab" data-tab="army">看看</button></div>'; }
       else if (th) {
         var fr = S.pubs.filter(function (x) { return x.id === th.from; })[0], nn = S.nodes.filter(function (x) { return x.id === th.node; })[0], my = S.marches.filter(function (x) { return x.from === me.id && x.node === th.node; })[0];
@@ -734,7 +734,7 @@
       here.forEach(function (v) {
         var mine = S.me && v.id === S.me.id;
         h += '<div class="vrow"><div><b>' + esc(v.name) + '</b>' + (mine ? '（你）' : v.bot ? '（示範）' : v.online ? '（在線上）' : '') + '<span class="muted">等級 ' + v.c + ' · 繁榮 ' + v.pros + '</span></div>' +
-          (S.me ? '<span class="vbtns">' + (mine ? '' : (S.me.ally && v.ally === S.me.ally ? '<span class="allytag">盟友</span>' : '<button class="btn sm" data-act="atk-open" data-id="' + v.id + '">出征</button>') + '<button class="btn sm ghost" data-act="gift-open" data-id="' + v.id + '">送禮</button>') +
+          (S.me ? '<span class="vbtns">' + (mine ? '' : (S.me.ally && v.ally === S.me.ally ? '<span class="allytag">盟友</span><button class="btn sm" data-act="sup-open" data-id="' + v.id + '">支援</button>' : '<button class="btn sm" data-act="atk-open" data-id="' + v.id + '">出征</button>') + '<button class="btn sm ghost" data-act="gift-open" data-id="' + v.id + '">送禮</button>') +
             '<button class="btn sm ghost" data-act="' + (mine ? 'tab" data-tab="build' : 'visit" data-id="' + v.id) + '">' + (mine ? '回部落' : '拜訪') + '</button></span>' : '') + '</div>';
       });
       h += '</section>';
@@ -797,7 +797,7 @@
   }
   function armyPanel(me) {
     var t = myTribe(), d = me.d, U = R.UNIT, us = t.uniq.unit, total = all3(me.units) + all3(me.away) + me.train.length, h = '';
-    var mine = S.marches.filter(function (m) { return m.from === me.id; }), coming = S.marches.filter(function (m) { return m.to === me.id && m.phase === 'out'; });
+    var mine = S.marches.filter(function (m) { return m.from === me.id; }), coming = S.marches.filter(function (m) { return m.to === me.id && m.phase === 'out' && m.kind !== 'support'; }), guests = S.marches.filter(function (m) { return m.to === me.id && m.kind === 'support' && m.phase !== 'back'; });
     threats(me).forEach(function (m) {
       var from = S.pubs.filter(function (v) { return v.id === m.from; })[0], n = S.nodes.filter(function (x) { return x.id === m.node; })[0], my = S.marches.filter(function (x) { return x.from === me.id && x.node === m.node; })[0];
       h += '<section class="card alert"><h3>有人要來搶你採集的隊伍</h3><p>「' + esc(from ? from.name : '不明部落') + '」派出 ' + m.n + ' 人，朝你在' + (n ? R.NODE[n.k].zh + '（' + n.lv + ' 級）' : '資源點') + '採集的隊伍過來，還有 <b data-until="' + m.arriveAt + '"></b> 抵達。</p>' + (my ? '<div class="act"><button class="btn sm" data-act="recall" data-id="' + my.id + '">先叫回來（帶著已經採到的）</button></div>' : '') + '</section>';
@@ -831,13 +831,20 @@
         '<p class="eff' + (rest ? '' : ' next') + '">能力「' + esc(t.hero.abilityZh) + '」：' + abilityFx(t.hero.ability) + '。</p>' +
         '<p class="muted">對戰時會在適合的時機自動發動，每場一次；出過力之後要休息 ' + dur(R.paced(R.HERO_REST) / 1000) + '。' + (rest ? '還要 <b data-until="' + me.heroRest + '"></b>。' : '') + '</p><p class="note">' + esc(t.hero.note) + '</p></section>';
     }
+    if (guests.length || R.bl(me, 'guest')) {   // 來支援的盟友（迎賓亭）
+      var gn = guests.reduce(function (n, m) { return n + m.n; }, 0);
+      h += '<section class="card"><h3>' + Art.icon('alliance') + '來支援的盟友<span class="lv">' + gn + ' / ' + R.supportCap(me) + ' 人</span></h3>';
+      guests.forEach(function (m) { var o = S.pubs.filter(function (v) { return v.id === m.from; })[0]; h += '<div class="qrow"><span>「' + esc(o ? o.name : '盟友') + '」' + m.n + ' 人 · ' + (m.phase === 'stay' ? '駐守中' : '在路上') + '</span>' + (m.phase === 'stay' ? '' : '<b data-until="' + m.arriveAt + '"></b>') + '<button class="btn sm ghost" data-act="send-home" data-id="' + m.id + '">請回去</button></div>'; });
+      if (!guests.length) h += '<p class="muted">還沒有盟友來支援。</p>';
+      h += '<p class="muted">盟友可以派勇士、弓手來駐守，有人來出征時一起守（照你部落的加成算）。迎賓亭每一級可以多接待 5 人；吃的糧食由派人的部落負擔。</p></section>';
+    }
     if (mine.length) {   // 在外面的隊伍：出征、採集
       h += '<section class="card"><h3>外面的隊伍<span class="lv">' + mine.length + ' / ' + d.marchMax + '</span></h3>';
       mine.forEach(function (m) {
         var n = m.node && S.nodes.filter(function (x) { return x.id === m.node; })[0], tv = m.to && S.pubs.filter(function (v) { return v.id === m.to; })[0];
         var where = m.node ? (n ? R.NODE[n.k].zh + '（' + n.lv + ' 級）' : '資源點') : '「' + esc(tv ? tv.name : '對方') + '」';
-        var what = m.phase === 'back' ? '回程中' + (m.carry ? '，帶著 ' + m.carry + ' 份' : '') : m.phase === 'gather' ? '採集中' : m.node ? '前往採集' : '出征中';
-        h += '<div class="qrow"><span>' + where + ' · ' + m.n + ' 人 · ' + what + '</span><b data-until="' + m.arriveAt + '"></b>' + (m.phase === 'gather' ? '<button class="btn sm ghost" data-act="recall" data-id="' + m.id + '">叫回來</button>' : '') + '</div>';
+        var what = m.phase === 'back' ? '回程中' + (m.carry ? '，帶著 ' + m.carry + ' 份' : '') : m.phase === 'gather' ? '採集中' : m.phase === 'stay' ? '駐守支援中' : m.kind === 'support' ? '前往支援' : m.node ? '前往採集' : '出征中';
+        h += '<div class="qrow"><span>' + where + ' · ' + m.n + ' 人 · ' + what + '</span>' + (m.phase === 'stay' ? '' : '<b data-until="' + m.arriveAt + '"></b>') + (m.phase === 'gather' || (m.kind === 'support' && m.phase !== 'back') ? '<button class="btn sm ghost" data-act="recall" data-id="' + m.id + '">叫回來</button>' : '') + '</div>';
       });
       h += '<p class="muted">同時最多 ' + d.marchMax + ' 支隊伍在外面。到地圖上點資源點（彩色圓點）可以派人去採。</p></section>';
     }
@@ -874,6 +881,7 @@
   function attackModal(me) {
     var A = S.attack;
     if (A.node) return gatherModal(me, A);
+    if (A.sup) return supportModal(me, A);
     var v = S.pubs.filter(function (x) { return x.id === A.id; })[0];
     if (!v) { S.attack = null; return ''; }
     var t = Tribes.get(v.tribe), safe = v.safe > Date.now(), d = Geo.travel(G.byId[me.hex], G.byId[v.hex]), secs = R.marchSecs(d, v.uq === 'watch') * R.marchMul(me);
@@ -890,6 +898,22 @@
       (why ? '<p class="why">' + why + '</p>' : '') +
       '<div class="act two"><button class="btn ghost" data-act="atk-cancel">取消</button><button class="btn" data-act="atk-go"' + (why ? ' disabled' : '') + '>' + (A.w === me.units.w && A.a === me.units.a && A.u === me.units.u ? '全軍出征' : '出發') + '</button></div></div></div>';
   }
+  /* 派人支援盟友：只有勇士與弓手，迎賓亭決定能接待幾人 */
+  function supportModal(me, A) {
+    var v = S.pubs.filter(function (x) { return x.id === A.id; })[0];
+    if (!v) { S.attack = null; return ''; }
+    var t = Tribes.get(v.tribe), secs = R.marchSecs(Geo.travel(G.byId[me.hex], G.byId[v.hex]), false) * R.marchMul(me);
+    var why = v.ally !== me.ally ? '對方已經不是盟友' : S.marches.filter(function (m) { return m.from === me.id; }).length >= me.d.marchMax ? '同時最多 ' + me.d.marchMax + ' 支隊伍在外面' : A.w + A.a < 1 ? '至少要派出一個人' : '';
+    function step(u, label, have) {
+      return '<div class="job"><span class="jn">' + label + '</span><div class="stepper"><button data-act="atk-n" data-u="' + u + '" data-d="-1"' + (A[u] <= 0 ? ' disabled' : '') + ' aria-label="少派一位' + label + '">−</button><b>' + A[u] + '/' + have + '</b>' +
+        '<button data-act="atk-n" data-u="' + u + '" data-d="1"' + (A[u] >= have ? ' disabled' : '') + ' aria-label="多派一位' + label + '">＋</button></div><button class="btn sm ghost" data-act="atk-all" data-u="' + u + '">全部</button></div>';
+    }
+    return '<div class="veil"><div class="sheet wide" role="dialog" aria-label="支援盟友"><h2>支援「' + esc(v.name) + '」</h2><p class="muted">' + t.zh + ' · 盟友 · 路程約 ' + dur(secs) + '</p>' +
+      '<p class="label">派多少人去駐守</p>' + step('w', R.UNIT.w.zh, me.units.w) + step('a', R.UNIT.a.zh, me.units.a) +
+      '<p class="muted">支援的人會留在盟友的部落，有人來出征時一起守，直到你叫回來或對方請回。能接待幾人要看對方的迎賓亭（每一級 5 人）；他們吃的糧食還是由你的部落負擔。獨特兵種不去。</p>' +
+      (why ? '<p class="why">' + why + '</p>' : '') +
+      '<div class="act two"><button class="btn ghost" data-act="atk-cancel">取消</button><button class="btn" data-act="atk-go"' + (why ? ' disabled' : '') + '>出發</button></div></div></div>';
+  }
   function lootText(loot2) { var a = []; for (var k in loot2 || {}) a.push(R.resName(k) + ' ' + loot2[k]); return a.join('、'); }
   function resultBlock(r) {   // 戰報的結果：誰贏、帶走什麼、雙方各有幾人負傷撤退、英雄有沒有出力
     var win = r.win, loot = lootText(r.loot), pt = r.point, mt = myTribe(), ot = Tribes.get(r.otherTribe), title;
@@ -901,7 +925,7 @@
       if (p[theirs] && ot && ot.hero) heroes += '對方的英雄發動「' + esc(ot.hero.abilityZh) + '」。';
     });
     var txt = pt ? (r.note ? esc(r.note) + ' ' : '') : r.role === 'atk' ? (win ? (loot ? '帶回 ' + esc(loot) + '。' : '對方沒有可以帶走的物資。') : '隊伍撤退了。') : (win ? '' : (loot ? '被帶走 ' + esc(loot) + '。' : '物資都保住了。') + '接下來一段時間受到保護。');
-    return '<div class="bres ' + (win ? 'win' : 'lose') + '"><h3>' + title + '</h3><p>' + txt + '我方 ' + (r.lost || 0) + ' 人負傷撤退' + (r.care ? '（' + r.care + ' 人到療養屋休養）' : '') + '，對方 ' + (r.hurt || 0) + ' 人。' + heroes + '</p></div>';
+    return '<div class="bres ' + (win ? 'win' : 'lose') + '"><h3>' + title + '</h3><p>' + txt + '我方 ' + (r.lost || 0) + ' 人負傷撤退' + (r.care ? '（' + r.care + ' 人到療養屋休養）' : '') + '，對方 ' + (r.hurt || 0) + ' 人。' + (r.guests ? '盟友派來的 ' + r.guests + ' 人也一起守（負傷的人數算在我方裡）。' : '') + heroes + '</p></div>';
   }
   /* 有新的對戰結果（剛打完、還沒看過）就自動播放；離開太久才回來的，留在戰報裡自己點 */
   function autoShow(me) {
@@ -944,9 +968,12 @@
     else if (a === 'wall') act({ type: 'wall' }, '開始施工');
     else if (a === 'dismiss') act({ type: 'dismiss', u: b.getAttribute('data-u'), n: 1 });
     else if (a === 'atk-open') { S.attack = { id: b.getAttribute('data-id'), w: me.units.w, a: me.units.a, u: me.units.u }; render(); }
+    else if (a === 'sup-open') { S.attack = { id: b.getAttribute('data-id'), sup: true, w: Math.min(5, me.units.w), a: Math.min(5, me.units.a), u: 0 }; render(); }
+    else if (a === 'send-home') act({ type: 'sendHome', id: b.getAttribute('data-id') });
     else if (a === 'atk-cancel') { S.attack = null; render(); }
     else if (a === 'atk-n') { var u = b.getAttribute('data-u'); A[u] = Math.max(0, Math.min(me.units[u], A[u] + +b.getAttribute('data-d'))); render(); }
     else if (a === 'atk-all') { var u2 = b.getAttribute('data-u'); A[u2] = me.units[u2]; render(); }
+    else if (a === 'atk-go' && A.sup) Net.act({ type: 'support', to: A.id, w: Math.min(A.w, me.units.w), a: Math.min(A.a, me.units.a) }, function (r) { if (!r.ok) return toast(r.msg, true); S.attack = null; toast(r.msg); render(); });
     else if (a === 'atk-go' && A.node) Net.act({ type: 'gather', node: A.node, w: Math.min(A.w, me.units.w), a: Math.min(A.a, me.units.a), u: Math.min(A.u, me.units.u) }, function (r) { if (!r.ok) return toast(r.msg, true); S.attack = null; toast('隊伍出發了'); render(); });
     else if (a === 'atk-go') Net.act({ type: 'attack', to: A.id, w: Math.min(A.w, me.units.w), a: Math.min(A.a, me.units.a), u: Math.min(A.u, me.units.u) }, function (r) { if (!r.ok) return toast(r.msg, true); S.attack = null; S.tab = 'army'; toast('隊伍出發了'); render(); });
     else if (a === 'show-skip') { if (S.showCtl) S.showCtl.finish(); }
@@ -996,6 +1023,8 @@
       '<button class="btn sm" data-act="t-army"' + (room > 0 ? '' : ' disabled') + '>戰士補滿' + (cap ? '' : '（要先有訓練場）') + '</button>' +
       '<button class="btn sm" data-act="t-march"' + (S.marches.some(function (m) { return m.from === me.id; }) ? '' : ' disabled') + '>出征的隊伍立刻抵達</button>' +
       '<button class="btn sm" data-act="t-bots">讓示範部落有守軍和物資（各加 6 人）</button>' +
+      '<button class="btn sm" data-act="t-allybot"' + (me.ally ? '' : ' disabled') + '>找一個示範部落加入你的聯盟（要先有聯盟）</button>' +
+      '<button class="btn sm" data-act="t-guests"' + (me.ally && R.bl(me, 'guest') ? '' : ' disabled') + '>聯盟裡的示範部落派人來支援（要有迎賓亭）</button>' +
       '<button class="btn sm" data-act="t-help"' + (me.queue.some(function (q) { return q.ask && q.hn < q.hmax; }) ? '' : ' disabled') + '>盟友都來幫忙（要先在工程上按「求助」）</button>' +
       '<button class="btn sm" data-act="t-quest"' + (me.qp ? '' : ' disabled') + '>' + (me.qp ? '任務第 ' + (me.qp.i + 1) + ' 章直接完成' : '任務都完成了') + '</button>' +
       '<button class="btn sm" data-act="t-rest"' + (me.heroRest > Date.now() || me.blessNext > Date.now() ? '' : ' disabled') + '>英雄和共聚不用等</button></div></section>' +
@@ -1262,6 +1291,8 @@
     else if (a === 'chore') act({ type: 'chore', id: b.getAttribute('data-id') || '' });
     else if (a === 'chore-done') act({ type: 'choreDone', id: b.getAttribute('data-id') || '' });
     else if (a === 't-help') { Net.test('help'); toast('盟友都來幫忙了'); }
+    else if (a === 't-allybot') { Net.test('allybot'); toast('有一個示範部落加入了聯盟'); }
+    else if (a === 't-guests') { Net.test('guests'); toast('盟友派人出發了'); }
     else if (a === 'rank-by') { S.rankBy = b.getAttribute('data-v'); render(); }
     else if (a === 'rank-go') {   // 排行裡的部落：到地圖上看
       var rv = S.pubs.filter(function (x) { return x.id === b.getAttribute('data-id'); })[0];

@@ -956,3 +956,52 @@ test('聚會廣場的定時任務：每隔一段時間換一批，選一件做�
   assert.ok(r3.food > r1.food && r3.boost === 1 && r1.boost === 0);
   check(w);
 });
+
+test('迎賓亭的盟友支援：派人駐守、一起守部落、分回剩下的人、叫回來、離開聯盟就回家', () => {
+  const w = new World({ speed: 1, rng: seeded(51) }), R = World.rules;
+  let now = 1e6;
+  const host = w.villages[w.join('s1', { owner: '甲', name: '主人', tribe: 'atayal' }, now).id];
+  const fr = w.villages[w.join('s2', { owner: '乙', name: '盟友', tribe: 'bunun' }, now).id];
+  const foe = w.villages[w.join('s3', { owner: '丙', name: '來犯', tribe: 'amis' }, now).id];
+  [host, fr, foe].forEach(x => { x.online = true; x.newbieUntil = 0; x.land = x.land.map(() => 1); x.tiles[0].level = 8; x.tiles[3] = { type: 'barracks', level: 8 }; x.res.food = x.res.mat = 50000; });
+  fr.units = { w: 10, a: 6, u: 0 }; host.units = { w: 2, a: 0, u: 0 }; foe.units = { w: 20, a: 10, u: 0 };
+  assert.equal(w.act(fr.id, { type: 'support', to: host.id, w: 4, a: 2 }, now).msg, '只能支援同一個聯盟的部落');
+  w.act(host.id, { type: 'allyCreate', name: '同心' }, now); w.act(fr.id, { type: 'allyJoin', id: host.ally }, now);
+  assert.equal(w.act(fr.id, { type: 'support', to: host.id, w: 4, a: 2 }, now).msg, '對方還沒有迎賓亭，沒辦法接待支援的人');
+  host.tiles[9] = { type: 'guest', level: 2 }; assert.equal(R.supportCap(host), 10);
+  assert.equal(w.act(fr.id, { type: 'support', to: host.id, w: 10, a: 6 }, now).msg, '對方的迎賓亭只能再接待 10 人');
+  assert.equal(w.act(fr.id, { type: 'support', to: host.id, w: 'x', a: 0 }, now).ok, false);
+  assert.ok(w.act(fr.id, { type: 'support', to: host.id, w: 6, a: 4 }, now).ok);
+  assert.deepEqual(fr.away, { w: 6, a: 4, u: 0 });
+  const m = w.marches.filter(x => x.kind === 'support')[0];
+  while (m.phase === 'out') { now += 1000; w.tick(now); }
+  assert.equal(m.phase, 'stay'); assert.equal(w.guestsOf(host.id).length, 1);
+  for (let i = 0; i < 30; i++) { now += 1000; w.tick(now); }
+  assert.equal(m.phase, 'stay', '駐守著不會自己回家');
+  const pw0 = w.pub(host, now).pw; assert.ok(pw0 > R.power({ tribe: 'atayal', w: 2, a: 0, u: 0, def: true }), '別人看到的守備戰力含駐守的盟友');
+  // 有人來出征：盟友一起守
+  assert.ok(w.act(foe.id, { type: 'attack', to: host.id, w: 20, a: 10 }, now).ok);
+  while (!host.reports.length) { now += 1000; w.tick(now); }
+  const rep = host.reports[0];
+  assert.equal(rep.guests, 10, '戰報記得有幾位盟友來守'); assert.equal(rep.show.start.d.w, 8, '開打時守方有主人的 2 人加盟友的 6 人');
+  assert.ok(fr.reports.some(r => /一起守部落/.test(r.note || '')), '支援的盟友也收到戰報');
+  const g = w.marches.filter(x => x.kind === 'support')[0];
+  const gw = g ? g.w : 0, ga = g ? g.a : 0;
+  assert.ok(host.units.w <= 2 && host.units.w >= 0 && gw <= 6 && ga <= 4, '分回的人不會比原本多');
+  assert.equal(fr.away.w, gw); assert.equal(fr.away.a, ga, '盟友的 away 跟著駐守的人數');
+  // 叫回來：回家之後人回到部落
+  if (g) {
+    assert.ok(w.act(fr.id, { type: 'recall', id: g.id }, now).ok);
+    while (w.marches.some(x => x.id === g.id)) { now += 1000; w.tick(now); }
+    assert.deepEqual(fr.away, { w: 0, a: 0, u: 0 });
+  }
+  // 再派一次，然後離開聯盟：自動回家
+  fr.units.w = Math.max(fr.units.w, 3);
+  assert.ok(w.act(fr.id, { type: 'support', to: host.id, w: 3, a: 0 }, now).ok);
+  const m2 = w.marches.filter(x => x.kind === 'support')[0];
+  assert.ok(w.act(host.id, { type: 'allyLeave' }, now).ok);
+  assert.equal(m2.phase, 'back');
+  while (w.marches.length) { now += 1000; w.tick(now); }
+  assert.equal(R.all3 ? 0 : 0, 0); assert.deepEqual(fr.away, { w: 0, a: 0, u: 0 });
+  check(w);
+});
