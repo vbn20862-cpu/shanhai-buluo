@@ -262,6 +262,16 @@
       tw: tierMul(t.w), ta: tierMul(t.a), tu: tierMul(t.u) };
   }
   function helpMax(v) { return 3 + Math.floor(bl(v, 'guest') / 2); }   // 迎賓亭：一項工程最多讓盟友幫幾次
+  /* 聚會廣場的定時任務：部落裡的日常工作（一般的說法，不是祭儀）。每隔一段時間換一批，選一件做，做完領獎勵。
+   * 星等 1～3：時間是節奏 20 時的 30、60、120 分鐘；三星的另外送一個加速道具 */
+  var CHORES = ['修補家屋的屋頂', '整理柴薪', '到溪邊取水', '曬乾收成的作物', '編竹簍', '修整田埂', '照顧剛發芽的作物', '磨利工具', '整理倉庫', '清理部落的步道', '修補圍籬', '準備大家的飯菜'];
+  var CHORE_MIN = [0, 30, 60, 120], CHORE_EVERY = 6 * 60;   // 每 6 小時（節奏 20 時）換一批
+  function choreOffers(v) { return 3 + Math.floor(bl(v, 'plaza') / 5); }        // 一次列出幾件可以選
+  function choreSlots(v) { return 1 + Math.floor(bl(v, 'plaza') / 10); }         // 同時可以做幾件
+  function choreReward(v, star) {
+    var C = centerLevel(v), m = star * (1 + 0.04 * bl(v, 'plaza')) * TUNE.cost, base = 8 * eq(C);   // 一直有在做的話，大約多七成的糧食與建材收入
+    return { food: r5(base * m), mat: r5(base * m), sp: star >= 2 ? 3 * star : 0, boost: star >= 3 ? 1 : 0 };
+  }
   function techCost(id, to) { var f = Math.pow(2, to - 1) * TUNE.cost; return { food: r5(150 * f), mat: r5(150 * f) }; }
   function techTime(v, to) { return Math.max(1, Math.round(90 * Math.pow(1.8, to - 1) * TUNE.pace * (1 - 0.01 * bl(v, 'craft')))); }
   function popCap(v) { var n = 4; levelsOf(v, 'house').forEach(function (l) { n += 1 + 2 * l; }); return n; }
@@ -738,6 +748,19 @@
     v.hungry = have - eat <= 0 && eat > 0;
     var own = v.sp[v.tribe] || 0;
     if (rt.special > 0 && own < c.sp) v.sp[v.tribe] = Math.min(c.sp, own + rt.special * dt);
+    this.refreshChores(v, now);
+  };
+  /* 有聚會廣場的部落：時間到了就換一批定時任務（正在做的不受影響） */
+  World.prototype.refreshChores = function (v, now) {
+    if (!bl(v, 'plaza') || v.bot) return;
+    var c = v.chores = v.chores || { list: [], cur: [], at: 0, n: 0 };
+    if (now < c.at && c.list.length) return;
+    c.list = []; c.at = now + this.ms(CHORE_EVERY * 3000);
+    var pool = CHORES.map(function (x, i) { return i; });   // 同一批不重複
+    for (var i = 0, n = Math.min(choreOffers(v), pool.length); i < n; i++) {
+      var r = this.rng(), star = r < 0.5 ? 1 : r < 0.85 ? 2 : 3, k = pool.splice(Math.floor(this.rng() * pool.length), 1)[0];
+      c.list.push({ id: this.id('c'), k: k, star: star, rw: choreReward(v, star) });
+    }
   };
 
   // ---------- 族群關係 ----------
@@ -1052,7 +1075,7 @@
       this.log('「' + v.name + '」和「' + (s ? s.name : '遠方部落') + '」完成交易：' + o.giveN + ' ' + resName(o.give) + ' 換 ' + o.wantN + ' ' + resName(o.want) + '。', now, 'trade');
       return { ok: true, msg: '交易完成' };
     },
-    speed: function (v, a, now) {   // 用加速道具：工程、技藝或訓練。n 個一起用
+    speed: function (v, a, now) {   // 用加速道具：工程、技藝、訓練或定時任務。n 個一起用
       if (!(v.boosts > 0)) return { ok: false, msg: '沒有加速道具了' };
       var n = Math.max(1, Math.min(int(a.n) || 1, v.boosts, 99)), cut = n * this.ms(TUNE.boostMin * 3000);   // boostMin 是節奏 20 時的分鐘數
       if (a.what === 'build') {
@@ -1064,9 +1087,31 @@
       } else if (a.what === 'train') {
         if (!v.train.length) return { ok: false, msg: '目前沒有在訓練' };
         v.train.forEach(function (t) { t.doneAt = Math.max(now, t.doneAt - cut); });
+      } else if (a.what === 'chore') {
+        var ch = v.chores && v.chores.cur.filter(function (x) { return x.id === String(a.id || '') && x.doneAt > now; })[0];
+        if (!ch) return { ok: false, msg: '這件工作已經做完了' };
+        ch.doneAt = Math.max(now, ch.doneAt - cut);
       } else return { ok: false, msg: '這個不能加速' };
       v.boosts -= n;
       return { ok: true, msg: '用了 ' + n + ' 個加速' };
+    },
+    chore: function (v, a, now) {   // 在聚會廣場選一件工作開始做
+      var c = v.chores, id = String(a.id || '');
+      if (!bl(v, 'plaza') || !c) return { ok: false, msg: '要先蓋聚會廣場' };
+      var o = c.list.filter(function (x) { return x.id === id; })[0];
+      if (!o) return { ok: false, msg: '這件工作已經換掉了' };
+      if (c.cur.length >= choreSlots(v)) return { ok: false, msg: '同時只能做 ' + choreSlots(v) + ' 件，先做完手上的' };
+      c.list = c.list.filter(function (x) { return x !== o; });
+      c.cur.push({ id: o.id, k: o.k, star: o.star, rw: o.rw, doneAt: now + this.ms(CHORE_MIN[o.star] * 3000) });
+      return { ok: true, msg: '族人開始「' + CHORES[o.k] + '」' };
+    },
+    choreDone: function (v, a, now) {   // 做完的工作：領獎勵
+      var c = v.chores, id = String(a.id || ''), o = c && c.cur.filter(function (x) { return x.id === id; })[0];
+      if (!o) return { ok: false, msg: '找不到這件工作' };
+      if (o.doneAt > now) return { ok: false, msg: '還沒做完' };
+      c.cur = c.cur.filter(function (x) { return x !== o; }); c.n = (c.n || 0) + 1;
+      v.res.food += o.rw.food; v.res.mat += o.rw.mat; if (o.rw.sp) addRes(v, 'sp:' + v.tribe, o.rw.sp); v.boosts = (v.boosts || 0) + (o.rw.boost || 0);
+      return { ok: true, msg: '「' + CHORES[o.k] + '」做完了，領到獎勵' };
     },
     askHelp: function (v, a) {   // 請盟友幫忙這項工程
       if (!v.ally || !this.alliances[v.ally]) return { ok: false, msg: '加入聯盟才能請盟友幫忙' };
@@ -1518,7 +1563,7 @@
     SITES: SITES, CLEAR: CLEAR, clearInfo: clearInfo, TILE_N: TILE_N, CENTER_TILE: CENTER_TILE, TYPES: TYPES, MAX_LEVEL: MAX_LEVEL, UNIT: UNIT,
     CENTER_UP: CENTER_UP, BUILDERS: BUILDERS, FOREIGN_SP: FOREIGN_SP, cost: cost, buildTime: buildTime, limit: limit, count: count,
     resName: resName, derived: derived, eatRate: eatRate, perWorker: perWorker, TECH: TECH, TECH_MAX: TECH_MAX, UNLOCK: UNLOCK, techCost: techCost, techTime: techTime, techMax: techMax, battleMod: battleMod, buildMul: buildMul, marchMul: marchMul, healCap: healCap, bl: bl, eq: eq, centerUp: centerUp, centerReq: centerReq, reqLeft: reqLeft, maxLevelOf: maxLevelOf, wallMul: wallMul, villagePower: villagePower, DEV_START: DEV_START, popCap: popCap, LOOT_FRAC: LOOT_FRAC, GRADE: GRADE, FIGHT: FIGHT,
-    armyCap: armyCap, mkSide: mkSide, TIER: TIER, tiers: tiers, tierMul: tierMul, helpMax: helpMax, BOOST_START: BOOST_START, BOOST_DEV: BOOST_DEV, BOOST_QUEST: BOOST_QUEST, QUESTS: QUESTS, UNIT_U: UNIT_U, BLESS: BLESS, HERO_REST: HERO_REST, marchMax: marchMax, gatherRate: gatherRate, REL: REL, NODE: NODE, NODE_AMT: NODE_AMT, SETTLE: SETTLE,
+    armyCap: armyCap, mkSide: mkSide, CHORES: CHORES, CHORE_MIN: CHORE_MIN, CHORE_EVERY: CHORE_EVERY, choreSlots: choreSlots, choreOffers: choreOffers, choreReward: choreReward, TIER: TIER, tiers: tiers, tierMul: tierMul, helpMax: helpMax, BOOST_START: BOOST_START, BOOST_DEV: BOOST_DEV, BOOST_QUEST: BOOST_QUEST, QUESTS: QUESTS, UNIT_U: UNIT_U, BLESS: BLESS, HERO_REST: HERO_REST, marchMax: marchMax, gatherRate: gatherRate, REL: REL, NODE: NODE, NODE_AMT: NODE_AMT, SETTLE: SETTLE,
     autoBattle: autoBattle, power: power, odds: odds, ODDS: ODDS, simBattle: simBattle, simMatrix: simMatrix,
     TUNE_DEF: TUNE_DEF, tuneDefaults: tuneDefaults, setTune: setTune, paced: paced, trainTime: trainTime, marchSecs: marchSecs, shieldMs: shieldMs, OFFER_MS: OFFER_MS
   };

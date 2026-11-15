@@ -317,6 +317,12 @@
     else h += '<div class="trk"><button class="tt" data-act="tab" data-tab="quest"><span class="th">' + Art.icon('fire') + esc(t.bless.zh) + '</span>' + (me.blessUntil > Date.now() ? '同心中，還有 <b data-until="' + me.blessUntil + '"></b>' : me.blessNext > Date.now() ? '下次可以舉辦：<b data-until="' + me.blessNext + '"></b>' : '可以舉辦了') + '</button></div>';
     var rows = [], idle = me.d.builders - me.queue.length;   // 進行中的事：閒著的工人排第一（提醒去升級），其次是工程、隊伍、訓練、技藝、療養
     if (idle > 0) rows.push('<div class="q idle">' + Art.icon('build') + '<span>' + (idle > 1 ? idle + ' 位工人閒著' : '工人閒著') + '，點建築升級</span></div>');   // 閒著的工人合成一行
+    if (me.chores && R.bl(me, 'plaza')) {   // 定時任務：做完的可以領；沒在做的話提醒可以選一件
+      var cdone = me.chores.cur.filter(function (o) { return o.doneAt <= Date.now(); });
+      if (cdone.length) rows.push('<button class="q help" data-act="chore-done" data-id="' + esc(cdone[0].id) + '">' + Art.icon('fire') + '<span>「' + R.CHORES[cdone[0].k] + '」做完了</span><b>領取</b></button>');
+      me.chores.cur.filter(function (o) { return o.doneAt > Date.now(); }).forEach(function (o) { rows.push('<button class="q" data-act="tab" data-tab="quest">' + Art.icon('fire') + '<span>' + R.CHORES[o.k] + '</span><b data-until="' + o.doneAt + '"></b></button>'); });
+      if (!me.chores.cur.length && me.chores.list.length) rows.push('<button class="q idle" data-act="tab" data-tab="quest">' + Art.icon('fire') + '<span>廣場有 ' + me.chores.list.length + ' 件工作可以做</span></button>');
+    }
     if (me.helps && me.helps.length) rows.push('<button class="q help" data-act="help-all">' + Art.icon('help') + '<span>盟友需要幫忙</span><b>' + me.helps.length + ' 項 · 幫忙</b></button>');   // 按一下就幫完
     me.queue.forEach(function (w) {
       rows.push('<button class="q" data-act="go-tile" data-tile="' + w.tile + '">' + Art.icon('build') + '<span>' + (w.type === 'clear' ? '拓荒' : w.type === 'wall' ? esc(t.b.wall.zh) + ' → ' + w.to + ' 級' : esc(bdef(t, w.type).zh) + (w.type === 'unique' ? '' : ' → ' + w.to + ' 級')) + '</span><b data-until="' + w.doneAt + '"></b></button>');
@@ -381,7 +387,7 @@
     else if (dn === 'social') html = socialPanel(me, 'social');
     else if (dn === 'trade') html = socialPanel(me, 'trade');
     else if (dn === 'tribe') html = hungryCard(me) + jobsCard(me) + queueCard(me) + idleCard(me) + codeCard() + prefsCard();
-    else if (dn === 'quest') html = devCard(me) + questCard(me);
+    else if (dn === 'quest') html = devCard(me) + choreCard(me) + questCard(me);
     else if (dn === 'tech') html = techPanel(me);
     else if (dn === 'rank') html = rankPanel(me);
     else if (dn === 'test') html = testPanel(me);
@@ -475,7 +481,7 @@
       (b.type === 'farm' || b.type === 'mat' || b.type === 'special' ? rb('tab', 'pop', '人手', ' data-tab="tribe"') : '') +
       (b.type === 'barracks' || b.type === 'archery' ? rb('tab', 'army', '訓練', ' data-tab="army"') : '') + (b.type === 'center' ? rb('tab', 'book', '任務', ' data-tab="quest"') : '') +
       (b.type === 'craft' ? rb('tab', 'craft', '技藝', ' data-tab="tech"') : '') + (b.type === 'heal' ? rb('tab', 'heal', '療養', ' data-tab="army"') : '') + (b.type === 'taro' ? rb('tab', 'pop', '人手', ' data-tab="tribe"') : '') +
-      (b.type === 'market' ? rb('tab', 'trade', '交易', ' data-tab="trade"') : '') + (b.type === 'plaza' ? rb('tab', 'fire', '共聚', ' data-tab="quest"') : '') + (b.type === 'guest' ? rb('tab', 'alliance', '聯盟', ' data-tab="social"') : '') +
+      (b.type === 'market' ? rb('tab', 'trade', '交易', ' data-tab="trade"') : '') + (b.type === 'plaza' ? rb('tab', 'fire', '工作', ' data-tab="quest"') : '') + (b.type === 'guest' ? rb('tab', 'alliance', '聯盟', ' data-tab="social"') : '') +
       rb('pop-more', 'book', S.popMore ? '收起' : '說明');
     return { html: '<section class="card sel">' + h + '</section>', at: { tile: i }, ring: ring };
   }
@@ -608,6 +614,28 @@
     if (best < 0) { toast(q.k === 'build' ? '沒有空地了，先往外拓荒' : '還沒有這種建築，先在空地上蓋一座', true); return; }
     S.view = 'village'; S.tab = 'build'; S.selTile = best; S.popMore = false;
     var gp = Art.sitePos(best); VV.focus(gp[0], gp[1], VV.k); render();
+  }
+  /* 聚會廣場的定時任務：列出可以選的工作、正在做的、做完可以領的 */
+  function choreReward(me, rw) {
+    var t = myTribe(); return Art.icon('food') + rw.food + '　' + Art.icon('mat') + rw.mat + (rw.sp ? '　' + Art.icon('sp') + rw.sp + ' ' + t.sp.zh : '') + (rw.boost ? '　' + Art.icon('speed') + '加速 ' + rw.boost : '');
+  }
+  function choreCard(me) {
+    var c = me.chores, L = R.bl(me, 'plaza'), t = myTribe();
+    if (!L) return '<section class="card"><h3>' + Art.icon('fire') + '定時任務<span class="lv">還沒有聚會廣場</span></h3><p class="muted">蓋了聚會廣場（' + esc(t.b.center.zh) + ' ' + R.UNLOCK.plaza + ' 級才能蓋）之後，廣場上會列出部落裡的日常工作，選一件做，做完可以領物資，三星的還有加速道具。</p></section>';
+    if (!c) return '';
+    var now = Date.now(), slots = R.choreSlots(me), full = c.cur.length >= slots, h = '<section class="card"><h3>' + Art.icon('fire') + '定時任務<span class="lv">同時 ' + c.cur.length + ' / ' + slots + ' 件</span></h3>';
+    c.cur.forEach(function (o) {
+      var done = o.doneAt <= now;
+      h += '<div class="chore cur' + (done ? ' done' : '') + '"><div><b>' + R.CHORES[o.k] + '</b><span class="stars">' + '★'.repeat(o.star) + '</span><span class="gain">' + choreReward(me, o.rw) + '</span></div>' +
+        (done ? '<button class="btn sm" data-act="chore-done" data-id="' + esc(o.id) + '">領取</button>' : '<span class="cdt"><b data-until="' + o.doneAt + '"></b>' + speedBtn(me, 'chore', o.id) + '</span>') + '</div>';
+    });
+    if (c.list.length) h += '<p class="label">可以選的工作（還有 <b data-until="' + c.at + '" data-coarse="1"></b> 換一批）</p>';
+    else h += '<p class="muted">這一批都選完了，<b data-until="' + c.at + '" data-coarse="1"></b>後換新的一批。</p>';
+    c.list.forEach(function (o) {
+      h += '<div class="chore"><div><b>' + R.CHORES[o.k] + '</b><span class="stars">' + '★'.repeat(o.star) + '</span><span class="gain">' + choreReward(me, o.rw) + '</span></div>' +
+        '<span class="cdt"><span class="time">' + dur(R.CHORE_MIN[o.star] * 3 * R.TUNE.pace) + '</span><button class="btn sm" data-act="chore" data-id="' + esc(o.id) + '"' + (full ? ' disabled' : '') + '>開始</button></span></div>';
+    });
+    return h + '<p class="muted">聚會廣場每 5 級多列一件可以選，每 10 級可以多同時做一件；等級越高獎勵越多。</p></section>';
   }
   function devCard(me) {   // 部落發展：一步一步帶著升級，完成就領獎勵
     var t = myTribe(), q = me.dq;
@@ -1231,6 +1259,8 @@
     else if (a === 'speed') act({ type: 'speed', what: b.getAttribute('data-what'), id: b.getAttribute('data-id') || '' });
     else if (a === 'ask-help') act({ type: 'askHelp', id: b.getAttribute('data-id') || '' });
     else if (a === 'help-all') act({ type: 'help' });
+    else if (a === 'chore') act({ type: 'chore', id: b.getAttribute('data-id') || '' });
+    else if (a === 'chore-done') act({ type: 'choreDone', id: b.getAttribute('data-id') || '' });
     else if (a === 't-help') { Net.test('help'); toast('盟友都來幫忙了'); }
     else if (a === 'rank-by') { S.rankBy = b.getAttribute('data-v'); render(); }
     else if (a === 'rank-go') {   // 排行裡的部落：到地圖上看

@@ -923,3 +923,36 @@ test('第三批：兵種升階、加速道具、聯盟互助、排行用的戰�
   assert.equal(new World().load(old).villages[t.id].boosts, R.BOOST_START);
   check(w);
 });
+
+test('聚會廣場的定時任務：每隔一段時間換一批，選一件做，做完領獎勵', () => {
+  const w = new World({ speed: 1, rng: seeded(41) }), R = World.rules;
+  let now = 1e6;
+  const v = w.villages[w.join('ch1', { owner: '甲', name: '甲部落', tribe: 'bunun' }, now).id]; v.online = true;
+  now += 1000; w.tick(now);
+  assert.equal(v.chores, undefined, '沒有聚會廣場就沒有');
+  assert.equal(w.act(v.id, { type: 'chore', id: 'x' }, now).msg, '要先蓋聚會廣場');
+  v.land[12] = 1; v.tiles[12] = { type: 'plaza', level: 1 };
+  now += 1000; w.tick(now);
+  assert.equal(v.chores.list.length, R.choreOffers(v)); assert.equal(R.choreSlots(v), 1);
+  const o = v.chores.list[0], o2 = v.chores.list[1];
+  assert.equal(w.act(v.id, { type: 'chore', id: 'toString' }, now).ok, false);
+  assert.ok(w.act(v.id, { type: 'chore', id: o.id }, now).ok);
+  assert.equal(w.act(v.id, { type: 'chore', id: o2.id }, now).ok, false, '同時只能做一件');
+  assert.equal(w.act(v.id, { type: 'choreDone', id: o.id }, now).msg, '還沒做完');
+  const cur = v.chores.cur[0]; assert.equal(cur.doneAt - now, w.ms(R.CHORE_MIN[o.star] * 3000));
+  // 加速道具也可以用在定時任務
+  assert.ok(w.act(v.id, { type: 'speed', what: 'chore', id: o.id }, now).ok);
+  now = cur.doneAt + 1; w.tick(now);
+  const f0 = v.res.food, b0 = v.boosts;
+  assert.ok(w.act(v.id, { type: 'choreDone', id: o.id }, now).ok);
+  assert.ok(Math.abs(v.res.food - f0 - o.rw.food) < 1e-6); assert.equal(v.boosts, b0 + o.rw.boost); assert.equal(v.chores.n, 1);
+  assert.equal(w.act(v.id, { type: 'choreDone', id: o.id }, now).ok, false, '不能領兩次');
+  // 時間到了換一批（id 不一樣）
+  const ids = v.chores.list.map(x => x.id).join();
+  now = v.chores.at + 1; w.tick(now);
+  assert.notEqual(v.chores.list.map(x => x.id).join(), ids); assert.equal(v.chores.list.length, R.choreOffers(v));
+  // 三星的獎勵比一星多，還有加速
+  const r1 = R.choreReward(v, 1), r3 = R.choreReward(v, 3);
+  assert.ok(r3.food > r1.food && r3.boost === 1 && r1.boost === 0);
+  check(w);
+});

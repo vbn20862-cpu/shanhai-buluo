@@ -455,3 +455,12 @@ p { margin: 4px 0; }
 .rk.me { background: rgba(227, 179, 65, .14); border-radius: 8px; } .rk.me .no, .rk.me > b:last-child { color: var(--gold); }
 .rk:focus-visible { outline: 2px solid var(--gold); }
 .sumbar { height: 8px; border-radius: 4px; background: var(--raise); overflow: hidden; } .sumbar i { display: block; height: 100%; border-radius: 4px; }
+/* 定時任務 */
+.chore { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px dashed var(--line); }
+.chore > div { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+.chore .stars { color: var(--gold); font-size: 12px; letter-spacing: 1px; }
+.chore .gain { width: 100%; font-size: 12.5px; display: inline-flex; flex-wrap: wrap; gap: 0 2px; align-items: center; }
+.chore .cdt { display: flex; align-items: center; gap: 6px; flex: none; font-variant-numeric: tabular-nums; }
+.chore .time { margin: 0; }
+.chore.cur { border-top-style: solid; }
+.chore.done b { color: var(--good); }
