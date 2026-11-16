@@ -571,7 +571,9 @@ window.Art = (function () {
       var sd = x[0], t = x[1], tier = sh[sd + 'Tier'] || {};
       ['warrior', 'archer', 'unique'].forEach(function (k) {
         var n = tier[TIER_K[k]] || 1;
-        ['stand', 'run', 'attack'].forEach(function (p) { var nm = t + '-' + k + '-' + p, b = (n > 1 && A.people[nm + '-t' + n]) || A.people[nm]; if (b) s += '<g id="bp-' + sd + '-' + k + '-' + p + '">' + b + '</g>'; });
+        var src = k;   // 那一族的獨特兵種還沒有美術圖：近戰的先用勇士、遠程的先用弓手的圖
+        if (k === 'unique' && !A.people[t + '-unique-stand']) { var tt = Tribes.get(t); src = tt && tt.uniq && tt.uniq.unit.kind === 'ranged' ? 'archer' : 'warrior'; }
+        ['stand', 'run', 'attack'].forEach(function (p) { var nm = t + '-' + src + '-' + p, b = (n > 1 && A.people[nm + '-t' + n]) || A.people[nm]; if (b) s += '<g id="bp-' + sd + '-' + k + '-' + p + '">' + b + '</g>'; });
       });
       if (A.people[t + '-hero-stand']) s += '<g id="bp-' + sd + '-hero">' + A.people[t + '-hero-stand'] + '</g>';
     });
