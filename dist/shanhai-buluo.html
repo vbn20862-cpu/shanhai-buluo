@@ -3592,6 +3592,7 @@ window.Art = (function () {
       });
     }
     function clash(x, y) {
+      if (window.Sfx) Sfx.play('clash');   // 交鋒的木棍聲
       fx(at(x, y - 22, ART ? '<g class="clash"><use href="#bx-clash" transform="scale(1.3)"/></g>' : '<path class="clash" d="' + STAR + '" fill="#FFE9A8" stroke="#E3B341" stroke-width="2"/>'), 620);
       fx(at(x - 12, y, ART ? '<g class="dust"><use href="#bx-dust" transform="scale(.6)"/></g>' : '<circle class="dust" r="6" fill="#EADFC0"/>'), 760);
       fx(at(x + 12, y + 2, ART ? '<g class="dust"' + dly(120) + '><use href="#bx-dust" transform="scale(.5)"/></g>' : '<circle class="dust"' + dly(120) + ' r="5" fill="#EADFC0"/>'), 880);
@@ -3916,6 +3917,41 @@ window.Art = (function () {
   }
   ['pointerdown', 'keydown'].forEach(function (ev) { document.addEventListener(ev, function () { start(); if (ctx && ctx.state === 'suspended' && !document.hidden) ctx.resume(); }, true); });
   document.addEventListener('visibilitychange', function () { if (!ctx) return; if (document.hidden) ctx.suspend(); else if (vol > 0) ctx.resume(); });
+  /* 音效：全部用程式合成（木頭敲擊、竹子、鈴），不用任何人聲或歌聲（布農族的 pasibutbut 是祈禱，不能做成音效），也不用「部落戰鼓」 */
+  var sfxVol = 0.5, sfxGain = null, lastAt = {};
+  function sfxOut() { if (!ctx) return null; if (!sfxGain) { sfxGain = ctx.createGain(); sfxGain.gain.value = sfxVol; sfxGain.connect(ctx.destination); } return sfxGain; }
+  function tone(f, t0, dur, g, type, over) {   // 木琴般的一個音：基音加一個高泛音，很快衰減
+    var o = ctx.createOscillator(), a = ctx.createGain(); o.type = type || 'sine'; o.frequency.value = f;
+    a.gain.setValueAtTime(0.0001, t0); a.gain.exponentialRampToValueAtTime(g, t0 + 0.006); a.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(a); a.connect(sfxOut()); o.start(t0); o.stop(t0 + dur + 0.05);
+    if (over) { var o2 = ctx.createOscillator(), b = ctx.createGain(); o2.frequency.value = f * over; b.gain.setValueAtTime(0.0001, t0); b.gain.exponentialRampToValueAtTime(g * 0.35, t0 + 0.004); b.gain.exponentialRampToValueAtTime(0.0001, t0 + dur * 0.35); o2.connect(b); b.connect(sfxOut()); o2.start(t0); o2.stop(t0 + dur); }
+  }
+  var noiseBuf = null;
+  function noise(t0, dur, g, f, q, sweep) {   // 一小段濾過的雜音：木頭的敲擊、揮動的風聲
+    if (!noiseBuf) { noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 0.6, ctx.sampleRate); var d = noiseBuf.getChannelData(0); for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+    var n = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), a = ctx.createGain(); n.buffer = noiseBuf; bp.type = 'bandpass'; bp.frequency.setValueAtTime(f, t0); bp.Q.value = q || 4;
+    if (sweep) bp.frequency.exponentialRampToValueAtTime(sweep, t0 + dur);
+    a.gain.setValueAtTime(0.0001, t0); a.gain.exponentialRampToValueAtTime(g, t0 + 0.005); a.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    n.connect(bp); bp.connect(a); a.connect(sfxOut()); n.start(t0); n.stop(t0 + dur + 0.02);
+  }
+  var NOTE = { C5: 523.25, D5: 587.33, E5: 659.25, G5: 783.99, A5: 880, C6: 1046.5, D6: 1174.7, E6: 1318.5, G4: 392, A4: 440, E4: 329.6, C4: 261.6, D4: 293.7 };
+  var SFX = {
+    tap: function (t) { noise(t, 0.05, 0.35, 1900, 6); tone(880, t, 0.06, 0.12); },                                   // 按鈕：小小的木頭聲
+    open: function (t) { noise(t, 0.22, 0.12, 600, 1.2, 2200); },                                                        // 打開視窗：輕輕的一陣風
+    reward: function (t) { ['C6', 'E6', 'G5', 'C6'].forEach(function (n, i) { tone(NOTE[n], t + i * 0.08, 0.7, 0.18, 'sine', 4); }); },   // 領獎勵：鈴聲
+    build: function (t) { noise(t, 0.07, 0.5, 700, 3); tone(196, t, 0.12, 0.25); noise(t + 0.14, 0.07, 0.5, 760, 3); tone(208, t + 0.14, 0.12, 0.25); tone(NOTE.G5, t + 0.32, 0.5, 0.16, 'sine', 4); tone(NOTE.C6, t + 0.42, 0.7, 0.16, 'sine', 4); },   // 建築完成：敲兩下再上揚
+    start: function (t) { noise(t, 0.06, 0.6, 520, 3); tone(150, t, 0.15, 0.3); noise(t + 0.18, 0.06, 0.6, 560, 3); tone(160, t + 0.18, 0.15, 0.3); noise(t + 0.3, 0.4, 0.15, 400, 1, 1800); },   // 對戰開始：兩下木頭聲
+    clash: function (t) { noise(t, 0.05, 0.4, 2600 + Math.random() * 800, 5); tone(320 + Math.random() * 60, t, 0.05, 0.1, 'triangle'); },   // 交鋒：木棍相碰
+    win: function (t) { ['C5', 'E5', 'G5', 'C6'].forEach(function (n, i) { tone(NOTE[n], t + i * 0.11, 0.9, 0.17, 'sine', 4); }); },   // 打贏或守住：明亮的和弦
+    lose: function (t) { tone(NOTE.E4, t, 0.6, 0.18, 'sine', 3); tone(NOTE.D4, t + 0.22, 0.9, 0.16, 'sine', 3); },        // 沒贏：低低的兩個音
+    err: function (t) { tone(180, t, 0.16, 0.18, 'triangle'); }                                                           // 不行：一聲悶響
+  };
+  function sfx(name) {
+    if (!ctx || sfxVol <= 0 || ctx.state !== 'running' || !SFX[name]) return;
+    var now = ctx.currentTime; if (lastAt[name] && now - lastAt[name] < (name === 'clash' ? 0.09 : 0.04)) return;   // 同一種聲音太密就略過
+    lastAt[name] = now; try { SFX[name](now + 0.005); } catch (e) { /* 出不了聲就算了 */ }
+  }
+  window.Sfx = { play: sfx, setVolume: function (v) { sfxVol = Math.max(0, Math.min(1, +v || 0)); if (sfxGain) sfxGain.gain.value = sfxVol; } };
   window.Music = { play: play, setVolume: setVolume, state: function () { return { on: !!ctx, playing: cur && cur.name, vol: vol, ctx: ctx && ctx.state, loaded: Object.keys(bufs) }; } };
 })();
 </script>
@@ -4182,14 +4218,15 @@ window.Net = (function () {
   function coarse(sec) { sec = Math.max(0, sec); return sec >= 3600 ? Math.ceil(sec / 3600) + ' 小時' : sec >= 60 ? Math.ceil(sec / 60) + ' 分' : Math.ceil(sec) + ' 秒'; }   // 只寫最大的單位
   function toast(msg, bad) {
     var d = document.createElement('div'); d.className = 'toast' + (bad ? ' bad' : ''); d.textContent = msg;
+    if (bad && window.Sfx) Sfx.play('err');
     el.toast.appendChild(d); setTimeout(function () { d.remove(); }, 2600);
   }
   function scene() { return S.visit ? 'village' : (!S.me || S.view === 'map') ? 'map' : 'village'; }   // 畫面是部落還是大地圖
   var DRAWERS = { tech: '技藝', army: '軍事', social: '聯盟', trade: '交易', reports: '戰報', codex: '圖鑑', test: '測試工具', tribe: '族人', quest: '任務', rank: '排行' };
   /* 設定（只存在這臺裝置）：字放大、減少動畫。手機有開「減少動態效果」時，預設就減少動畫 */
-  var P = { big: false, calm: false, vol: 0.5 };   // vol：背景音樂的音量（0 是關掉）
-  try { P.calm = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); var sp = JSON.parse(localStorage.getItem('shanhai_prefs') || 'null'); if (sp) { P.big = !!sp.big; P.calm = !!sp.calm; if (sp.vol != null && isFinite(+sp.vol)) P.vol = Math.max(0, Math.min(1, +sp.vol)); } } catch (e) { /* 讀不到就用預設 */ }
-  function applyPrefs() { var c = document.documentElement.classList; c.toggle('big', P.big); c.toggle('calm', P.calm); if (window.Music) Music.setVolume(P.vol); }
+  var P = { big: false, calm: false, vol: 0.5, sfx: 0.5 };   // vol：背景音樂的音量、sfx：音效的音量（0 是關掉）
+  try { P.calm = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); var sp = JSON.parse(localStorage.getItem('shanhai_prefs') || 'null'); if (sp) { P.big = !!sp.big; P.calm = !!sp.calm; if (sp.vol != null && isFinite(+sp.vol)) P.vol = Math.max(0, Math.min(1, +sp.vol)); if (sp.sfx != null && isFinite(+sp.sfx)) P.sfx = Math.max(0, Math.min(1, +sp.sfx)); } } catch (e) { /* 讀不到就用預設 */ }
+  function applyPrefs() { var c = document.documentElement.classList; c.toggle('big', P.big); c.toggle('calm', P.calm); if (window.Music) Music.setVolume(P.vol); if (window.Sfx) Sfx.setVolume(P.sfx); }
   function savePrefs() { applyPrefs(); try { localStorage.setItem('shanhai_prefs', JSON.stringify(P)); } catch (e) { /* 記不住就只在這次有效 */ } }
   applyPrefs();
   function drawer() { return !S.me ? 'start' : S.visit ? null : DRAWERS[S.tab] ? S.tab : null; }   // 打開的視窗（蓋在畫面上）
@@ -4311,7 +4348,7 @@ window.Net = (function () {
       S.season = st.season || null;
       S.rel = st.rel || []; S.nodes = st.nodes || []; S.stock = st.stock || {}; S.market = st.market || []; S.feed = st.feed || []; S.alliances = st.alliances || {};
       if (st.me) Art.need([st.me.tribe]);   // 自己族群的美術素材
-      autoShow(st.me); raidAlert(st.me); flyGains(st.me);
+      autoShow(st.me); raidAlert(st.me); flyGains(st.me); doneSound(st.me);
       render();
     });
     Art.onLoad(function () { el.vobjs._sig = null; el.vimg._t = null; folkN = -1; if (el.mmarks) el.mmarks._h = null; render(); });   // 某一族的美術素材載好了：重畫
@@ -4413,13 +4450,21 @@ window.Net = (function () {
     var p = Art.sitePos(open[Math.floor(Math.random() * open.length)]);
     return [Math.round(p[0] - 44 + Math.random() * 88), Math.round(p[1] + 24 + Math.random() * 16)];
   }
+  /* 工程完成的聲音：上一次的狀態裡有、這一次沒有的工程 */
+  var lastQ = null;
+  function doneSound(me) {
+    if (!me) { lastQ = null; return; }
+    var ids = me.queue.map(function (q) { return q.id; });
+    if (lastQ && lastQ.some(function (id) { return ids.indexOf(id) < 0; }) && window.Sfx) Sfx.play('build');
+    lastQ = ids;
+  }
   /* 領到的東西從按鈕往上飄（+糧食、+建材、+特產、+加速） */
   function flyGains(me) {
     var f = S.fly; if (!f || !me || !f.ready) return;   // 動作成功了才飄（ready 在動作的回應裡設）
     if (Date.now() - f.t > 4000) { S.fly = null; return; }
     var got = [['food', Math.round(me.res.food - f.food)], ['mat', Math.round(me.res.mat - f.mat)], ['sp', Math.round((me.sp[me.tribe] || 0) - f.sp)], ['speed', (me.boosts || 0) - f.boosts]].filter(function (x) { return x[1] > 0; });
     if (!got.length) return;   // 狀態還沒更新：等下一次
-    S.fly = null;
+    S.fly = null; if (window.Sfx) Sfx.play('reward');
     got.forEach(function (x, i) {
       var d = document.createElement('div'); d.className = 'fly'; d.innerHTML = Art.icon(x[0]) + '+' + x[1];
       d.style.left = f.x + 'px'; d.style.top = (f.y - 8 - i * 22) + 'px'; d.style.animationDelay = (i * 0.12) + 's';
@@ -4865,6 +4910,7 @@ window.Net = (function () {
       '<p class="label">字的大小</p>' + seg('pref-big', P.big ? 'on' : 'off', [['off', '標準'], ['on', '大']]) +
       '<p class="label">動畫</p>' + seg('pref-calm', P.calm ? 'on' : 'off', [['off', '一般'], ['on', '減少']]) +
       '<p class="label">背景音樂</p>' + seg('pref-vol', String(P.vol), [['0', '關'], ['0.25', '小'], ['0.5', '中'], ['0.8', '大']]) +
+      '<p class="label">音效</p>' + seg('pref-sfx', String(P.sfx), [['0', '關'], ['0.25', '小'], ['0.5', '中'], ['0.8', '大']]) +
       (Art.hasNewArt() ? '<p class="label">畫面風格</p>' + seg('art-style', Art.newArt() ? 'new' : 'old', [['new', '新的美術'], ['old', '原本的畫法']]) : '') +
       '<p class="muted">字放大會放大視窗、小視窗裡的字。減少動畫：族人不走動、樹葉不飄、閃爍停止（對戰的演出照常）。背景音樂在點一下畫面之後開始播，部落和大地圖各有一首。</p></section>';
   }
@@ -5136,6 +5182,7 @@ window.Net = (function () {
   }
   function showDone(me) {   // 演完了：換成結果和按鈕
     var r = showReport(me), foot = document.getElementById('bfoot'); if (!r || !foot) return;
+    if (window.Sfx) Sfx.play(r.win ? 'win' : 'lose');   // 戰報的 win 是自己這一方的結果（出征打贏或守住）：明亮的和弦；沒贏：低低的兩個音
     foot.innerHTML = '<div class="bdone">' + resultBlock(r) + '<div class="bbtns"><button class="btn ghost" data-act="show-again">重看</button><button class="btn" data-act="show-close">關閉</button></div></div>';
     if (!r.seen) Net.act({ type: 'seen', id: r.id });
   }
@@ -5143,7 +5190,7 @@ window.Net = (function () {
     var svg = document.getElementById('bshow'), me = S.me, r = me && showReport(me);
     if (!svg || !r) return;
     Art.need([r.show.aTribe, r.show.dTribe], function () {   // 雙方族群的人物與戰場都載好了才開始演
-      if (svg.isConnected) S.showCtl = Art.battleShow(svg, r, { onDone: function () { showDone(S.me); } });
+      if (svg.isConnected) { if (window.Sfx) Sfx.play('start'); S.showCtl = Art.battleShow(svg, r, { onDone: function () { showDone(S.me); } }); }
     });
   }
   function battleReport(me) {   // 沒有演出可以看的戰報：折返、改版前的舊戰報
@@ -5543,6 +5590,7 @@ window.Net = (function () {
     var foc = document.activeElement;   // 按了按鈕就離開輸入框，面板才會照新的狀態重畫（手機上按鈕不一定會搶走焦點）
     if (foc && foc !== b && /^(INPUT|SELECT)$/.test(foc.tagName) && foc.type !== 'checkbox') foc.blur();
     var a = b.getAttribute('data-act'), me = S.me, tile = +b.getAttribute('data-tile');
+    if (window.Sfx) Sfx.play(a === 'tab' && b.getAttribute('data-tab') !== S.tab && !/^(build|map)$/.test(b.getAttribute('data-tab')) ? 'open' : 'tap');   // 按鈕的聲音；打開視窗是一陣風
     if (me && /^(dev|quest|chore-done|season-claim|ally-claim)$/.test(a)) {   // 領獎勵：記下按鈕的位置和現在的物資，等新的狀態來了，把多出來的東西從按鈕往上飄
       var br = b.getBoundingClientRect();
       S.fly = { x: br.left + br.width / 2, y: br.top, t: Date.now(), food: me.res.food, mat: me.res.mat, sp: me.sp[me.tribe] || 0, boosts: me.boosts || 0 };
@@ -5592,6 +5640,7 @@ window.Net = (function () {
       if (rv) { S.view = 'map'; S.tab = 'map'; S.node = null; S.zone = rv.hex; render(); MV.focus(rv.pos[0], rv.pos[1], Math.max(MV.k, 4.5)); render(); }
     }
     else if (a === 'pref-vol') { P.vol = +b.getAttribute('data-v') || 0; savePrefs(); render(); }
+    else if (a === 'pref-sfx') { P.sfx = +b.getAttribute('data-v') || 0; savePrefs(); render(); Sfx.play('tap'); }
     else if (a === 'pref-big' || a === 'pref-calm') { P[a === 'pref-big' ? 'big' : 'calm'] = b.getAttribute('data-v') === 'on'; savePrefs(); render(); placePop(); }
     else if (a === 'go-tile') { var gt = +b.getAttribute('data-tile'); S.view = 'village'; S.tab = 'build'; if (gt >= 0) { S.selTile = gt; var gp = Art.sitePos(gt); VV.focus(gp[0], gp[1], VV.k); } else S.tab = 'army'; render(); }
     else if (a === 'go-march') {   // 追蹤欄的隊伍：到地圖上看

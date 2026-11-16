@@ -615,6 +615,7 @@ window.Art = (function () {
       });
     }
     function clash(x, y) {
+      if (window.Sfx) Sfx.play('clash');   // 交鋒的木棍聲
       fx(at(x, y - 22, ART ? '<g class="clash"><use href="#bx-clash" transform="scale(1.3)"/></g>' : '<path class="clash" d="' + STAR + '" fill="#FFE9A8" stroke="#E3B341" stroke-width="2"/>'), 620);
       fx(at(x - 12, y, ART ? '<g class="dust"><use href="#bx-dust" transform="scale(.6)"/></g>' : '<circle class="dust" r="6" fill="#EADFC0"/>'), 760);
       fx(at(x + 12, y + 2, ART ? '<g class="dust"' + dly(120) + '><use href="#bx-dust" transform="scale(.5)"/></g>' : '<circle class="dust"' + dly(120) + ' r="5" fill="#EADFC0"/>'), 880);

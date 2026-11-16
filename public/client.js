@@ -47,14 +47,15 @@
   function coarse(sec) { sec = Math.max(0, sec); return sec >= 3600 ? Math.ceil(sec / 3600) + ' 小時' : sec >= 60 ? Math.ceil(sec / 60) + ' 分' : Math.ceil(sec) + ' 秒'; }   // 只寫最大的單位
   function toast(msg, bad) {
     var d = document.createElement('div'); d.className = 'toast' + (bad ? ' bad' : ''); d.textContent = msg;
+    if (bad && window.Sfx) Sfx.play('err');
     el.toast.appendChild(d); setTimeout(function () { d.remove(); }, 2600);
   }
   function scene() { return S.visit ? 'village' : (!S.me || S.view === 'map') ? 'map' : 'village'; }   // 畫面是部落還是大地圖
   var DRAWERS = { tech: '技藝', army: '軍事', social: '聯盟', trade: '交易', reports: '戰報', codex: '圖鑑', test: '測試工具', tribe: '族人', quest: '任務', rank: '排行' };
   /* 設定（只存在這臺裝置）：字放大、減少動畫。手機有開「減少動態效果」時，預設就減少動畫 */
-  var P = { big: false, calm: false, vol: 0.5 };   // vol：背景音樂的音量（0 是關掉）
-  try { P.calm = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); var sp = JSON.parse(localStorage.getItem('shanhai_prefs') || 'null'); if (sp) { P.big = !!sp.big; P.calm = !!sp.calm; if (sp.vol != null && isFinite(+sp.vol)) P.vol = Math.max(0, Math.min(1, +sp.vol)); } } catch (e) { /* 讀不到就用預設 */ }
-  function applyPrefs() { var c = document.documentElement.classList; c.toggle('big', P.big); c.toggle('calm', P.calm); if (window.Music) Music.setVolume(P.vol); }
+  var P = { big: false, calm: false, vol: 0.5, sfx: 0.5 };   // vol：背景音樂的音量、sfx：音效的音量（0 是關掉）
+  try { P.calm = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); var sp = JSON.parse(localStorage.getItem('shanhai_prefs') || 'null'); if (sp) { P.big = !!sp.big; P.calm = !!sp.calm; if (sp.vol != null && isFinite(+sp.vol)) P.vol = Math.max(0, Math.min(1, +sp.vol)); if (sp.sfx != null && isFinite(+sp.sfx)) P.sfx = Math.max(0, Math.min(1, +sp.sfx)); } } catch (e) { /* 讀不到就用預設 */ }
+  function applyPrefs() { var c = document.documentElement.classList; c.toggle('big', P.big); c.toggle('calm', P.calm); if (window.Music) Music.setVolume(P.vol); if (window.Sfx) Sfx.setVolume(P.sfx); }
   function savePrefs() { applyPrefs(); try { localStorage.setItem('shanhai_prefs', JSON.stringify(P)); } catch (e) { /* 記不住就只在這次有效 */ } }
   applyPrefs();
   function drawer() { return !S.me ? 'start' : S.visit ? null : DRAWERS[S.tab] ? S.tab : null; }   // 打開的視窗（蓋在畫面上）
@@ -176,7 +177,7 @@
       S.season = st.season || null;
       S.rel = st.rel || []; S.nodes = st.nodes || []; S.stock = st.stock || {}; S.market = st.market || []; S.feed = st.feed || []; S.alliances = st.alliances || {};
       if (st.me) Art.need([st.me.tribe]);   // 自己族群的美術素材
-      autoShow(st.me); raidAlert(st.me); flyGains(st.me);
+      autoShow(st.me); raidAlert(st.me); flyGains(st.me); doneSound(st.me);
       render();
     });
     Art.onLoad(function () { el.vobjs._sig = null; el.vimg._t = null; folkN = -1; if (el.mmarks) el.mmarks._h = null; render(); });   // 某一族的美術素材載好了：重畫
@@ -278,13 +279,21 @@
     var p = Art.sitePos(open[Math.floor(Math.random() * open.length)]);
     return [Math.round(p[0] - 44 + Math.random() * 88), Math.round(p[1] + 24 + Math.random() * 16)];
   }
+  /* 工程完成的聲音：上一次的狀態裡有、這一次沒有的工程 */
+  var lastQ = null;
+  function doneSound(me) {
+    if (!me) { lastQ = null; return; }
+    var ids = me.queue.map(function (q) { return q.id; });
+    if (lastQ && lastQ.some(function (id) { return ids.indexOf(id) < 0; }) && window.Sfx) Sfx.play('build');
+    lastQ = ids;
+  }
   /* 領到的東西從按鈕往上飄（+糧食、+建材、+特產、+加速） */
   function flyGains(me) {
     var f = S.fly; if (!f || !me || !f.ready) return;   // 動作成功了才飄（ready 在動作的回應裡設）
     if (Date.now() - f.t > 4000) { S.fly = null; return; }
     var got = [['food', Math.round(me.res.food - f.food)], ['mat', Math.round(me.res.mat - f.mat)], ['sp', Math.round((me.sp[me.tribe] || 0) - f.sp)], ['speed', (me.boosts || 0) - f.boosts]].filter(function (x) { return x[1] > 0; });
     if (!got.length) return;   // 狀態還沒更新：等下一次
-    S.fly = null;
+    S.fly = null; if (window.Sfx) Sfx.play('reward');
     got.forEach(function (x, i) {
       var d = document.createElement('div'); d.className = 'fly'; d.innerHTML = Art.icon(x[0]) + '+' + x[1];
       d.style.left = f.x + 'px'; d.style.top = (f.y - 8 - i * 22) + 'px'; d.style.animationDelay = (i * 0.12) + 's';
@@ -730,6 +739,7 @@
       '<p class="label">字的大小</p>' + seg('pref-big', P.big ? 'on' : 'off', [['off', '標準'], ['on', '大']]) +
       '<p class="label">動畫</p>' + seg('pref-calm', P.calm ? 'on' : 'off', [['off', '一般'], ['on', '減少']]) +
       '<p class="label">背景音樂</p>' + seg('pref-vol', String(P.vol), [['0', '關'], ['0.25', '小'], ['0.5', '中'], ['0.8', '大']]) +
+      '<p class="label">音效</p>' + seg('pref-sfx', String(P.sfx), [['0', '關'], ['0.25', '小'], ['0.5', '中'], ['0.8', '大']]) +
       (Art.hasNewArt() ? '<p class="label">畫面風格</p>' + seg('art-style', Art.newArt() ? 'new' : 'old', [['new', '新的美術'], ['old', '原本的畫法']]) : '') +
       '<p class="muted">字放大會放大視窗、小視窗裡的字。減少動畫：族人不走動、樹葉不飄、閃爍停止（對戰的演出照常）。背景音樂在點一下畫面之後開始播，部落和大地圖各有一首。</p></section>';
   }
@@ -1001,6 +1011,7 @@
   }
   function showDone(me) {   // 演完了：換成結果和按鈕
     var r = showReport(me), foot = document.getElementById('bfoot'); if (!r || !foot) return;
+    if (window.Sfx) Sfx.play(r.win ? 'win' : 'lose');   // 戰報的 win 是自己這一方的結果（出征打贏或守住）：明亮的和弦；沒贏：低低的兩個音
     foot.innerHTML = '<div class="bdone">' + resultBlock(r) + '<div class="bbtns"><button class="btn ghost" data-act="show-again">重看</button><button class="btn" data-act="show-close">關閉</button></div></div>';
     if (!r.seen) Net.act({ type: 'seen', id: r.id });
   }
@@ -1008,7 +1019,7 @@
     var svg = document.getElementById('bshow'), me = S.me, r = me && showReport(me);
     if (!svg || !r) return;
     Art.need([r.show.aTribe, r.show.dTribe], function () {   // 雙方族群的人物與戰場都載好了才開始演
-      if (svg.isConnected) S.showCtl = Art.battleShow(svg, r, { onDone: function () { showDone(S.me); } });
+      if (svg.isConnected) { if (window.Sfx) Sfx.play('start'); S.showCtl = Art.battleShow(svg, r, { onDone: function () { showDone(S.me); } }); }
     });
   }
   function battleReport(me) {   // 沒有演出可以看的戰報：折返、改版前的舊戰報
@@ -1408,6 +1419,7 @@
     var foc = document.activeElement;   // 按了按鈕就離開輸入框，面板才會照新的狀態重畫（手機上按鈕不一定會搶走焦點）
     if (foc && foc !== b && /^(INPUT|SELECT)$/.test(foc.tagName) && foc.type !== 'checkbox') foc.blur();
     var a = b.getAttribute('data-act'), me = S.me, tile = +b.getAttribute('data-tile');
+    if (window.Sfx) Sfx.play(a === 'tab' && b.getAttribute('data-tab') !== S.tab && !/^(build|map)$/.test(b.getAttribute('data-tab')) ? 'open' : 'tap');   // 按鈕的聲音；打開視窗是一陣風
     if (me && /^(dev|quest|chore-done|season-claim|ally-claim)$/.test(a)) {   // 領獎勵：記下按鈕的位置和現在的物資，等新的狀態來了，把多出來的東西從按鈕往上飄
       var br = b.getBoundingClientRect();
       S.fly = { x: br.left + br.width / 2, y: br.top, t: Date.now(), food: me.res.food, mat: me.res.mat, sp: me.sp[me.tribe] || 0, boosts: me.boosts || 0 };
@@ -1457,6 +1469,7 @@
       if (rv) { S.view = 'map'; S.tab = 'map'; S.node = null; S.zone = rv.hex; render(); MV.focus(rv.pos[0], rv.pos[1], Math.max(MV.k, 4.5)); render(); }
     }
     else if (a === 'pref-vol') { P.vol = +b.getAttribute('data-v') || 0; savePrefs(); render(); }
+    else if (a === 'pref-sfx') { P.sfx = +b.getAttribute('data-v') || 0; savePrefs(); render(); Sfx.play('tap'); }
     else if (a === 'pref-big' || a === 'pref-calm') { P[a === 'pref-big' ? 'big' : 'calm'] = b.getAttribute('data-v') === 'on'; savePrefs(); render(); placePop(); }
     else if (a === 'go-tile') { var gt = +b.getAttribute('data-tile'); S.view = 'village'; S.tab = 'build'; if (gt >= 0) { S.selTile = gt; var gp = Art.sitePos(gt); VV.focus(gp[0], gp[1], VV.k); } else S.tab = 'army'; render(); }
     else if (a === 'go-march') {   // 追蹤欄的隊伍：到地圖上看
