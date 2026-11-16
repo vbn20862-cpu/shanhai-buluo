@@ -10,7 +10,9 @@
     return tr === 'guard' ? '守在自己部落時，攻擊多 ' + T.guardPct + '%' : tr === 'sharp' ? '遠程，開場的遠射就能出手，攻擊力比弓手高'
       : tr === 'band' ? '一起出征的同伴越多越強（每多一位加 ' + T.bandPct + '%，最多 ' + T.bandMax + '%）'
       : tr === 'scout' ? '出征時攻擊多 ' + T.scoutPct + '%（守部落時沒有加成）'
-      : tr === 'swift' ? '隊伍裡每有一位，出征和採集的路程少 ' + T.swiftPct + '%（最多 ' + T.swiftMax + '%）' : '守在自己部落時更耐打（多 ' + T.wallHpPct + '%）';
+      : tr === 'swift' ? '隊伍裡每有一位，出征和採集的路程少 ' + T.swiftPct + '%（最多 ' + T.swiftMax + '%）'
+      : tr === 'aid' ? '替弓手補給：隊伍裡每有一位，弓手的攻擊多 ' + T.aidPct + '%（最多 ' + T.aidMax + '%）'
+      : tr === 'rush' ? '第一次交鋒那一回合，攻擊多 ' + T.rushPct + '%' : '守在自己部落時更耐打（多 ' + T.wallHpPct + '%）';
   }
   function abilityFx(ab) {   // 英雄能力是自動發動的：寫出什麼時候發動、效果是什麼
     var T = R.TUNE, x = R.heroAb(ab), k = function (n) { return String(Math.round(n * 100) / 100); };
@@ -18,7 +20,9 @@
       : ab === 'relay' ? '負傷的人超過三成時發動，負傷的人有 ' + pct(x) + ' 回到隊伍裡'
       : ab === 'unity' ? '第一次交鋒時發動，那一回合我方的損失只有原本的 ' + pct(x)
       : ab === 'cover' ? '第一次交鋒時發動，那一回合我方的攻擊變成 ' + k(x) + ' 倍'
-      : ab === 'gather' ? '第一次交鋒時發動，之後每一回合我方的攻擊多 ' + k(x) + '%（最多 ' + T.abGatherMax + '%）' : '人數剩六成以下時發動，那一回合我方的損失只有原本的 ' + pct(x);
+      : ab === 'gather' ? '第一次交鋒時發動，之後每一回合我方的攻擊多 ' + k(x) + '%（最多 ' + T.abGatherMax + '%）'
+      : ab === 'shelter' ? '開戰時發動，整場對戰我方的損失少 ' + k(x) + '%'
+      : ab === 'pinch' ? '第一次交鋒時發動，連續兩回合對方的攻擊少 ' + pct(x) : '人數剩六成以下時發動，那一回合我方的損失只有原本的 ' + pct(x);
   }
 
   var ODDS_ZH = { high: '高', mid: '中', low: '低' };
@@ -83,6 +87,8 @@
       case 'vault': return '倉庫受保護的份量變成 ' + T.vaultProt + ' 倍，倉庫容量 +' + T.vaultCap;
       case 'spring': return '家屋增加族人的速度快 ' + T.springPop + '%，族人吃的' + t.res.food + '少 ' + T.springEat + '%';
       case 'grove': return '建材的產量多 ' + T.groveMat + '%；竹圍守部落的加成多 ' + T.groveWall + '%';
+      case 'haul': return '派出去採集的隊伍，每人背得動的量多 ' + T.haulPct + '%';
+      case 'river': return t.res.food + '的產量多 ' + T.riverFood + '%；到野地的漁場採集快 ' + T.riverFish + '%';
     }
     return '';
   }
@@ -1349,14 +1355,14 @@
     if (n.g) h += '<p><i class="dot" style="background:' + Tribes.get(n.g.tribe).color + '"></i> 「' + esc(n.g.name) + '」正在這裡採集，' + n.g.n + ' 人（戰力 ' + n.g.pw + '）。' + (ally ? '是盟友。' : '可以派人去搶，搶贏了拿走他們採到的，接著採。') + '</p>';
     var why = ally ? '盟友正在這裡採集' : out >= me.d.marchMax ? '同時最多 ' + me.d.marchMax + ' 支隊伍在外面' : all3(me.units) < 1 ? '部落裡沒有戰士可以派' : '';
     h += '<div class="act"><button class="btn sm" data-act="nd-open" data-id="' + n.id + '"' + (why ? ' disabled' : '') + '>' + (n.g ? '派人去搶' : '派人採集') + '</button><span class="time">路程約 ' + dur(secs) + '</span></div>' + (why ? '<p class="why">' + why + '</p>' : '');
-    return h + '<p class="muted">每位戰士背得動 ' + R.TUNE.gatherLoad + ' 份，人越多採越快。採滿或採完會自己回來；採集中可能被別人搶，有人來搶時你會收到通知。</p></section>';
+    return h + '<p class="muted">每位戰士背得動 ' + Math.round(R.loadPer(me)) + ' 份，人越多採越快。採滿或採完會自己回來；採集中可能被別人搶，有人來搶時你會收到通知。</p></section>';
   }
   function gatherModal(me, A) {   // 派人採集（或去搶）：選人數，看背得動多少、要採多久
     var n = S.nodes.filter(function (x) { return x.id === A.node; })[0];
     if (!n) { S.attack = null; return ''; }
     if (R.NODE[n.k].ev) return wildModal(me, A, n);
-    var info = R.NODE[n.k], t = myTribe(), resZh = info.res === 'food' ? t.res.food : t.res.mat, cnt = all3(A), load = cnt * R.TUNE.gatherLoad, left = nodeLeft(n);
-    var rate = R.gatherRate(me, cnt), take = Math.min(load, left), secs = R.marchSecs(Geo.travel(G.byId[me.hex], G.byId[n.hex])) * R.marchMul(me);
+    var info = R.NODE[n.k], t = myTribe(), resZh = info.res === 'food' ? t.res.food : t.res.mat, cnt = all3(A), load = Math.round(cnt * R.loadPer(me)), left = nodeLeft(n);
+    var rate = R.gatherRate(me, cnt, n.k), take = Math.min(load, left), secs = R.marchSecs(Geo.travel(G.byId[me.hex], G.byId[n.hex])) * R.marchMul(me);
     var mine = R.power({ tribe: me.tribe, w: A.w, a: A.a, u: A.u, mod: R.battleMod(me, false) }), why = cnt < 1 ? '至少要派出一個人' : '';
     function step(u, label, have) {
       return '<div class="job"><span class="jn">' + label + '</span><div class="stepper"><button data-act="atk-n" data-u="' + u + '" data-d="-1"' + (A[u] <= 0 ? ' disabled' : '') + ' aria-label="少派一位' + label + '">−</button><b>' + A[u] + '/' + have + '</b>' +

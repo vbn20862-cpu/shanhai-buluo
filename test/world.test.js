@@ -1334,3 +1334,31 @@ test('英雄升級：完成主線才能升、要中心等級與物資、倒數�
   const old = w.toJSON(); delete old.villages[v.id].heroLv; const w2 = new World(); w2.load(old); assert.equal(w2.villages[v.id].heroLv, 1);
   check(w);
 });
+
+test('賽夏與鄒：背籃工坊背得多、家族的溪流糧食多又捕魚快；竹林獵人讓弓手更強、溪谷獵人第一次交鋒更猛；避過大水、夾住大鰻魚的時機', () => {
+  const R = World.rules, Tribes = require('../shared/tribes.js'), w = new World({ rng: seeded(93) });
+  let now = 1e9; w.ensureBots(now);
+  const mk = (tok, tribe) => { const v = w.villages[w.join(tok, { owner: tok, name: tok, tribe }, now).id]; v.newbieUntil = 0; return v; };
+  const s = mk('s', 'saisiyat'), t = mk('t', 'tsou');
+  ['saisiyat', 'tsou'].forEach(id => { const T = Tribes.get(id); assert.ok(T.playable && T.side.length === 3 && T.quests.length === 5 && T.items.length === 2 && T.cards.length >= 4); T.quests.forEach(q => assert.equal(R.storySegs(q.x).length, 3, q.t)); });
+  const free = v => v.tiles.findIndex((x, i) => i > 0 && !x);
+  [s, t].forEach(v => { v.quest = 3; v.tiles[free(v)] = { type: 'unique', level: 0 }; });
+  const l0 = R.loadPer(s), f0 = R.derived(t, 1).rates.food, g0 = R.gatherRate(t, 4, 'fish'), h0 = R.gatherRate(t, 4, 'hunt');
+  [s, t].forEach(v => v.tiles.forEach(x => { if (x && x.type === 'unique') x.level = 1; }));
+  assert.equal(R.derived(s, 1).uniq, 'haul'); assert.equal(R.derived(t, 1).uniq, 'river');
+  assert.ok(Math.abs(R.loadPer(s) / l0 - (1 + R.TUNE.haulPct / 100)) < 1e-9, '背籃工坊：每人背得多');
+  assert.ok(Math.abs(R.derived(t, 1).rates.food / f0 - (1 + R.TUNE.riverFood / 100)) < 1e-9, '家族的溪流：糧食多');
+  assert.ok(Math.abs(R.gatherRate(t, 4, 'fish') / g0 - (1 + R.TUNE.riverFish / 100)) < 1e-9 && R.gatherRate(t, 4, 'hunt') === h0, '只有漁場採得快');
+  // 竹林獵人：弓手的攻擊照人數變多，有上限
+  const out = (u) => R.power({ tribe: 'saisiyat', w: 0, a: 6, u });
+  assert.ok(out(3) > out(0), '有竹林獵人時弓手比較強');
+  const capped = R.power({ tribe: 'saisiyat', w: 0, a: 6, u: 40 }) / R.power({ tribe: 'saisiyat', w: 0, a: 6, u: 39 });
+  assert.ok(capped < 1.05, '弓手的加成有上限');
+  assert.equal(Tribes.get('tsou').uniq.unit.trait, 'rush');
+  // 英雄：避過大水在開戰時發動；夾住大鰻魚在第一次交鋒發動
+  const r1 = R.autoBattle({ tribe: 'bunun', w: 4, a: 6, u: 0 }, { tribe: 'saisiyat', w: 4, a: 4, u: 0, hero: true }, seeded(3));
+  assert.equal(r1.log[0].hd, 'shelter', '開戰的第一個回合就發動');
+  const r2 = R.autoBattle({ tribe: 'tsou', w: 6, a: 4, u: 0, hero: true }, { tribe: 'atayal', w: 6, a: 4, u: 0 }, seeded(3));
+  assert.equal(r2.log.find(x => x.ha).r, 1); assert.equal(r2.log.find(x => x.ha).ha, 'pinch');
+  check(w);
+});

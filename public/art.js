@@ -82,7 +82,7 @@ window.Art = (function () {
     boar: '<g fill="currentColor"><path d="M4 15.5c0-4 3.4-7 8-7 3 0 5.2 1 6.6 2.8l2.4.4-.6 2.4-1.6.3c-.4 1.8-1.8 3.1-3.8 3.6v2h-2.2v-1.8h-4.6v1.8H6v-2.3c-1.2-.6-2-1.7-2-3.2z"/><path d="M8.5 8.8 10 5.5l1.6 3"/></g><circle cx="17.6" cy="12" r=".9" fill="#14212A"/><path d="M20.2 14.6l1.6 1" stroke="#F2EAD6" stroke-width="1.2" stroke-linecap="round"/>'
   };
   function iconBody(name) { return (AS && newArt && AS.icon[name]) || ICON24[name] || (AS && AS.icon[name]) || ''; }
-  var SP_ICON = { atayal: 'cloth', bunun: 'meat', amis: 'fish', paiwan: 'djulis', rukai: 'pigeonpea', pinuyumayan: 'embroidery' }, spTribe = null;   // 特產的圖示：用自己族群的特產（苧麻布、山肉、漁獲、紅藜、樹豆、繡布）
+  var SP_ICON = { atayal: 'cloth', bunun: 'meat', amis: 'fish', paiwan: 'djulis', rukai: 'pigeonpea', pinuyumayan: 'embroidery', saisiyat: 'basketry', tsou: 'leather' }, spTribe = null;   // 特產的圖示：用自己族群的特產（苧麻布、山肉、漁獲、紅藜、樹豆、繡布）
   function icon(name, cls) {
     var n = newArt && (name === 'sp' && spTribe && AS.icon[SP_ICON[spTribe]] || ICON_AS[name] && AS.icon[ICON_AS[name]]);
     if (n) return '<svg class="ic ' + (cls || 'ic-' + name) + '" viewBox="0 0 24 24" aria-hidden="true">' + n + '</svg>';
@@ -201,6 +201,12 @@ window.Art = (function () {
         for (var j = 0; j < 3; j++) e += '<path d="M' + f1(x - 4 + j * 3) + ' ' + f1(y + 12) + 'l2.2 2.4m0 -2.4l-2.2 2.4" stroke="' + (j % 2 ? '#2F3B45' : '#B5483A') + '" stroke-width=".9"/>';
         return e;
       });
+      if (t.id === 'saisiyat') return hut + rack(k, 0.95, 0.3, function (x, y) {   // 編器工坊：掛著編好的背籃（喇叭型）
+        return '<path d="M' + f1(x - 5) + ' ' + f1(y) + 'h10l-2 7v7h-6v-7z" fill="#C9A86A" stroke="#8A6A3A" stroke-width=".9"/><path d="M' + f1(x - 4) + ' ' + f1(y + 4) + 'h8M' + f1(x - 3) + ' ' + f1(y + 10) + 'h6" stroke="#8A6A3A" stroke-width=".7"/>';
+      });
+      if (t.id === 'tsou') return hut + rack(k, 0.95, 0.3, function (x, y) {   // 鞣皮工寮：晾著素色的皮（不帶頭、沒有血）
+        return '<path d="M' + f1(x - 5) + ' ' + f1(y) + 'q5 3 10 0l-1 8q2 4 -1 8q-3 -2 -6 0q-3 -4 -1 -8z" fill="#B48A5E" stroke="#7A5636" stroke-width=".8"/>';
+      });
       if (t.id === 'amis') return hut + rack(k, 0.95, 0.3, function (x, y) {      // 漁寮：曬魚
         return '<path d="M' + f1(x) + ' ' + f1(y) + 'c5 4 5 11 0 16c-5-5-5-12 0-16z" fill="#8FB8C9"/><path d="M' + f1(x - 3) + ' ' + f1(y + 20) + 'l3-5 3 5z" fill="#8FB8C9"/>';
       });
@@ -285,6 +291,25 @@ window.Art = (function () {
       [0.15, 0.6].forEach(function (x) { s += seg(q(x, 0.4, 2), q(x - 0.06, 0.24, 13), dk, 2.2); });
       return s + clump([1.05, 0.15], 50);
     }
+    if (t.id === 'saisiyat') {   // 背籃工坊：竹棚下一排排雙肩帶的喇叭型背籃，旁邊是桂竹條和黃籐（不畫祭儀用的東西）
+      s = plot(1.35, 1.2, '#000', ' opacity=".14" transform="translate(5 3)"') + plot(1.25, 1.1, '#9C8456');
+      s += '<g transform="translate(' + f1(q(-0.35, -0.3)[0]) + ' ' + f1(q(-0.35, -0.3)[1]) + ')">' + house(k, { w: 1.3, d: 1.0, h: 16, rh: 13, open: true, ov: 0.3 }) + '</g>';
+      [[0.35, 0.55], [0.75, 0.3], [0.55, 0.85], [0.95, 0.65]].forEach(function (c) {   // 做好的背籃
+        p = q(c[0], c[1]); s += '<path d="M' + f1(p[0] - 7) + ' ' + f1(p[1] - 20) + 'h14l-3 10v9h-8v-9z" fill="#C9A86A" stroke="#8A6A3A" stroke-width="1"/><path d="M' + f1(p[0] - 6) + ' ' + f1(p[1] - 15) + 'h12M' + f1(p[0] - 4) + ' ' + f1(p[1] - 6) + 'h8" stroke="#8A6A3A" stroke-width=".8"/><path d="M' + f1(p[0] - 3) + ' ' + f1(p[1] - 20) + 'q3 -6 6 0" stroke="#7A5636" stroke-width="1.2" fill="none"/>';
+      });
+      [0, 1, 2].forEach(function (n) { var a = q(-1.0 + n * 0.06, 0.55 + n * 0.08, 3 + n * 2.6), b = q(-0.3 + n * 0.06, 0.55 + n * 0.08, 3 + n * 2.6); s += seg(a, b, n === 1 ? '#B58A4C' : '#D3C08A', 3.2); });   // 桂竹條與黃籐
+      return s;
+    }
+    if (t.id === 'tsou') {   // 家族的溪流：一段清澈的溪流，溪裡有小石堰和魚筌，岸邊一個小竹棚和竹簍
+      s = plot(1.35, 1.2, '#000', ' opacity=".14" transform="translate(5 3)"') + plot(1.25, 1.1, '#6E7A4E');
+      s += poly([q(-1.25, -0.35), q(1.25, -0.35), q(1.25, 0.25), q(-1.25, 0.25)], '#4C93B5') + poly([q(-1.25, -0.2), q(1.25, -0.2), q(1.25, 0.08), q(-1.25, 0.08)], '#6FB0CC', ' opacity=".6"');   // 溪水
+      [[-0.9, -0.35], [-0.4, 0.28], [0.5, -0.38], [1.0, 0.26], [0.1, 0.3]].forEach(function (c, n) { p = q(c[0], c[1]); s += '<ellipse cx="' + f1(p[0]) + '" cy="' + f1(p[1]) + '" rx="' + (6 + n % 2 * 3) + '" ry="4" fill="#8A8D86"/>'; });
+      for (i = 0; i < 6; i++) { p = q(0.2 + i * 0.01, -0.33 + i * 0.11); s += '<ellipse cx="' + f1(p[0]) + '" cy="' + f1(p[1] - 1) + '" rx="4" ry="2.6" fill="#9DA09A"/>'; }   // 小石堰
+      p = q(-0.35, -0.08); s += '<path d="M' + f1(p[0] - 9) + ' ' + f1(p[1]) + 'l16 -4v8z" fill="#C9B07A" stroke="#8A6A3A" stroke-width=".8"/>';   // 魚筌
+      s += '<g transform="translate(' + f1(q(0.55, 0.75)[0]) + ' ' + f1(q(0.55, 0.75)[1]) + ')">' + house(k, { w: 0.7, d: 0.55, h: 11, rh: 9, open: true, ov: 0.25 }) + '</g>';
+      [[-0.75, 0.75], [-0.5, 0.95]].forEach(function (c) { p = q(c[0], c[1]); s += '<path d="M' + f1(p[0] - 5) + ' ' + f1(p[1] - 12) + 'h10l-2 12h-6z" fill="#B99B62" stroke="#7A5636" stroke-width=".8"/>'; });   // 竹簍
+      return s;
+    }
     if (t.id === 'amis') {     // 巴拉告：水道裡用竹筒和樹枝搭出來、讓魚蝦棲息的地方
       s = plot(1.4, 1.25, '#6E5A3E') + plot(1.25, 1.1, '#3F86A6') + plot(0.95, 0.8, '#5BA4C4', ' opacity=".7"');
       [[-0.5, 0.3], [0.2, 0.55], [0.5, -0.1]].forEach(function (g) {   // 沉在水裡的竹筒
@@ -363,7 +388,7 @@ window.Art = (function () {
     '<g id="bt-a"><ellipse cx="0" cy="1" rx="17" ry="5" fill="#000" opacity=".25"/><path d="M-5 0C-4 -30 -4 -50 -3 -72h6C4 -50 5 -30 6 0Z" fill="#6B4A32"/><path d="M1 0C2 -30 2 -50 1.5 -72h1.5C4 -50 5 -30 6 0Z" fill="#573A26"/><path d="M-2 -48l-14 -14" stroke="#6B4A32" stroke-width="3" stroke-linecap="round"/><circle cx="-17" cy="-78" r="19" fill="#357245"/><circle cx="15" cy="-82" r="21" fill="#2F6A40"/><circle cx="-2" cy="-98" r="21" fill="#3E7D4E"/><circle cx="-8" cy="-104" r="10" fill="#5A9E64" opacity=".85"/></g>' +
     '<g id="bt-c"><ellipse cx="0" cy="1" rx="15" ry="4.6" fill="#000" opacity=".25"/><rect x="-3.5" y="-46" width="7" height="47" fill="#6B4A32"/><rect x="0" y="-46" width="3.5" height="47" fill="#573A26"/><polygon points="-24,-36 0,-78 24,-36" fill="#2F6B4F"/><polygon points="0,-78 24,-36 0,-36" fill="#25573F"/><polygon points="-19,-62 0,-100 19,-62" fill="#3A7C5B"/><polygon points="0,-100 19,-62 0,-62" fill="#2D6449"/><polygon points="-13,-86 0,-118 13,-86" fill="#468A66"/><polygon points="0,-118 13,-86 0,-86" fill="#357052"/></g>' +
     '<g id="bt-p"><ellipse cx="0" cy="1" rx="11" ry="3.6" fill="#000" opacity=".25"/><path d="M-2.5 0C-1 -40 0 -70 1 -92h3C4 -70 3 -40 3 0Z" fill="#8A7A5A"/><path d="M-1.6 -20h4M-1 -40h4M-.4 -60h3.6M.4 -78h3" stroke="#6E6046" stroke-width="1.4"/><g fill="none" stroke="#3E8A4E" stroke-width="5" stroke-linecap="round"><path d="M2 -92q-16 -14 -30 -2"/><path d="M2 -92q16 -14 30 -2"/><path d="M2 -92q-10 -24 -24 -24"/><path d="M2 -92q10 -24 24 -24"/><path d="M2 -92q0 -20 2 -30"/></g><circle cx="2" cy="-92" r="4" fill="#2F6A40"/></g>' +
-    (AS ? Object.keys(AS.building).filter(function (n) { return !/^(atayal|bunun|amis|paiwan|rukai|pinuyumayan)-/.test(n) || /-center$/.test(n); }).map(function (n) { return '<symbol id="b-' + n + '" viewBox="-80 -140 160 180" overflow="visible">' + AS.building[n] + '</symbol>'; }).join('') : '') +   // 共用的美術素材：建地、1 級的中心建築
+    (AS ? Object.keys(AS.building).filter(function (n) { return !/^(atayal|bunun|amis|paiwan|rukai|pinuyumayan|saisiyat|tsou)-/.test(n) || /-center$/.test(n); }).map(function (n) { return '<symbol id="b-' + n + '" viewBox="-80 -140 160 180" overflow="visible">' + AS.building[n] + '</symbol>'; }).join('') : '') +   // 共用的美術素材：建地、1 級的中心建築
     preDefs +   // 已經載好的各族素材（單機預覽版）
     '</defs>';
   function use(id, x, y, sc) { return '<use href="#' + id + '" transform="translate(' + f1(x) + ' ' + f1(y) + ') scale(' + sc.toFixed(2) + ')"/>'; }
@@ -825,7 +850,7 @@ window.Art = (function () {
 
   /* 地面底圖：畫在畫布上再當成一張圖，縮放平移才順。 */
   var groundCache = {};
-  var GRASS = { amis: '#8DB55C', atayal: '#84AC58', bunun: '#7BA262', paiwan: '#89B15A', rukai: '#7FA35A', pinuyumayan: '#93B862' };   // 新的美術：和部落場景示意圖一樣明亮的草地
+  var GRASS = { amis: '#8DB55C', atayal: '#84AC58', bunun: '#7BA262', paiwan: '#89B15A', rukai: '#7FA35A', pinuyumayan: '#93B862', saisiyat: '#86AE5A', tsou: '#7AA05C' };   // 新的美術：和部落場景示意圖一樣明亮的草地
   function groundURL(t) {
     var art = natureOn(t), key = t.id + (art ? '+' : '');
     if (groundCache[key]) return groundCache[key];
