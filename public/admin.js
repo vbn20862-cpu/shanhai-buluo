@@ -4,7 +4,8 @@
   'use strict';
   var $ = function (id) { return document.getElementById(id); }, key = '', data = null, sort = { k: 'prosperity', dir: -1 }, timer = null, mapReady = false;
   var R = World.rules, tab = 'overview', draft = {}, tuneSig = '', simRes = null, adjId = null, armed = {}, toastT = null;
-  var TABS = [['overview', '總覽'], ['tune', '數值調整'], ['sim', '模擬對戰'], ['log', '操作紀錄']];
+  var TABS = [['overview', '總覽'], ['tune', '數值調整'], ['sim', '模擬對戰'], ['ops', '營運'], ['log', '操作紀錄']];
+  var restoreName = '', tunePending = null;
   var PACES = [[1, '快速試玩'], [5, '加速測試'], [20, '正式']];
   var SIMPRE = [['標準', 4, 4, 4, 1, ''], ['沒有獨特兵種', 6, 6, 0, 1, ''], ['獨特兵種為主', 2, 2, 8, 1, ''], ['大隊加工事', 6, 6, 6, 2, '1'], ['沒有圍籬的小隊', 3, 3, 3, 0, '']];
   var COLS = [['name', '部落', 'l'], ['owner', '主人', 'l'], ['tribe', '族群', 'l'], ['online', '狀態', 'l'], ['center', '中心等級'], ['pop', '族人'], ['food', '糧食'], ['mat', '建材'], ['sp', '特產'],
@@ -45,7 +46,7 @@
     }).catch(function (e) { store(''); fail(e.message === 'Failed to fetch' ? '連不上伺服器' : e.message); });
   }
   function render() {
-    renderNav(); renderTune(false); renderLog(); renderHealth();
+    renderNav(); renderTune(false); renderLog(); renderHealth(); renderOps();
     var v = data.villages, players = v.filter(function (x) { return !x.bot; }), live = players.filter(function (x) { return x.online; });
     $('stamp').textContent = '每 3 秒更新 · ' + new Date(data.now).toLocaleTimeString('zh-TW') + ' · 遊戲節奏 ' + data.tune.pace + (data.speed !== 1 ? ' · 測試加速 ' + data.speed + ' 倍' : '');
     $('tiles').innerHTML = [['玩家部落', players.length], ['在線上', live.length], ['示範部落', v.length - players.length], ['出征中的隊伍', data.marches], ['打過的對戰', Object.keys(data.stats || {}).reduce(function (n, k) { return n + data.stats[k].n; }, 0)], ['資源點（採集中）', data.nodes + '（' + data.gathering + '）'], ['聯盟', (data.alliances || []).length], ['市集掛單', data.offers]]
@@ -181,6 +182,52 @@
     }).catch(function (e) { toast(e.message, true); });
   }
   // ---------- 操作紀錄 ----------
+  /* 營運：公告、備份還原、數值匯出匯入、封鎖來源。表單的欄位寫在 admin.html，這裡只重畫會變的清單（每 3 秒更新時不會清掉正在打的字） */
+  function hoursText(until, now) { return !until ? '一直到撤下' : until <= now ? '已經到期' : '還有 ' + span(until - now); }
+  function renderOps() {
+    var now = data.now, n = data.notice;
+    $('noticeNow').innerHTML = n ? '目前的公告（' + hoursText(n.until, now).replace('一直到撤下', '一直顯示到撤下') + '）：<b>' + esc(n.text) + '</b>' : '目前沒有公告。';
+    $('n-clear').disabled = !n;
+    var bk = data.backupInfo || [];
+    $('bk-rows').innerHTML = bk.length ? bk.map(function (b) {
+      var m = /^world-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})?/.exec(b.name), t = m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0))) : null;
+      return '<tr><td class="l">' + (t ? t.toLocaleString('zh-TW') : esc(b.name)) + '</td><td>' + b.kb + ' KB</td><td>' + (b.bad ? '讀不出來' : b.villages) + '</td><td>' + (b.bad ? '—' : b.players) + '</td><td class="l">' + (b.bad ? '' : '<button class="btn sm ghost" data-restore="' + esc(b.name) + '">還原這份</button>') + '</td></tr>';
+    }).join('') : '<tr><td class="l muted" colspan="5">還沒有備份。可以在「總覽」按「現在備份一次」。</td></tr>';
+    var src = data.sources || [];
+    $('src-rows').innerHTML = src.length ? src.map(function (x) {
+      return '<tr><td class="l">' + esc(x.ip) + '</td><td>' + x.n + '</td><td class="l">' + (x.villages.length ? x.villages.map(esc).join('、') : '<span class="muted">還沒有部落（在開始畫面）</span>') + '</td><td class="l"><button class="btn sm ghost" data-block="' + esc(x.ip) + '">封鎖</button></td></tr>';
+    }).join('') : '<tr><td class="l muted" colspan="4">目前沒有人連線。</td></tr>';
+    var bl = data.blocks || [];
+    $('blk-rows').innerHTML = bl.length ? bl.map(function (x) {
+      return '<tr><td class="l">' + esc(x.ip) + '</td><td class="l">' + esc(x.note || '') + '</td><td class="l">' + (x.until ? '還有 ' + span(Math.max(0, x.until - now)) : '永久') + '</td><td class="l"><button class="btn sm ghost" data-unblock="' + esc(x.ip) + '">解除</button></td></tr>';
+    }).join('') : '<tr><td class="l muted" colspan="4">沒有封鎖任何來源。</td></tr>';
+  }
+  function exportTune() {   // 只匯出可調的數值
+    var o = { game: 'shanhai-buluo', kind: 'tune', at: new Date().toISOString(), tune: data.tune }, b = new Blob([JSON.stringify(o, null, 1)], { type: 'application/json' });
+    var u = URL.createObjectURL(b), l = document.createElement('a'), d = new Date(), p2 = function (x) { return ('0' + x).slice(-2); };
+    l.href = u; l.download = 'shanhai-tune-' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '.json'; document.body.appendChild(l); l.click(); l.remove();
+    setTimeout(function () { URL.revokeObjectURL(u); }, 5000); toast('數值匯出好了');
+  }
+  function importTune(file) {   // 讀檔案、列出會改的數值，確認後才送出
+    if (!file) return;
+    if (file.size > 64 * 1024) { toast('檔案太大了，這不是數值檔', true); return; }
+    file.text().then(function (txt) {
+      var o; try { o = JSON.parse(txt); } catch (e) { throw new Error('檔案不是正確的 JSON'); }
+      var t = o && typeof o === 'object' && o.tune && typeof o.tune === 'object' ? o.tune : o;
+      if (!t || typeof t !== 'object' || Array.isArray(t)) throw new Error('檔案裡找不到數值');
+      var set = {}, rows = [], skipped = 0;
+      R.TUNE_DEF.forEach(function (d) {
+        if (!Object.prototype.hasOwnProperty.call(t, d.k)) return;
+        var x = Number(t[d.k]); if (!isFinite(x)) { skipped++; return; }
+        x = Math.max(d.min, Math.min(d.max, x));
+        if (x !== data.tune[d.k]) { set[d.k] = x; rows.push('<tr><td class="l">' + esc(d.g) + '：' + esc(d.zh) + '</td><td>' + fmt(data.tune[d.k]) + '</td><td>' + fmt(x) + '</td></tr>'); }
+      });
+      Object.keys(t).forEach(function (k) { if (!R.TUNE_DEF.some(function (d) { return d.k === k; })) skipped++; });
+      tunePending = set;
+      $('t-sum').textContent = rows.length ? '匯入後有 ' + rows.length + ' 項數值會改變' + (skipped ? '（另有 ' + skipped + ' 項不認得或格式不對，會略過）' : '') + '：' : '檔案裡的數值和現在一樣，不用匯入。';
+      $('t-rows').innerHTML = rows.join(''); $('t-apply').disabled = !rows.length; $('t-preview').hidden = false;
+    }).catch(function (e) { toast(e.message, true); });
+  }
   function renderLog() {
     var L = (data.adminLog || []).slice().reverse();
     $('logs').innerHTML = L.length ? L.map(function (x) { return '<div class="logrow"><span class="muted">' + new Date(x.t).toLocaleString('zh-TW') + '</span><span>' + esc(x.text) + '</span></div>'; }).join('') : '<p class="muted">還沒有任何調整。</p>';
@@ -252,6 +299,31 @@
   $('renF').addEventListener('submit', function (e) { e.preventDefault(); village({ id: adjId, action: 'rename', name: $('r-name').value, owner: $('r-owner').value }, ''); });
   $('remB').addEventListener('click', function () { var b = this; twice(b, 'rem', '再按一次，確定移除（不能復原）', function () { village({ id: adjId, action: 'remove' }, ''); }); });
   $('exportB').addEventListener('click', download);
+  $('n-text').addEventListener('input', function () { $('n-count').textContent = this.value.length + ' / 200 字'; });
+  $('n-send').addEventListener('click', function () {
+    var text = $('n-text').value.trim(); if (!text) { toast('公告不能是空的', true); return; }
+    post('admin/api/notice', { text: text, hours: +$('n-hours').value }).then(function (j) { toast(j.msg || '發出去了'); $('n-text').value = ''; $('n-count').textContent = ''; return load().then(function (x) { data = x; render(); }); }).catch(function (e) { toast(e.message, true); });
+  });
+  $('n-clear').addEventListener('click', function () { var b = this; twice(b, 'nclear', '再按一次，確定撤下', function () { post('admin/api/notice', { clear: true }).then(function (j) { toast(j.msg || '撤下了'); return load().then(function (x) { data = x; render(); }); }).catch(function (e) { toast(e.message, true); }); }); });
+  $('bk-rows').addEventListener('click', function (e) { var b = e.target.closest('button[data-restore]'); if (!b) return; restoreName = b.getAttribute('data-restore'); $('bk-name').textContent = b.closest('tr').firstChild.textContent; $('bk-word').value = ''; $('bk-confirm').hidden = false; $('bk-word').focus(); });
+  $('bk-x').addEventListener('click', function () { restoreName = ''; $('bk-confirm').hidden = true; });
+  $('bk-go').addEventListener('click', function () {
+    if ($('bk-word').value.trim() !== '還原') { toast('要打「還原」兩個字確認', true); return; }
+    post('admin/api/restore', { name: restoreName, confirm: '還原' }).then(function (j) { toast(j.msg || '還原好了'); restoreName = ''; $('bk-confirm').hidden = true; return load().then(function (x) { data = x; draft = {}; render(); renderTune(true); }); }).catch(function (e) { toast(e.message, true); });
+  });
+  $('t-export').addEventListener('click', exportTune);
+  $('t-file').addEventListener('change', function () { importTune(this.files && this.files[0]); this.value = ''; });
+  $('t-cancel').addEventListener('click', function () { tunePending = null; $('t-preview').hidden = true; });
+  $('t-apply').addEventListener('click', function () { if (!tunePending) return; var set = tunePending; applyTune({ set: set }, '匯入的數值已套用').then(function () { tunePending = null; $('t-preview').hidden = true; }); });
+  $('src-rows').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-block]'); if (!b) return;
+    var ip = b.getAttribute('data-block');
+    twice(b, 'blk' + ip, '再按一次，確定封鎖', function () { post('admin/api/block', { ip: ip, hours: +$('b-hours').value }).then(function (j) { toast(j.msg); return load().then(function (x) { data = x; render(); }); }).catch(function (er) { toast(er.message, true); }); });
+  });
+  $('blk-rows').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-unblock]'); if (!b) return;
+    post('admin/api/block', { ip: b.getAttribute('data-unblock'), unblock: true }).then(function (j) { toast(j.msg); return load().then(function (x) { data = x; render(); }); }).catch(function (er) { toast(er.message, true); });
+  });
   $('backupB').addEventListener('click', function () { post('admin/api/backup', {}).then(function (j) { toast('備份好了，現在有 ' + j.backups.length + ' 份'); return load().then(function (x) { data = x; render(); }); }).catch(function (e) { toast(e.message, true); }); });
   $('heads').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;

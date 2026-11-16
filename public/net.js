@@ -88,7 +88,10 @@ window.Net = (function () {
       fire('status', { online: true, mode: mode });
       socket.emit('resume', { token: token() }, function (r) { r = r || {}; r.villages = applyPubs(r); fire('hello', r); });   // 伺服器認得就會接著送出部落狀態
     });
-    socket.on('disconnect', function () { fire('status', { online: false, mode: mode }); });
+    socket.on('disconnect', function (why) {
+      fire('status', { online: false, mode: mode });
+      if (why === 'io server disconnect') setTimeout(function () { socket.connect(); }, 2000 + Math.random() * 3000);   // 伺服器要大家重新連線（例如後台還原了備份）：等一下再自己連回去；被封鎖的話會連不上
+    });
     socket.on('state', function (s) {
       var list = applyPubs(s), nl = applyNodes(s), k;
       if (s.me) cur = {};

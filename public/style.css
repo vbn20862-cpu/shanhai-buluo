@@ -477,6 +477,10 @@ p { margin: 4px 0; }
 .sgoals li .gain { flex: 1; min-width: 0; font-size: 12.5px; flex-wrap: wrap; }
 .sgoals li em { font-style: normal; font-size: 12px; color: var(--mute); white-space: nowrap; }
 .sgoals li.can > b { color: var(--gold); } .sgoals li.got { opacity: .6; } .sgoals li.got em { color: var(--good); }
+/* 後台的公告 */
+.bn.notice b:first-child, .snotice b { display: inline-block; margin-right: 8px; padding: 1px 8px; border-radius: 999px; background: var(--gold); color: #2A1F05; font-size: 12px; }
+.snotice { margin: 4px 0 10px; padding: 8px 10px; border: 1px solid var(--gold); border-radius: 8px; background: rgba(242, 185, 59, .12); line-height: 1.6; overflow-wrap: anywhere; }
+.bn.notice { overflow-wrap: anywhere; }
 /* 傳說英雄 */
 .card.hero .hrow { display: flex; gap: 10px; align-items: center; }
 .card.hero .hpic { width: 112px; height: 92px; flex: none; background: radial-gradient(ellipse at 50% 70%, rgba(242, 185, 59, .18), transparent 70%); border-radius: 8px; }

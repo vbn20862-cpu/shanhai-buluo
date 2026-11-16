@@ -42,7 +42,28 @@ const world = new World({
 // ---------- 存檔 ----------
 const BACKUP_DIR = path.join(path.dirname(DATA), 'backups');
 function listBackups() {   // 由新到舊
-  try { return fs.readdirSync(BACKUP_DIR).filter(f => /^world-\d{8}-\d{4}\.json$/.test(f)).sort().reverse(); } catch (e) { return []; }
+  try { return fs.readdirSync(BACKUP_DIR).filter(f => BACKUP_RE.test(f)).sort().reverse(); } catch (e) { return []; }
+}
+const BACKUP_RE = /^world-\d{8}-\d{4}(\d{2})?\.json$/;   // 備份的檔名：world-年月日-時分（新的多了秒）.json
+const backupInfo = Object.create(null);   // 每一份備份有幾個部落（備份檔不會再改，讀過一次就記住）
+function backupDetail(f) {
+  if (!backupInfo[f]) {
+    try {
+      const file = path.join(BACKUP_DIR, f), st = fs.statSync(file), d = JSON.parse(fs.readFileSync(file, 'utf8')), vs = Object.keys(d.villages || {}).map(k => d.villages[k]);
+      backupInfo[f] = { name: f, kb: Math.round(st.size / 1024), at: st.mtimeMs, villages: vs.length, players: vs.filter(v => !v.bot).length };
+    } catch (e) { backupInfo[f] = { name: f, kb: 0, at: 0, villages: 0, players: 0, bad: true }; }
+  }
+  return backupInfo[f];
+}
+/* 封鎖的來源（網路位置 → 到期時間）。存在存檔旁邊的 blocks.json，不放進世界的存檔，還原備份也不會不見；也不寫進操作紀錄 */
+const BLOCK_FILE = path.join(path.dirname(DATA), 'blocks.json'), BLOCK_HOURS = [1, 24, 168, 0];
+const blocks = Object.create(null);
+try { const b = JSON.parse(fs.readFileSync(BLOCK_FILE, 'utf8')); for (const ip in b) if (b[ip] && typeof b[ip].until === 'number') blocks[ip] = { until: b[ip].until, at: b[ip].at || 0, note: String(b[ip].note || '').slice(0, 200) }; } catch (e) { /* 沒有封鎖清單 */ }
+function saveBlocks() { try { fs.writeFileSync(BLOCK_FILE, JSON.stringify(blocks)); } catch (e) { console.error('封鎖清單存不進去：' + e.message); } }
+function blocked(ip) {
+  const b = blocks[ip]; if (!b) return false;
+  if (b.until && Date.now() >= b.until) { delete blocks[ip]; saveBlocks(); return false; }
+  return true;
 }
 try {
   world.load(JSON.parse(fs.readFileSync(DATA, 'utf8')));
@@ -124,7 +145,14 @@ const server = http.createServer((req, res) => {
   try { url = decodeURIComponent(req.url.split('?')[0]); } catch (e) { res.writeHead(400); return res.end(); }   // 網址編碼不對
   if (url === '/admin/api/state') {   // 後台資料：要帶密碼
     if (!adminOk(req, res)) return;
-    return json(res, 200, Object.assign(world.adminState(Date.now()), { server: health() }));
+    const now = Date.now(), src = Object.create(null);
+    for (const sk of io.sockets.sockets.values()) {   // 目前連線中的來源：每個網路位置有幾個連線、玩的是哪些部落
+      const ip = sk.data.ip || '?', o = src[ip] = src[ip] || { ip: ip, n: 0, villages: [] }, v = sk.data.vid && world.villages[sk.data.vid];
+      o.n++; if (v && o.villages.indexOf(v.name) < 0) o.villages.push(v.name);
+    }
+    for (const ip in blocks) blocked(ip);   // 清掉到期的
+    return json(res, 200, Object.assign(world.adminState(now), { server: health(), sources: Object.keys(src).map(k => src[k]).sort((a, b) => b.n - a.n),
+      blocks: Object.keys(blocks).map(ip => ({ ip: ip, until: blocks[ip].until, at: blocks[ip].at, note: blocks[ip].note })), backupInfo: backups.list.map(backupDetail) }));
   }
   if (url === '/admin/api/tune') {    // 後台：改可調的數值。{ set: { 代號: 數值 } } 或 { reset: true }（還原成預設，節奏不變）
     if (!adminOk(req, res)) return;
@@ -162,6 +190,53 @@ const server = http.createServer((req, res) => {
   if (url === '/admin/api/backup') {    // 後台：現在就多留一份備份
     if (!adminOk(req, res)) return;
     return readJson(req, res, () => { backup(); json(res, 200, { ok: true, backups: backups.list }); });
+  }
+  if (url === '/admin/api/notice') {   // 後台：發公告 { text, hours }，或撤下 { clear: true }
+    if (!adminOk(req, res)) return;
+    return readJson(req, res, o => {
+      const now = Date.now(), r = o.clear ? world.clearNotice(now) : world.setNotice(o.text, o.hours, now);
+      if (r.ok) save();
+      json(res, 200, r);
+    });
+  }
+  if (url === '/admin/api/restore') {   // 後台：選一份備份還原 { name, confirm: '還原' }。還原前先把現在的狀態另存一份備份
+    if (!adminOk(req, res)) return;
+    return readJson(req, res, o => {
+      const name = typeof o.name === 'string' ? o.name : '';
+      if (o.confirm !== '還原') return json(res, 400, { ok: false, msg: '要打「還原」兩個字確認' });
+      if (!BACKUP_RE.test(name) || listBackups().indexOf(name) < 0) return json(res, 404, { ok: false, msg: '找不到這份備份' });
+      let d; try { d = JSON.parse(fs.readFileSync(path.join(BACKUP_DIR, name), 'utf8')); } catch (e) { return json(res, 500, { ok: false, msg: '這份備份讀不出來' }); }
+      if (!d || typeof d !== 'object' || !d.villages) return json(res, 400, { ok: false, msg: '這份備份的內容不對' });
+      const before = backup();   // 先留一份現在的，還原錯了可以再還原回來
+      if (!before) return json(res, 500, { ok: false, msg: '還原前的備份存不進去，先不還原' });
+      const now = Date.now(), keepLog = world.adminLog.slice(), keepNotice = world.notice;   // 操作紀錄與目前的公告是營運用的，不跟著倒回去
+      world.load(d); world.ensureBots(now); world.adminLog = keepLog; world.notice = keepNotice;
+      world.adminNote('還原備份 ' + name + '（還原前的狀態另存成 ' + before + '）', now);
+      for (const sk of io.sockets.sockets.values()) sk.disconnect(true);   // 所有人重新連線，拿到還原後的部落
+      refreshPubs(now); save();
+      json(res, 200, { ok: true, msg: '還原好了，還原前的狀態另存成 ' + before, before: before });
+    });
+  }
+  if (url === '/admin/api/block') {   // 後台：封鎖來源 { ip, hours }（hours 是 1、24、168，0 是永久），或解除 { ip, unblock: true }
+    if (!adminOk(req, res)) return;
+    return readJson(req, res, o => {
+      const ip = typeof o.ip === 'string' ? o.ip.slice(0, 64) : '', now = Date.now();
+      if (o.unblock) {
+        if (!blocks[ip]) return json(res, 404, { ok: false, msg: '這個來源沒有被封鎖' });
+        const note = blocks[ip].note; delete blocks[ip]; saveBlocks();
+        world.adminNote('解除一個來源的封鎖' + (note ? '（' + note + '）' : ''), now); save();
+        return json(res, 200, { ok: true, msg: '解除封鎖了' });
+      }
+      const socks = [...io.sockets.sockets.values()].filter(sk => sk.data.ip === ip);
+      if (!ip || !socks.length) return json(res, 404, { ok: false, msg: '這個來源現在沒有連線' });
+      const h = BLOCK_HOURS.indexOf(Number(o.hours)) >= 0 ? Number(o.hours) : 24, names = [];
+      socks.forEach(sk => { const v = sk.data.vid && world.villages[sk.data.vid]; if (v && names.indexOf(v.name) < 0) names.push(v.name); });
+      const note = names.length ? '部落：' + names.join('、') : '還沒有部落';
+      blocks[ip] = { until: h ? now + h * 3600000 : 0, at: now, note: note }; saveBlocks();
+      socks.forEach(sk => sk.disconnect(true));   // 馬上斷開
+      world.adminNote('封鎖一個來源（' + note + '），' + (h === 0 ? '永久' : h >= 24 ? h / 24 + ' 天' : h + ' 小時'), now); save();   // 紀錄裡不寫網路位置
+      json(res, 200, { ok: true, msg: '封鎖了，' + socks.length + ' 個連線已經斷開' });
+    });
   }
   if (url === '/admin/api/adjust') {  // 後台：調整某個部落的物資或保護
     if (!adminOk(req, res)) return;
@@ -263,7 +338,7 @@ function addNodes(socket, out) {
   socket.data.nseq = nodesC.seq;
 }
 function hello(socket) {   // 給還沒有部落的連線：全島的部落（差異）與要不要邀請碼
-  const out = { needCode: !!JOIN_CODE, contact: CONTACT };
+  const out = { needCode: !!JOIN_CODE, contact: CONTACT, notice: world.noticeNow(Date.now()) };
   addPubs(socket, out);
   return out;
 }
@@ -307,6 +382,7 @@ function ipOf(req) {
 const byIp = Object.create(null), joinsByIp = Object.create(null);   // 每個網路位置目前有幾個連線、最近一小時建立了幾個部落
 io.use((socket, next) => {   // 連線太多就不讓它連：整體的上限，以及同一個網路位置的上限
   const ip = ipOf(socket.request); socket.data.ip = ip;
+  if (blocked(ip)) return next(new Error('這個網路位置暫時不能連線'));
   if (io.sockets.sockets.size >= MAX_SOCKETS) return next(new Error('伺服器滿了'));
   if ((byIp[ip] || 0) >= MAX_CONN_PER_IP) return next(new Error('連線太多'));
   byIp[ip] = (byIp[ip] || 0) + 1;
@@ -383,11 +459,12 @@ function backup() {
   try {
     fs.mkdirSync(BACKUP_DIR, { recursive: true });
     const d = new Date(), p2 = x => ('0' + x).slice(-2);
-    const name = 'world-' + d.getUTCFullYear() + p2(d.getUTCMonth() + 1) + p2(d.getUTCDate()) + '-' + p2(d.getUTCHours()) + p2(d.getUTCMinutes()) + '.json';
+    const name = 'world-' + d.getUTCFullYear() + p2(d.getUTCMonth() + 1) + p2(d.getUTCDate()) + '-' + p2(d.getUTCHours()) + p2(d.getUTCMinutes()) + p2(d.getUTCSeconds()) + '.json';
     fs.writeFileSync(path.join(BACKUP_DIR, name), JSON.stringify(world.toJSON()));
     listBackups().slice(BACKUP_KEEP).forEach(f => { try { fs.unlinkSync(path.join(BACKUP_DIR, f)); } catch (e) { /* 刪不掉就留著 */ } });
     backups.list = listBackups(); backups.at = Date.now();
-  } catch (e) { console.error('備份失敗：' + e.message); }
+    return name;
+  } catch (e) { console.error('備份失敗：' + e.message); return null; }
 }
 backups.list = listBackups();
 setInterval(guard('備份', backup), BACKUP_HOURS * 3600000);

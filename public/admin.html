@@ -77,6 +77,8 @@ td.self { color: var(--mute); }
 .verdict.ok { color: var(--good); } .verdict.bad { color: var(--warn); }
 .simgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; align-items: start; }
 .fld { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--mute); }
+textarea { width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; color: var(--ink); font: inherit; resize: vertical; margin: 6px 0; }
+#p-ops .card { margin-bottom: 14px; }
 .fld input, .fld select { width: 90px; box-sizing: border-box; }
 .logrow { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px; padding: 6px 0; border-top: 1px dashed var(--line); }
 .logrow:first-child { border-top: 0; }
@@ -164,6 +166,38 @@ dialog h3 { font-family: var(--display); font-size: 15px; margin: 0 0 2px; }
       <div class="row" style="margin-top:10px"><button class="btn" id="simrun">開始模擬</button><label class="row" for="s-draft"><input type="checkbox" id="s-draft">包含還沒套用的修改</label><span class="muted" id="simnote"></span></div>
     </section>
     <div id="simout" class="page"></div>
+   </div>
+
+   <div class="page" id="p-ops" hidden>
+    <section class="card">
+      <h2>公告</h2>
+      <p class="muted">寫一段話給所有玩家，會出現在玩家畫面的上方（可以收起），動態消息也會留一筆。只能是純文字，最多 200 字。</p>
+      <p id="noticeNow" class="muted"></p>
+      <textarea id="n-text" maxlength="200" rows="3" placeholder="例如：今晚 10 點到 10 點半停機更新，請先把部落設定好掛機。"></textarea>
+      <div class="row"><label class="fld" for="n-hours">顯示多久<select id="n-hours"><option value="1">1 小時</option><option value="24" selected>1 天</option><option value="168">7 天</option><option value="0">一直到撤下</option></select></label>
+        <button class="btn" id="n-send">發布公告</button><button class="btn ghost" id="n-clear">撤下公告</button><span class="muted" id="n-count"></span></div>
+    </section>
+    <section class="card">
+      <h2>選一份備份還原</h2>
+      <p class="muted">還原前會先把現在的狀態另存一份備份，還原錯了可以再還原回來。還原後所有在線的玩家會重新連線。</p>
+      <div class="scroll"><table><thead><tr><th class="l">備份時間</th><th>大小</th><th>部落</th><th>玩家部落</th><th class="l">還原</th></tr></thead><tbody id="bk-rows"></tbody></table></div>
+      <div class="row" id="bk-confirm" hidden><span>要還原 <b id="bk-name"></b>？請打「還原」兩個字：</span><input type="text" id="bk-word" maxlength="4" autocomplete="off" style="width:80px"><button class="btn warn" id="bk-go">確定還原</button><button class="btn ghost" id="bk-x">取消</button></div>
+    </section>
+    <section class="card">
+      <h2>數值匯出、匯入</h2>
+      <p class="muted">只有「數值調整」裡的可調數值，不含任何玩家資料。可以在測試機調好之後搬到正式機，或留一份好用的設定。</p>
+      <div class="row"><button class="btn ghost" id="t-export">匯出目前的數值</button><label class="btn ghost" for="t-file" style="display:inline-block">選一個檔案匯入…</label><input type="file" id="t-file" accept=".json,application/json" hidden></div>
+      <div id="t-preview" hidden><p id="t-sum"></p><div class="scroll"><table><thead><tr><th class="l">數值</th><th>現在</th><th>匯入後</th></tr></thead><tbody id="t-rows"></tbody></table></div>
+        <div class="row"><button class="btn" id="t-apply">套用這些修改</button><button class="btn ghost" id="t-cancel">取消</button></div></div>
+    </section>
+    <section class="card">
+      <h2>封鎖來源</h2>
+      <p class="muted">目前連線中的網路位置。封鎖後那個位置的連線會馬上斷開，到期前不能再連線或建立部落。網路位置只在這裡顯示，操作紀錄只記玩的是哪些部落。同一個網路位置可能有好幾個人（例如同一個家裡、學校、公司），封鎖前請先確認。</p>
+      <div class="row"><label class="fld" for="b-hours">封鎖多久<select id="b-hours"><option value="1">1 小時</option><option value="24" selected>1 天</option><option value="168">7 天</option><option value="0">永久</option></select></label></div>
+      <div class="scroll"><table><thead><tr><th class="l">網路位置</th><th>連線數</th><th class="l">玩的部落</th><th class="l">封鎖</th></tr></thead><tbody id="src-rows"></tbody></table></div>
+      <h2 style="margin-top:14px">已封鎖</h2>
+      <div class="scroll"><table><thead><tr><th class="l">網路位置</th><th class="l">當時玩的部落</th><th class="l">到期</th><th class="l">解除</th></tr></thead><tbody id="blk-rows"></tbody></table></div>
+    </section>
    </div>
 
    <div class="page" id="p-log" hidden>

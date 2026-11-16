@@ -481,6 +481,10 @@ p { margin: 4px 0; }
 .sgoals li .gain { flex: 1; min-width: 0; font-size: 12.5px; flex-wrap: wrap; }
 .sgoals li em { font-style: normal; font-size: 12px; color: var(--mute); white-space: nowrap; }
 .sgoals li.can > b { color: var(--gold); } .sgoals li.got { opacity: .6; } .sgoals li.got em { color: var(--good); }
+/* 後台的公告 */
+.bn.notice b:first-child, .snotice b { display: inline-block; margin-right: 8px; padding: 1px 8px; border-radius: 999px; background: var(--gold); color: #2A1F05; font-size: 12px; }
+.snotice { margin: 4px 0 10px; padding: 8px 10px; border: 1px solid var(--gold); border-radius: 8px; background: rgba(242, 185, 59, .12); line-height: 1.6; overflow-wrap: anywhere; }
+.bn.notice { overflow-wrap: anywhere; }
 /* 傳說英雄 */
 .card.hero .hrow { display: flex; gap: 10px; align-items: center; }
 .card.hero .hpic { width: 112px; height: 92px; flex: none; background: radial-gradient(ellipse at 50% 70%, rgba(242, 185, 59, .18), transparent 70%); border-radius: 8px; }
@@ -1937,6 +1941,26 @@ p { margin: 4px 0; }
     return this.setTune(d);
   };
   /* 後台的操作紀錄（最多留 80 筆） */
+  /* 公告：後台寫的一段話（純文字，最多 200 字），顯示到 until（0 是一直到撤下）。玩家畫面上方會出現，可以收起 */
+  var NOTICE_HOURS = [1, 24, 168, 0];
+  World.prototype.setNotice = function (text, hours, now) {
+    text = String(text == null ? '' : text).replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 200);
+    if (!text) return { ok: false, msg: '公告不能是空的' };
+    var h = NOTICE_HOURS.indexOf(Number(hours)) >= 0 ? Number(hours) : 24;
+    this.notice = { id: this.id('n'), text: text, at: now, until: h ? now + h * 3600000 : 0 };
+    this.log('公告：' + text, now, 'notice');
+    this.adminNote('發公告（' + (h === 0 ? '一直到撤下' : h >= 24 ? h / 24 + ' 天' : h + ' 小時') + '）：' + text, now);
+    return { ok: true, msg: '公告發出去了' };
+  };
+  World.prototype.clearNotice = function (now) {
+    if (!this.noticeNow(now)) { this.notice = null; return { ok: false, msg: '目前沒有公告' }; }
+    this.notice = null; this.adminNote('撤下公告', now);
+    return { ok: true, msg: '公告撤下了' };
+  };
+  World.prototype.noticeNow = function (now) {
+    var n = this.notice;
+    return n && (!n.until || now < n.until) ? { id: n.id, text: n.text, at: n.at, until: n.until } : null;
+  };
   World.prototype.adminNote = function (text, now) {
     this.adminLog.push({ t: now, text: text }); if (this.adminLog.length > 80) this.adminLog.splice(0, this.adminLog.length - 80);
   };
@@ -3233,7 +3257,7 @@ p { margin: 4px 0; }
       rel: Tribes.playable().filter(function (t) { return t.id !== v.tribe; }).map(function (t) { return { tribe: t.id, value: self.relOf(v.tribe, t.id), state: self.relState(v.tribe, t.id) }; }),
       stock: (function () { var o = {}; self.map.settlements.forEach(function (s) { o[s.id] = self.stockOf(s.id); }); return o; })(),
       market: this.market.map(function (o) { return { id: o.id, from: o.from, fromName: (self.villages[o.from] || {}).name || '', give: o.give, giveN: o.giveN, want: o.want, wantN: o.wantN }; }),
-      feed: this.feed.slice(-30), alliances: al, season: this.season ? { n: this.season.n, end: this.season.end, last: this.season.last } : null
+      feed: this.feed.slice(-30), alliances: al, season: this.season ? { n: this.season.n, end: this.season.end, last: this.season.last } : null, notice: this.noticeNow(now)
     };
   };
   /* 全部的資源點（所有玩家看到的都一樣，只有變動時才重算） */
@@ -3258,13 +3282,13 @@ p { margin: 4px 0; }
       return row;
     });
     for (var k in tribes) tribes[k].avg = tribes[k].players ? Math.round(tribes[k].prosperity / tribes[k].players) : 0;
-    return { now: now, speed: this.speed, tune: this.tune, adminLog: this.adminLog.slice(-40), villages: list, tribes: tribes, marches: this.marches.length, offers: this.market.length,
+    return { now: now, speed: this.speed, tune: this.tune, notice: this.noticeNow(now), adminLog: this.adminLog.slice(-40), villages: list, tribes: tribes, marches: this.marches.length, offers: this.market.length,
       stats: this.stats,
       rel: this.rel, nodes: this.nodeCount(), gathering: this.marches.filter(function (m) { return m.phase === 'gather'; }).length, alliances: Object.keys(this.alliances).map(function (k) { return { name: self.alliances[k].name, n: self.alliances[k].members.length }; }) };
   };
   World.prototype.toJSON = function () {
     return { villages: this.villages, tokens: this.tokens, marches: this.marches, market: this.market, feed: this.feed, alliances: this.alliances,
-      stats: this.stats, rel: this.rel, nodes: this.nodes, stock: this.stock, seq: this.seq, tune: this.tune, tuneRev: TUNE_REV, mapRev: MAP_REV, adminLog: this.adminLog, lastTyphoon: this.lastTyphoon || 0, season: this.season || null };
+      stats: this.stats, rel: this.rel, nodes: this.nodes, stock: this.stock, seq: this.seq, tune: this.tune, tuneRev: TUNE_REV, mapRev: MAP_REV, adminLog: this.adminLog, lastTyphoon: this.lastTyphoon || 0, season: this.season || null, notice: this.notice || null };
   };
   World.prototype.load = function (d) {
     if (!d || !d.villages) return this;
@@ -3278,6 +3302,7 @@ p { margin: 4px 0; }
       setTune(saved, this.tune); this.tuneV++;
     }
     this.adminLog = d.adminLog || [];
+    this.notice = d.notice && typeof d.notice.text === 'string' ? d.notice : null;   // 公告（舊存檔沒有）
     this.villages = dict(d.villages); this.tokens = dict(d.tokens); this.marches = d.marches || []; this.market = d.market || [];
     this.feed = d.feed || []; this.alliances = dict(d.alliances); for (var ak in this.alliances) if (this.alliances[ak].contrib) this.alliances[ak].contrib = dict(this.alliances[ak].contrib); this.seq = d.seq || 1; this.lastTyphoon = d.lastTyphoon || 0; this.season = d.season || null;   // 改版前的存檔沒有賽季：下一次推進時開始第 1 季
     this.stats = dict(d.stats); this.rel = dict(d.rel); this.nodes = (d.mapRev || 1) < MAP_REV ? dict() : dict(d.nodes); this.nodesV++; this.stock = dict(d.stock);
@@ -4552,7 +4577,10 @@ window.Net = (function () {
       fire('status', { online: true, mode: mode });
       socket.emit('resume', { token: token() }, function (r) { r = r || {}; r.villages = applyPubs(r); fire('hello', r); });   // 伺服器認得就會接著送出部落狀態
     });
-    socket.on('disconnect', function () { fire('status', { online: false, mode: mode }); });
+    socket.on('disconnect', function (why) {
+      fire('status', { online: false, mode: mode });
+      if (why === 'io server disconnect') setTimeout(function () { socket.connect(); }, 2000 + Math.random() * 3000);   // 伺服器要大家重新連線（例如後台還原了備份）：等一下再自己連回去；被封鎖的話會連不上
+    });
     socket.on('state', function (s) {
       var list = applyPubs(s), nl = applyNodes(s), k;
       if (s.me) cur = {};
@@ -4864,11 +4892,12 @@ window.Net = (function () {
     setInterval(moveFolk, 2400);
     setInterval(function () { if (S.visit) Net.view(S.visit.id, function (d) { if (d && S.visit && S.visit.id === d.id) { S.visit.v = d; render(); } }); }, 3000);
     Net.on('status', function (s) { S.online = s.online; S.mode = s.mode; render(); });
-    Net.on('hello', function (h) { S.pubs = h.villages || S.pubs; if (h.needCode != null) S.needCode = !!h.needCode; if (h.contact != null) S.contact = String(h.contact); if (h.reset) { S.me = null; S.zone = null; S.selTile = null; S.visit = null; S.tab = 'build'; S.view = 'village'; el.vobjs._sig = null; } render(); });
+    /* hello：resumed === false 而畫面上還有部落，代表重新連線後伺服器不認得這個部落了（例如後台還原了比較舊的備份），回到開始畫面 */
+    Net.on('hello', function (h) { S.pubs = h.villages || S.pubs; if (h.needCode != null) S.needCode = !!h.needCode; if (h.contact != null) S.contact = String(h.contact); if ('notice' in h) S.notice = h.notice || null; if (h.reset || (h.resumed === false && S.me)) { S.me = null; S.zone = null; S.selTile = null; S.visit = null; S.tab = 'build'; S.view = 'village'; el.vobjs._sig = null; } render(); });
     Net.on('state', function (st) {
       if (st.tune) R.setTune(st.tune);   // 後台調過的數值：顯示的時間、產量、說明都跟著變
       S.me = st.me; S.pubs = st.villages; S.marches = st.marches || [];
-      S.season = st.season || null;
+      S.season = st.season || null; S.notice = st.notice || null;   // 後台的公告
       S.rel = st.rel || []; S.nodes = st.nodes || []; S.stock = st.stock || {}; S.market = st.market || []; S.feed = st.feed || []; S.alliances = st.alliances || {};
       if (st.me) { Art.need([st.me.tribe]); Art.setTribe(st.me.tribe); }   // 自己族群的美術素材、特產圖示
       autoShow(st.me); raidAlert(st.me); flyGains(st.me); doneSound(st.me);
@@ -5118,7 +5147,12 @@ window.Net = (function () {
       (Net.testing() ? b('test', 'star', '測試') : '') +
       '<button class="db big" data-act="tab" data-tab="' + (map ? 'build' : 'map') + '"><span>' + (map ? '<svg viewBox="-80 -140 160 180" class="bico">' + Art.building('center', myTribe(), me.d.center) + '</svg>' : Art.icon('map')) + '</span>' + (map ? '回部落' : '大地圖') + '</button>');
   }
-  /* 上方的提醒橫幅：拜訪中、有人來出征、有人來搶採集的隊伍、糧食吃光了 */
+  /* 後台的公告：收起過的那一則就不再顯示（記在這台裝置上） */
+  function noticeShown() {
+    if (!S.notice) return false;
+    try { return localStorage.getItem('shanhai_notice_x') !== S.notice.id; } catch (e) { return true; }
+  }
+  /* 上方的提醒橫幅：拜訪中、有人來出征、有人來搶採集的隊伍、糧食吃光了、公告 */
   function renderBanner() {
     var me = S.me, h = '';
     if (S.visit) { var v = S.visit.v, vt = Tribes.get(v.tribe); h = '<div class="bn info">正在拜訪「<b>' + esc(v.name) + '</b>」（' + vt.zh + '，' + esc(vt.b.center.zh) + ' ' + v.c + ' 級）<button class="bbtn" data-act="leave">回我的部落</button></div>'; }
@@ -5130,6 +5164,7 @@ window.Net = (function () {
         h = '<div class="bn">⚠ 「<b>' + esc(fr ? fr.name : '有人') + '</b>」要來搶你在' + (nn ? R.NODE[nn.k].zh : '資源點') + '的隊伍，<b data-until="' + th.arriveAt + '"></b> 後抵達' + (my ? '<button class="bbtn" data-act="recall" data-id="' + my.id + '">叫回來</button>' : '') + '</div>';
       } else if (me.d.hungry) h = '<div class="bn">' + esc(myTribe().res.food) + '吃光了：族人吃不飽，工作變慢、不能訓練<button class="bbtn" data-act="tab" data-tab="tribe">去分工</button></div>';
     }
+    if (!h && me && noticeShown()) h = '<div class="bn info notice"><b>公告</b>' + esc(S.notice.text) + '<button class="bbtn" data-act="notice-x">收起</button></div>';   // 沒有更急的提醒時，才顯示公告
     setHTML(el.banner, h);
   }
   function renderFeed() {   // 左下：最新的一則消息
@@ -5579,7 +5614,7 @@ window.Net = (function () {
   }
   function startPanel() {
     var z = S.zone && G.byId[S.zone], t = z && z.tribe && Tribes.get(z.tribe), ok = t && t.playable;
-    var h = '<div class="start"><h1>山海部落</h1><p class="lead">很久以前，島上的山與海之間住著許多族群。選一個地方，建立你的部落。</p>';
+    var h = '<div class="start"><h1>山海部落</h1><p class="lead">很久以前，島上的山與海之間住著許多族群。選一個地方，建立你的部落。</p>' + (S.notice ? '<p class="snotice"><b>公告</b>' + esc(S.notice.text) + '</p>' : '');
     if (S.mode === 'online') h += S.adopt
       ? '<div class="adopt"><label for="f-adopt">部落代碼<input id="f-adopt" maxlength="200" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="貼上部落代碼，或整個連結"></label><button class="btn sm" data-act="adopt-go">接回我的部落</button><button class="btn sm ghost" data-act="adopt-close">取消</button></div>'
       : '<button class="btn ghost adoptbtn" data-act="adopt-open">玩過了？輸入部落代碼，接回原本的部落</button>';
@@ -6244,6 +6279,7 @@ window.Net = (function () {
     else if (a === 'daily-bonus') act({ type: 'dailyBonus' });
     else if (a === 'side') act({ type: 'side' });
     else if (a === 'hero-up') act({ type: 'heroUp' });
+    else if (a === 'notice-x') { try { localStorage.setItem('shanhai_notice_x', S.notice ? S.notice.id : ''); } catch (e) { /* 存不了就只收起這一次 */ } S.notice = null; render(); }
     else if (a === 'ally-claim') act({ type: 'allyClaim', i: +b.getAttribute('data-i') });
     else if (a === 'rank-go') {   // 排行裡的部落：到地圖上看
       var rv = S.pubs.filter(function (x) { return x.id === b.getAttribute('data-id'); })[0];

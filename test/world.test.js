@@ -1362,3 +1362,21 @@ test('賽夏與鄒：背籃工坊背得多、家族的溪流糧食多又捕魚�
   assert.equal(r2.log.find(x => x.ha).r, 1); assert.equal(r2.log.find(x => x.ha).ha, 'pinch');
   check(w);
 });
+
+test('公告：純文字、最多 200 字、到期自動消失、可以撤下；快照帶著公告、存檔記得、舊存檔沒有也能讀', () => {
+  const w = new World({ rng: seeded(97) });
+  let now = 1e9; w.ensureBots(now);
+  const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'amis' }, now).id];
+  assert.equal(w.setNotice('   ', 24, now).ok, false, '空的不行');
+  assert.ok(w.setNotice('今晚\n10 點停機'.padEnd(300, '。'), 1, now).ok);
+  const n = w.snapshot(v.id, now).notice;
+  assert.ok(n && n.text.length === 200 && !/\n/.test(n.text), '換行改成空白、最多 200 字');
+  const sa = JSON.stringify(w.snapshot(v.id, now).notice); now += 1000; assert.equal(JSON.stringify(w.snapshot(v.id, now).notice), sa, '公告不會每秒變動');
+  now += 3600e3; assert.equal(w.snapshot(v.id, now).notice, null, '1 小時後自動消失');
+  assert.ok(w.setNotice('一直顯示', 0, now).ok); now += 30 * 864e5; assert.ok(w.noticeNow(now), '一直到撤下');
+  assert.ok(w.setNotice('奇怪的時間', 'toString', now).ok); assert.equal(w.notice.until, now + 24 * 3600e3, '不認得的時間當成 1 天');
+  const w2 = new World(); w2.load(w.toJSON()); assert.equal(w2.noticeNow(now).text, '奇怪的時間', '存檔記得公告');
+  assert.ok(w.clearNotice(now).ok); assert.equal(w.noticeNow(now), null); assert.equal(w.clearNotice(now).ok, false);
+  const old = w.toJSON(); delete old.notice; const w3 = new World(); w3.load(old); assert.equal(w3.notice, null, '舊存檔沒有公告');
+  assert.ok(w.adminLog.some(x => /發公告/.test(x.text)) && w.adminLog.some(x => /撤下公告/.test(x.text)), '操作紀錄有記');
+});

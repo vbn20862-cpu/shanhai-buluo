@@ -639,6 +639,26 @@
     return this.setTune(d);
   };
   /* 後台的操作紀錄（最多留 80 筆） */
+  /* 公告：後台寫的一段話（純文字，最多 200 字），顯示到 until（0 是一直到撤下）。玩家畫面上方會出現，可以收起 */
+  var NOTICE_HOURS = [1, 24, 168, 0];
+  World.prototype.setNotice = function (text, hours, now) {
+    text = String(text == null ? '' : text).replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 200);
+    if (!text) return { ok: false, msg: '公告不能是空的' };
+    var h = NOTICE_HOURS.indexOf(Number(hours)) >= 0 ? Number(hours) : 24;
+    this.notice = { id: this.id('n'), text: text, at: now, until: h ? now + h * 3600000 : 0 };
+    this.log('公告：' + text, now, 'notice');
+    this.adminNote('發公告（' + (h === 0 ? '一直到撤下' : h >= 24 ? h / 24 + ' 天' : h + ' 小時') + '）：' + text, now);
+    return { ok: true, msg: '公告發出去了' };
+  };
+  World.prototype.clearNotice = function (now) {
+    if (!this.noticeNow(now)) { this.notice = null; return { ok: false, msg: '目前沒有公告' }; }
+    this.notice = null; this.adminNote('撤下公告', now);
+    return { ok: true, msg: '公告撤下了' };
+  };
+  World.prototype.noticeNow = function (now) {
+    var n = this.notice;
+    return n && (!n.until || now < n.until) ? { id: n.id, text: n.text, at: n.at, until: n.until } : null;
+  };
   World.prototype.adminNote = function (text, now) {
     this.adminLog.push({ t: now, text: text }); if (this.adminLog.length > 80) this.adminLog.splice(0, this.adminLog.length - 80);
   };
@@ -1935,7 +1955,7 @@
       rel: Tribes.playable().filter(function (t) { return t.id !== v.tribe; }).map(function (t) { return { tribe: t.id, value: self.relOf(v.tribe, t.id), state: self.relState(v.tribe, t.id) }; }),
       stock: (function () { var o = {}; self.map.settlements.forEach(function (s) { o[s.id] = self.stockOf(s.id); }); return o; })(),
       market: this.market.map(function (o) { return { id: o.id, from: o.from, fromName: (self.villages[o.from] || {}).name || '', give: o.give, giveN: o.giveN, want: o.want, wantN: o.wantN }; }),
-      feed: this.feed.slice(-30), alliances: al, season: this.season ? { n: this.season.n, end: this.season.end, last: this.season.last } : null
+      feed: this.feed.slice(-30), alliances: al, season: this.season ? { n: this.season.n, end: this.season.end, last: this.season.last } : null, notice: this.noticeNow(now)
     };
   };
   /* 全部的資源點（所有玩家看到的都一樣，只有變動時才重算） */
@@ -1960,13 +1980,13 @@
       return row;
     });
     for (var k in tribes) tribes[k].avg = tribes[k].players ? Math.round(tribes[k].prosperity / tribes[k].players) : 0;
-    return { now: now, speed: this.speed, tune: this.tune, adminLog: this.adminLog.slice(-40), villages: list, tribes: tribes, marches: this.marches.length, offers: this.market.length,
+    return { now: now, speed: this.speed, tune: this.tune, notice: this.noticeNow(now), adminLog: this.adminLog.slice(-40), villages: list, tribes: tribes, marches: this.marches.length, offers: this.market.length,
       stats: this.stats,
       rel: this.rel, nodes: this.nodeCount(), gathering: this.marches.filter(function (m) { return m.phase === 'gather'; }).length, alliances: Object.keys(this.alliances).map(function (k) { return { name: self.alliances[k].name, n: self.alliances[k].members.length }; }) };
   };
   World.prototype.toJSON = function () {
     return { villages: this.villages, tokens: this.tokens, marches: this.marches, market: this.market, feed: this.feed, alliances: this.alliances,
-      stats: this.stats, rel: this.rel, nodes: this.nodes, stock: this.stock, seq: this.seq, tune: this.tune, tuneRev: TUNE_REV, mapRev: MAP_REV, adminLog: this.adminLog, lastTyphoon: this.lastTyphoon || 0, season: this.season || null };
+      stats: this.stats, rel: this.rel, nodes: this.nodes, stock: this.stock, seq: this.seq, tune: this.tune, tuneRev: TUNE_REV, mapRev: MAP_REV, adminLog: this.adminLog, lastTyphoon: this.lastTyphoon || 0, season: this.season || null, notice: this.notice || null };
   };
   World.prototype.load = function (d) {
     if (!d || !d.villages) return this;
@@ -1980,6 +2000,7 @@
       setTune(saved, this.tune); this.tuneV++;
     }
     this.adminLog = d.adminLog || [];
+    this.notice = d.notice && typeof d.notice.text === 'string' ? d.notice : null;   // 公告（舊存檔沒有）
     this.villages = dict(d.villages); this.tokens = dict(d.tokens); this.marches = d.marches || []; this.market = d.market || [];
     this.feed = d.feed || []; this.alliances = dict(d.alliances); for (var ak in this.alliances) if (this.alliances[ak].contrib) this.alliances[ak].contrib = dict(this.alliances[ak].contrib); this.seq = d.seq || 1; this.lastTyphoon = d.lastTyphoon || 0; this.season = d.season || null;   // 改版前的存檔沒有賽季：下一次推進時開始第 1 季
     this.stats = dict(d.stats); this.rel = dict(d.rel); this.nodes = (d.mapRev || 1) < MAP_REV ? dict() : dict(d.nodes); this.nodesV++; this.stock = dict(d.stock);

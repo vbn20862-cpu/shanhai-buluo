@@ -187,11 +187,12 @@
     setInterval(moveFolk, 2400);
     setInterval(function () { if (S.visit) Net.view(S.visit.id, function (d) { if (d && S.visit && S.visit.id === d.id) { S.visit.v = d; render(); } }); }, 3000);
     Net.on('status', function (s) { S.online = s.online; S.mode = s.mode; render(); });
-    Net.on('hello', function (h) { S.pubs = h.villages || S.pubs; if (h.needCode != null) S.needCode = !!h.needCode; if (h.contact != null) S.contact = String(h.contact); if (h.reset) { S.me = null; S.zone = null; S.selTile = null; S.visit = null; S.tab = 'build'; S.view = 'village'; el.vobjs._sig = null; } render(); });
+    /* hello：resumed === false 而畫面上還有部落，代表重新連線後伺服器不認得這個部落了（例如後台還原了比較舊的備份），回到開始畫面 */
+    Net.on('hello', function (h) { S.pubs = h.villages || S.pubs; if (h.needCode != null) S.needCode = !!h.needCode; if (h.contact != null) S.contact = String(h.contact); if ('notice' in h) S.notice = h.notice || null; if (h.reset || (h.resumed === false && S.me)) { S.me = null; S.zone = null; S.selTile = null; S.visit = null; S.tab = 'build'; S.view = 'village'; el.vobjs._sig = null; } render(); });
     Net.on('state', function (st) {
       if (st.tune) R.setTune(st.tune);   // 後台調過的數值：顯示的時間、產量、說明都跟著變
       S.me = st.me; S.pubs = st.villages; S.marches = st.marches || [];
-      S.season = st.season || null;
+      S.season = st.season || null; S.notice = st.notice || null;   // 後台的公告
       S.rel = st.rel || []; S.nodes = st.nodes || []; S.stock = st.stock || {}; S.market = st.market || []; S.feed = st.feed || []; S.alliances = st.alliances || {};
       if (st.me) { Art.need([st.me.tribe]); Art.setTribe(st.me.tribe); }   // 自己族群的美術素材、特產圖示
       autoShow(st.me); raidAlert(st.me); flyGains(st.me); doneSound(st.me);
@@ -441,7 +442,12 @@
       (Net.testing() ? b('test', 'star', '測試') : '') +
       '<button class="db big" data-act="tab" data-tab="' + (map ? 'build' : 'map') + '"><span>' + (map ? '<svg viewBox="-80 -140 160 180" class="bico">' + Art.building('center', myTribe(), me.d.center) + '</svg>' : Art.icon('map')) + '</span>' + (map ? '回部落' : '大地圖') + '</button>');
   }
-  /* 上方的提醒橫幅：拜訪中、有人來出征、有人來搶採集的隊伍、糧食吃光了 */
+  /* 後台的公告：收起過的那一則就不再顯示（記在這台裝置上） */
+  function noticeShown() {
+    if (!S.notice) return false;
+    try { return localStorage.getItem('shanhai_notice_x') !== S.notice.id; } catch (e) { return true; }
+  }
+  /* 上方的提醒橫幅：拜訪中、有人來出征、有人來搶採集的隊伍、糧食吃光了、公告 */
   function renderBanner() {
     var me = S.me, h = '';
     if (S.visit) { var v = S.visit.v, vt = Tribes.get(v.tribe); h = '<div class="bn info">正在拜訪「<b>' + esc(v.name) + '</b>」（' + vt.zh + '，' + esc(vt.b.center.zh) + ' ' + v.c + ' 級）<button class="bbtn" data-act="leave">回我的部落</button></div>'; }
@@ -453,6 +459,7 @@
         h = '<div class="bn">⚠ 「<b>' + esc(fr ? fr.name : '有人') + '</b>」要來搶你在' + (nn ? R.NODE[nn.k].zh : '資源點') + '的隊伍，<b data-until="' + th.arriveAt + '"></b> 後抵達' + (my ? '<button class="bbtn" data-act="recall" data-id="' + my.id + '">叫回來</button>' : '') + '</div>';
       } else if (me.d.hungry) h = '<div class="bn">' + esc(myTribe().res.food) + '吃光了：族人吃不飽，工作變慢、不能訓練<button class="bbtn" data-act="tab" data-tab="tribe">去分工</button></div>';
     }
+    if (!h && me && noticeShown()) h = '<div class="bn info notice"><b>公告</b>' + esc(S.notice.text) + '<button class="bbtn" data-act="notice-x">收起</button></div>';   // 沒有更急的提醒時，才顯示公告
     setHTML(el.banner, h);
   }
   function renderFeed() {   // 左下：最新的一則消息
@@ -902,7 +909,7 @@
   }
   function startPanel() {
     var z = S.zone && G.byId[S.zone], t = z && z.tribe && Tribes.get(z.tribe), ok = t && t.playable;
-    var h = '<div class="start"><h1>山海部落</h1><p class="lead">很久以前，島上的山與海之間住著許多族群。選一個地方，建立你的部落。</p>';
+    var h = '<div class="start"><h1>山海部落</h1><p class="lead">很久以前，島上的山與海之間住著許多族群。選一個地方，建立你的部落。</p>' + (S.notice ? '<p class="snotice"><b>公告</b>' + esc(S.notice.text) + '</p>' : '');
     if (S.mode === 'online') h += S.adopt
       ? '<div class="adopt"><label for="f-adopt">部落代碼<input id="f-adopt" maxlength="200" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="貼上部落代碼，或整個連結"></label><button class="btn sm" data-act="adopt-go">接回我的部落</button><button class="btn sm ghost" data-act="adopt-close">取消</button></div>'
       : '<button class="btn ghost adoptbtn" data-act="adopt-open">玩過了？輸入部落代碼，接回原本的部落</button>';
@@ -1567,6 +1574,7 @@
     else if (a === 'daily-bonus') act({ type: 'dailyBonus' });
     else if (a === 'side') act({ type: 'side' });
     else if (a === 'hero-up') act({ type: 'heroUp' });
+    else if (a === 'notice-x') { try { localStorage.setItem('shanhai_notice_x', S.notice ? S.notice.id : ''); } catch (e) { /* 存不了就只收起這一次 */ } S.notice = null; render(); }
     else if (a === 'ally-claim') act({ type: 'allyClaim', i: +b.getAttribute('data-i') });
     else if (a === 'rank-go') {   // 排行裡的部落：到地圖上看
       var rv = S.pubs.filter(function (x) { return x.id === b.getAttribute('data-id'); })[0];
