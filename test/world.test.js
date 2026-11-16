@@ -352,17 +352,16 @@ test('資源點：隨機長出來、種類照地形；派人去採，採滿就�
   const b = w.villages[w.join('b', { owner: 'B', name: '乙', tribe: 'amis' }, now).id];
   w.setOnline(a.id, true, now); w.setOnline(b.id, true, now);
   w.tick(now += 1000);
-  const nodes = Object.values(w.nodes).filter(n => !R.NODE[n.k].ev);   // 野地事件（山豬群、搶修）另外算
+  const nodes = Object.values(w.nodes).filter(n => !R.NODE[n.k].ev && !n.home);   // 野地事件（山豬群、搶修）、部落附近保證有的另外算
   assert.equal(nodes.length, R.TUNE.nodeCount, '一開始就長滿');
   const geo = w.map.byId;
   for (const n of nodes) {
     assert.ok(R.NODE[n.k] && n.lv >= 1 && n.lv <= 5 && n.amt === R.NODE_AMT[n.lv]);
-    if (n.k === 'stone') assert.ok(['paiwan', 'rukai', 'bunun'].includes(geo[n.hex].tribe) && geo[n.hex].alt === 'mt', '石板只在產石板的山區');
     if (n.k === 'forage') assert.equal(geo[n.hex].alt, 'low', '野菜地在平地');
   }
   assert.ok(new Set(nodes.map(n => n.k)).size >= 5, '各種資源點都有');
-  // 甲派 4 人去採一個糧食的資源點
-  const nd = nodes.filter(n => R.NODE[n.k].res === 'food' && n.lv === 1)[0];
+  // 甲派 4 人去採一個林地（木頭）
+  const nd = nodes.filter(n => R.NODE[n.k].res === 'wood' && n.lv === 1)[0];
   a.units.w = 6; a.units.a = 4;
   assert.equal(w.act(a.id, { type: 'gather', node: 'toString', w: 1, a: 0 }, now).ok, false);
   assert.ok(w.act(a.id, { type: 'gather', node: nd.id, w: 4, a: 0 }, now).ok);
@@ -382,13 +381,13 @@ test('資源點：隨機長出來、種類照地形；派人去採，採滿就�
   assert.ok(a.reports[0].show && a.reports[0].point, '有可以重播的戰報');
   now = m.arriveAt + 10; w.tick(now);
   assert.equal(a.away.w + a.away.a, 0, '甲的人都回來了（負傷的不算）'); assert.ok(!w.marches.includes(m));
-  // 乙採滿就回家，帶回糧食
-  const food0 = b.res.food;
+  // 乙採滿就回家，帶回木頭
+  const wood0 = b.res.wood;
   while (raid.phase !== 'back') { now += 5000; w.tick(now); }
   const carry = raid.carry;
   assert.ok(carry > 0 && carry <= 14 * R.TUNE.gatherLoad);
   now = raid.arriveAt + 10; w.tick(now);
-  assert.ok(b.res.food >= food0 + carry - 1 - 60, '帶回來的糧食進倉庫'); assert.equal(b.stat.point >= 1, true, '算採集過一次');
+  assert.ok(b.res.wood >= wood0 + carry - 1, '帶回來的木頭進倉庫'); assert.equal(b.stat.point >= 1, true, '算採集過一次');
   assert.ok(!w.nodes[nd.id] || w.nodes[nd.id].amt < nd.max, '資源點扣掉了');
   // 叫回來：帶著已經採到的
   const nd2 = Object.values(w.nodes).filter(n => !n.g && n.lv >= 3)[0];
@@ -402,7 +401,7 @@ test('資源點：隨機長出來、種類照地形；派人去採，採滿就�
   // 採完的點會在別的地方長出新的
   delete w.nodes[nd2.id]; w.nodesV++;
   for (let i = 0; i < 40; i++) w.tick(now += 1000);
-  assert.equal(Object.values(w.nodes).filter(n => !R.NODE[n.k].ev).length, R.TUNE.nodeCount);
+  assert.equal(Object.values(w.nodes).filter(n => !R.NODE[n.k].ev && !n.home).length, R.TUNE.nodeCount);
   check(w);
 });
 
@@ -764,7 +763,7 @@ test('舊存檔：打到一半的舊式對戰把人送回去；佈防設定拿�
   assert.deepEqual([a4.units.w, a4.away.w], [4, 0], '駐守的人回到部落');
   const h4 = w4.map.byId[a4.hex];
   assert.ok(h4 && h4.tribe === 'bunun', '搬到同一族的區域'); assert.ok(Math.hypot(a4.pos[0] - h4.x, a4.pos[1] - h4.y) <= 2, '坐標跟著換');
-  w4.tick(now + 7000); assert.equal(Object.values(w4.nodes).filter(n => !R.NODE[n.k].ev).length, R.TUNE.nodeCount, '資源點重新長出來');
+  w4.tick(now + 7000); assert.equal(Object.values(w4.nodes).filter(n => !R.NODE[n.k].ev && !n.home).length, R.TUNE.nodeCount, '資源點重新長出來');
   assert.equal(w3.tune.wallPct, 12, '新版存檔裡調過的對戰數值會保留'); assert.equal(again.tune.pace, 20);
   check(w2);
 });
@@ -1066,7 +1065,7 @@ test('野地事件：山豬群（趕回山裡）與颱風後搶修，一個人�
   const boars = nodes.filter(n => n.k === 'boar'), repairs = nodes.filter(n => n.k === 'repair');
   assert.equal(boars.length, R.TUNE.boarCount, '山豬群補到設定的數量');
   assert.ok(repairs.length > 0, '颱風過後有地方要搶修');
-  assert.ok(nodes.filter(n => !R.NODE[n.k].ev).length <= R.TUNE.nodeCount, '資源點的數量不受事件影響');
+  assert.ok(nodes.filter(n => !R.NODE[n.k].ev && !n.home).length <= R.TUNE.nodeCount, '資源點的數量不受事件影響');
   assert.ok(w.feed.some(f => /颱風過後/.test(f.text || f.t || JSON.stringify(f))));
   // 趕山豬：1 級的山豬群，20 個勇士、10 個弓手去一定趕得走
   const b = boars.filter(n => n.lv === 1)[0] || boars[0]; b.lv = 1; b.bn = R.BOAR_N[1];
@@ -1436,4 +1435,72 @@ test('資源改版：小米在部落裡種，木頭、石頭、肉要到野地�
   assert.equal(nv.jobs.mat, undefined); assert.equal(nv.jobs.food, 3); assert.equal(nv.gp, 0); assert.equal(nv.idle.focus, 'even');
   assert.equal(w2.market[0].give, 'wood');
   check(w2);
+});
+
+test('族人採集隊：族人也能出去採；被搶時丟下一半跑回家；部落附近一定有林地和岩場；離線時自動派族人去採', () => {
+  const R = World.rules, w = new World({ rng: seeded(97) });
+  let now = 1e6;
+  const a = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'atayal' }, now).id], b = w.villages[w.join('b', { owner: 'B', name: '乙', tribe: 'atayal', hex: a.hex }, now).id];
+  [a, b].forEach(v => { w.setOnline(v.id, true, now); v.newbieUntil = 0; });
+  w.tick(now += 1000);
+  // 部落附近一定有低等級的林地和岩場
+  const near = (v, res) => Object.values(w.nodes).filter(n => R.NODE[n.k].res === res && n.lv <= 2 && Math.hypot(n.x - v.pos[0], n.y - v.pos[1]) <= 2.5 * 3);
+  [a, b].forEach(v => { assert.ok(near(v, 'wood').length >= 1 && near(v, 'stone').length >= 1, v.name + ' 附近有林地和岩場'); });
+  const nd = near(a, 'wood').sort((x, y) => x.lv - y.lv)[0];
+  // 族人出發：不在部落裡工作
+  assert.equal(w.act(a.id, { type: 'gather', node: nd.id, w: 0, a: 0, u: 0, p: a.pop + 1 }, now).ok, false, '族人不夠');
+  const boar = { id: 'nb', k: 'boar', lv: 1, hex: nd.hex, x: nd.x + 4, y: nd.y, amt: 1, max: 1, g: null, bn: 3 }; w.nodes.nb = boar;
+  assert.match(w.act(a.id, { type: 'gather', node: 'nb', w: 0, a: 0, u: 0, p: 2 }, now).msg, /戰士/, '趕山豬要派戰士');
+  delete w.nodes.nb;
+  assert.ok(w.act(a.id, { type: 'gather', node: nd.id, w: 0, a: 0, u: 0, p: 3 }, now).ok);
+  assert.equal(a.gp, 3); assert.ok(a.jobs.food + a.jobs.special <= a.pop - 3, '出去的族人不在部落裡工作');
+  const m = w.marches.find(x => x.from === a.id);
+  assert.equal(m.p, 3); assert.equal(w.snapshot(a.id, now).marches.find(x => x.id === m.id).n, 3);
+  now = m.arriveAt + 10; w.tick(now);
+  assert.equal(m.phase, 'gather'); assert.ok(Math.abs(nd.g.rate - R.gatherRate(a, 3, nd.k) * w.speed) < 1e-9, '照人數採');
+  // 族人不會去搶：沒有戰士不能去別人在採的地方
+  assert.match(w.act(b.id, { type: 'gather', node: nd.id, w: 0, a: 0, u: 0, p: 2 }, now).msg, /戰士/);
+  // 有戰士的隊伍來搶：族人丟下一半就跑
+  now += 30000; w.tick(now);
+  b.units.w = 3; assert.ok(w.act(b.id, { type: 'gather', node: nd.id, w: 3, a: 0 }, now).ok);
+  const raid = w.marches.find(x => x.from === b.id);
+  now = raid.arriveAt + 10; w.tick(now);
+  assert.equal(m.phase, 'back'); assert.ok(raid.carry > 0, '撿到族人丟下的東西');
+  assert.equal(nd.g.v, b.id, '乙接著採'); assert.equal(b.units.w + b.away.w, 3, '沒有打架，沒有人負傷');
+  assert.ok(a.reports[0].note.includes('丟下'), a.reports[0].note);
+  const kept = m.carry, wood0 = a.res.wood;
+  assert.ok(kept >= 0 && Math.abs(kept - raid.carry) <= 1, '族人丟下一半');
+  now = m.arriveAt + 10; w.tick(now);
+  assert.equal(a.gp, 0, '族人回來了'); assert.ok(a.res.wood >= wood0 + kept - 1);
+  // 離線時自動派族人去附近採（掛機設定，預設開）
+  assert.equal(a.idle.gather, true);
+  w.marches = []; a.gp = 0; a.pop = 8; a.tiles[4].level = 5;
+  w.setOnline(a.id, false, now);
+  for (let i = 0; i < 25; i++) w.tick(now += 1000);
+  const auto = w.marches.find(x => x.from === a.id);
+  assert.ok(auto && auto.auto && auto.p >= 2 && auto.w === 0, '自動派了族人出去');
+  assert.ok(['wood', 'stone', 'meat'].includes(R.NODE[w.nodes[auto.node].k].res));
+  for (let i = 0; i < 200 && w.marches.some(x => x.id === auto.id); i++) w.tick(now += 5000);
+  assert.ok(!w.marches.some(x => x.id === auto.id && x.phase === 'back' && x.arriveAt < now), '採完回家');
+  w.setOnline(a.id, true, now);
+  assert.ok(a.report && (a.report.wood > 0 || a.report.stone > 0 || a.report.meat > 0), '離線報告裡有族人採回來的：' + JSON.stringify(a.report));
+  // 關掉之後就不會自動派
+  w.act(a.id, { type: 'idle', gather: false }, now); w.marches = []; a.gp = 0;
+  w.setOnline(a.id, false, now); for (let i = 0; i < 25; i++) w.tick(now += 1000);
+  assert.ok(!w.marches.some(x => x.from === a.id));
+  // 存檔讀回來：出去採集的族人照路上的隊伍重算
+  a.gp = 99; const w2 = new World().load(JSON.parse(JSON.stringify(w.toJSON())));
+  assert.equal(w2.villages[a.id].gp, 0);
+  check(w2);
+});
+
+test('示範部落也會派族人去採木頭、石頭，才蓋得了房子', () => {
+  const w = new World({ speed: 4, rng: seeded(101) });
+  let now = 1e6; w.ensureBots(now);
+  let sent = 0;
+  for (let i = 0; i < 1500; i++) { now += 1000; w.tick(now); if (w.marches.some(m => m.auto && m.p > 0)) sent++; }
+  assert.ok(sent > 0, '示範部落有派族人出去');
+  const bots = Object.values(w.villages);
+  assert.ok(bots.some(v => v.res.stone !== 120 || v.res.wood !== 160), '示範部落的木頭、石頭有變化');
+  check(w);
 });
