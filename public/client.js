@@ -13,13 +13,14 @@
       : tr === 'swift' ? '隊伍裡每有一位，出征和採集的路程少 ' + T.swiftPct + '%（最多 ' + T.swiftMax + '%）' : '守在自己部落時更耐打（多 ' + T.wallHpPct + '%）';
   }
   function abilityFx(ab) {   // 英雄能力是自動發動的：寫出什麼時候發動、效果是什麼
-    var T = R.TUNE;
-    return ab === 'volley2' ? '開場的遠射時發動，那一輪我方的攻擊變成 ' + T.abVolley2 + ' 倍'
-      : ab === 'relay' ? '負傷的人超過三成時發動，負傷的人有 ' + pct(T.abRelayBack) + ' 回到隊伍裡'
-      : ab === 'unity' ? '第一次交鋒時發動，那一回合我方的損失只有原本的 ' + pct(T.abUnity)
-      : ab === 'cover' ? '第一次交鋒時發動，那一回合我方的攻擊變成 ' + T.abCover + ' 倍'
-      : ab === 'gather' ? '第一次交鋒時發動，之後每一回合我方的攻擊多 ' + T.abGatherPct + '%（最多 ' + T.abGatherMax + '%）' : '人數剩六成以下時發動，那一回合我方的損失只有原本的 ' + pct(T.abSteadfast);
+    var T = R.TUNE, x = R.heroAb(ab), k = function (n) { return String(Math.round(n * 100) / 100); };
+    return ab === 'volley2' ? '開場的遠射時發動，那一輪我方的攻擊變成 ' + k(x) + ' 倍'
+      : ab === 'relay' ? '負傷的人超過三成時發動，負傷的人有 ' + pct(x) + ' 回到隊伍裡'
+      : ab === 'unity' ? '第一次交鋒時發動，那一回合我方的損失只有原本的 ' + pct(x)
+      : ab === 'cover' ? '第一次交鋒時發動，那一回合我方的攻擊變成 ' + k(x) + ' 倍'
+      : ab === 'gather' ? '第一次交鋒時發動，之後每一回合我方的攻擊多 ' + k(x) + '%（最多 ' + T.abGatherMax + '%）' : '人數剩六成以下時發動，那一回合我方的損失只有原本的 ' + pct(x);
   }
+
   var ODDS_ZH = { high: '高', mid: '中', low: '低' };
   function oddsHTML(mine, theirs) { var o = R.odds(mine, theirs); return '<span class="odds ' + o + '">勝算' + ODDS_ZH[o] + '</span>'; }
   function gradeText(r) {   // 戰報右邊的一句話
@@ -277,13 +278,36 @@
     var bub = !S.visit && S.me && S.me.d ? { farm: '+' + perTime(S.me.d.rates.food), mat: '+' + perTime(S.me.d.rates.mat), special: '+' + perTime(S.me.d.rates.special) } : null;   // 產量的泡泡
     var sig = v.id + '|' + sel + '|' + Art.newArt() + Art.ready(t.id) + '|' + JSON.stringify(v.tiles) + v.land.join('') + JSON.stringify(v.queue) + JSON.stringify(bub);
     if (el.vobjs._sig !== sig) { el.vobjs.innerHTML = Art.scene(v, sel, !!S.visit, bub); el.vobjs._sig = sig; tickTimers(); }
-    var want = Math.min(v.pop, 14);
-    if (folkN !== want || el.folk._t !== v.id) {
+    var plan = folkPlan(v), fsig = v.id + '|' + plan.map(function (r) { return r.k + r.at; }).join(',');
+    if (folkN === -1 || el.folk._t !== fsig) {   // 分工或工程變了：重新安排族人
       var s = '';
-      for (var i = 0; i < want; i++) { var p = spot(v); s += '<g class="person" style="transform:translate(' + p[0] + 'px,' + p[1] + 'px)">' + Art.person(i % 3 ? '#F2EAD6' : t.look.trim, t.id, i) + '</g>'; }
-      el.folk.innerHTML = s; folkN = want; el.folk._t = v.id;
+      plan.forEach(function (r, i) {
+        var p = r.k === 'idle' ? spot(v) : near(r.at), pose = r.k === 'idle' ? '' : 'work';
+        s += '<g class="person" data-k="' + r.k + '" data-at="' + (r.at == null ? '' : r.at) + '" data-ph="work" data-c="' + Math.floor(Math.random() * 4) + '" data-x="' + p[0] + '" style="transform:translate(' + p[0] + 'px,' + p[1] + 'px)">' + folkFig(t, i, pose, false) + '</g>';
+      });
+      el.folk.innerHTML = s; folkN = plan.length; el.folk._t = fsig;
     }
   }
+  /* 族人在做什麼：正在蓋的建築旁邊有工人；其他人照分工的比例，去小米田（芋頭田）、採集場、特產建築；剩下的在附近走動。畫面上最多 FOLK_MAX 人 */
+  var FOLK_MAX = 10;
+  function folkPlan(v) {
+    var want = Math.min(v.pop || 0, FOLK_MAX), roles = [], jobs = v.jobs || {}, tot = Math.max(1, v.pop || 0);
+    var sites = function (types) { var a = []; for (var i = 0; i < R.TILE_N; i++) { var b = v.tiles[i]; if (b && b.level > 0 && types.indexOf(b.type) >= 0) a.push(i); } return a; };
+    var W = { food: sites(['farm', 'taro']), mat: sites(['mat']), special: sites(['special']) };
+    (v.queue || []).forEach(function (q) { if (roles.length < want && q.tile != null) roles.push({ k: 'build', at: q.tile }); });
+    ['food', 'mat', 'special'].forEach(function (k) {
+      var n = Math.round(want * (jobs[k] || 0) / tot);
+      for (var j = 0; j < n && roles.length < want && W[k].length; j++) roles.push({ k: k, at: W[k][j % W[k].length] });
+    });
+    while (roles.length < want) roles.push({ k: 'idle', at: null });
+    return roles;
+  }
+  function near(tile) { var p = Art.sitePos(tile); return [Math.round(p[0] - 30 + Math.random() * 60), Math.round(p[1] + 8 + Math.random() * 16)]; }   // 某塊地的前面
+  function storeSpot(v) {   // 收成揹去放的地方：穀倉，沒有就放到部落中心
+    for (var i = 0; i < R.TILE_N; i++) if (v.tiles[i] && v.tiles[i].type === 'storage' && v.tiles[i].level > 0) return near(i);
+    return near(R.CENTER_TILE);
+  }
+  function folkFig(t, i, pose, left) { return '<g' + (left ? ' transform="scale(-1 1)"' : '') + '>' + Art.person(i % 3 ? '#F2EAD6' : t.look.trim, t.id, i, pose) + '</g>'; }
   function spot(v) {   // 族人走動的位置：開墾好的地附近
     var open = []; for (var i = 0; i < R.TILE_N; i++) if (v.land[i]) open.push(i);
     var p = Art.sitePos(open[Math.floor(Math.random() * open.length)]);
@@ -312,8 +336,22 @@
   }
   function moveFolk() {
     if (!shown() || scene() !== 'village' || document.hidden || P.calm) return;   // 減少動畫：族人站著不走動
-    var nodes = el.folk.children;
-    for (var i = 0; i < nodes.length; i++) if (Math.random() < 0.55) { var p = spot(shown()); nodes[i].style.transform = 'translate(' + p[0] + 'px,' + p[1] + 'px)'; }
+    var v = shown(), t = Tribes.get(v.tribe), nodes = el.folk.children;
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i], k = n.getAttribute('data-k'), at = +n.getAttribute('data-at'), ph = n.getAttribute('data-ph'), c = +n.getAttribute('data-c') + 1, p = null, pose = null;
+      if (k === 'idle') { if (Math.random() < 0.55) p = spot(v); }
+      else if (k === 'build') { if (Math.random() < 0.4) p = near(at); }   // 工人在工地附近走動
+      else if (ph === 'work') {   // 在田裡做事；做了一陣子就揹著收成去穀倉
+        if (c >= 5 + (i % 3)) { ph = 'carry'; c = 0; p = storeSpot(v); pose = 'carry'; } else if (Math.random() < 0.3) p = near(at);
+      } else if (ph === 'carry') { ph = 'back'; c = 0; p = near(at); pose = 'walk'; }   // 放下了，走回去
+      else { ph = 'work'; c = 0; pose = 'work'; }   // 回到田裡
+      n.setAttribute('data-ph', ph); n.setAttribute('data-c', c);
+      if (p) {
+        var left = p[0] < +n.getAttribute('data-x');
+        n.style.transform = 'translate(' + p[0] + 'px,' + p[1] + 'px)'; n.setAttribute('data-x', p[0]);
+        n.innerHTML = folkFig(t, i, pose || (k === 'idle' ? '' : k === 'build' ? 'work' : ph === 'work' ? 'work' : 'walk'), left);
+      } else if (pose) n.innerHTML = folkFig(t, i, pose, false);
+    }
   }
   function tickTimers() {
     if (S.marches.length && scene() === 'map') renderMarks();
@@ -933,12 +971,7 @@
       if (me.quest >= 4) h += '<p class="note">' + esc(us.note) + '</p>';
     }
     h += '</section>' + tierCard(me);
-    if (me.quest >= R.QUESTS.length) {   // 傳說英雄：每場對戰可以用一次能力，用過要休息
-      var rest = me.heroRest > Date.now();
-      h += '<section class="card"><h3>' + nat(t.hero) + '<span class="lv">傳說英雄 · ' + (rest ? '休息中' : '可以出戰') + '</span></h3>' +
-        '<p class="eff' + (rest ? '' : ' next') + '">能力「' + esc(t.hero.abilityZh) + '」：' + abilityFx(t.hero.ability) + '。</p>' +
-        '<p class="muted">對戰時會在適合的時機自動發動，每場一次；出過力之後要休息 ' + dur(R.paced(R.HERO_REST) / 1000) + '。' + (rest ? '還要 <b data-until="' + me.heroRest + '"></b>。' : '') + '</p><p class="note">' + esc(t.hero.note) + '</p></section>';
-    }
+    if (me.quest >= R.QUESTS.length) h += heroCard(me);   // 傳說英雄：等級、能力、升級
     if (guests.length || R.bl(me, 'guest')) {   // 來支援的盟友（迎賓亭）
       var gn = guests.reduce(function (n, m) { return n + m.n; }, 0);
       h += '<section class="card"><h3>' + Art.icon('alliance') + '來支援的盟友<span class="lv">' + gn + ' / ' + R.supportCap(me) + ' 人</span></h3>';
@@ -1099,6 +1132,22 @@
     return true;
   }
   /* 兵種階級：全部落的這種兵一起升階。列出現在第幾階、下一階要什麼 */
+  /* 傳說英雄：每場對戰可以用一次能力，用過要休息；花物資和時間升級（1～5 級），能力變強、休息變短 */
+  function boostPct(L) { return Math.round((R.heroBoost(L) - 1) * 1000) / 10; }
+  function heroCard(me) {
+    var t = myTribe(), ab = t.hero.ability, L = me.heroLv || 1, rest = me.heroRest > Date.now(), up = me.heroUp, to = L + 1, max = to > R.HERO_MAX;
+    var h = '<section class="card hero"><h3>' + nat(t.hero) + '<span class="lv">傳說英雄 · ' + L + ' 級 · ' + (rest ? '休息中' : '可以出戰') + '</span></h3>' +
+      '<div class="hrow">' + Art.heroPic(t.id) + '<div class="htxt"><p class="eff">能力「' + esc(t.hero.abilityZh) + '」：' + abilityFx(ab) + '。</p>' +
+      (L > 1 ? '<p class="eff">' + L + ' 級：英雄在場時，全隊的攻擊與耐力 +' + boostPct(L) + '%。</p>' : '') +
+      (max ? '<p class="muted">已經是最高級了。</p>' : '<p class="eff next">升到 ' + to + ' 級：英雄在場時，全隊的攻擊與耐力 +' + boostPct(to) + '%；休息縮短成 ' + dur(R.paced(R.heroRest({ heroLv: to })) / 1000) + '。</p>') + '</div></div>';
+    if (up) h += '<div class="qrow busyline"><span>升到 ' + up.to + ' 級，還要 <b data-until="' + up.doneAt + '"></b></span>' + speedBtn(me, 'hero') + '</div>';
+    else if (!max) {
+      var c = R.heroCost(to), need = R.HERO_REQ[to], low = me.d.center < need, ok = !low && affordable(me, c, c.sp);
+      h += '<div class="act hup"><button class="btn sm" data-act="hero-up"' + (ok ? '' : ' disabled') + '>升到 ' + to + ' 級</button>' + costHTML(me, c, c.sp) + '<span class="time">' + Art.icon('speed') + dur(R.heroTime(to) * 3 * R.TUNE.pace) + '</span>' +
+        (low ? '<span class="lack">要先把' + esc(t.b.center.zh) + '升到 ' + need + ' 級</span>' : '') + '</div>';
+    }
+    return h + '<p class="muted">對戰時會在適合的時機自動發動，每場一次；出過力之後要休息 ' + dur(R.paced(R.heroRest(me)) / 1000) + '。' + (rest ? '還要 <b data-until="' + me.heroRest + '"></b>。' : '') + '</p><p class="note">' + esc(t.hero.note) + '</p></section>';
+  }
   function tierCard(me) {
     var t = myTribe(), d = me.d, pct = R.TUNE.tierPct, h = '<section class="card"><h3>' + Art.icon('tier' + Math.max(d.tiers.w, d.tiers.a)) + '兵種階級<span class="lv">每一階攻擊、耐力 +' + pct + '%</span></h3>';
     ['w', 'a', 'u'].forEach(function (k) {
@@ -1511,6 +1560,7 @@
     else if (a === 'daily-claim') act({ type: 'dailyClaim', i: +b.getAttribute('data-i') });
     else if (a === 'daily-bonus') act({ type: 'dailyBonus' });
     else if (a === 'side') act({ type: 'side' });
+    else if (a === 'hero-up') act({ type: 'heroUp' });
     else if (a === 'ally-claim') act({ type: 'allyClaim', i: +b.getAttribute('data-i') });
     else if (a === 'rank-go') {   // 排行裡的部落：到地圖上看
       var rv = S.pubs.filter(function (x) { return x.id === b.getAttribute('data-id'); })[0];

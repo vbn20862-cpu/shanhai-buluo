@@ -1301,3 +1301,36 @@ test('族人的請託：中心 3、6、9 級各出現一件；交出物資、建
   assert.ok(w.act(a.id, { type: 'side' }, now).ok); assert.equal(a.side.i, 1);
   check(w);
 });
+
+test('英雄升級：完成主線才能升、要中心等級與物資、倒數可以加速；能力變強、休息變短；舊存檔是 1 級', () => {
+  const R = World.rules, w = new World({ rng: seeded(87) });
+  let now = 1e9; w.ensureBots(now);
+  const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'bunun' }, now).id]; v.newbieUntil = 0;
+  assert.equal(v.heroLv, 1);
+  assert.equal(w.act(v.id, { type: 'heroUp' }, now).ok, false, '還沒有英雄');
+  v.quest = R.QUESTS.length; v.tiles[0].level = 5; v.res.food = v.res.mat = 1e5; v.sp.bunun = 500; v.tiles[7] = { type: 'storage', level: 20 };
+  assert.match(w.act(v.id, { type: 'heroUp' }, now).msg, /6 級/, '2 級要中心 6 級');
+  v.tiles[0].level = 6;
+  const c = R.heroCost(2), f0 = v.res.food, sp0 = v.sp.bunun;
+  assert.ok(w.act(v.id, { type: 'heroUp' }, now).ok);
+  assert.equal(f0 - v.res.food, c.food); assert.equal(sp0 - v.sp.bunun, c.sp);
+  assert.equal(w.act(v.id, { type: 'heroUp' }, now).ok, false, '升級中不能再升');
+  const left = v.heroUp.doneAt - now; v.boosts = 1;
+  assert.ok(w.act(v.id, { type: 'speed', what: 'hero' }, now).ok); assert.ok(v.heroUp.doneAt - now < left, '可以加速');
+  now = v.heroUp.doneAt + 10; w.tickVillage(v, now);
+  assert.equal(v.heroLv, 2); assert.equal(v.heroUp, null);
+  assert.ok(R.heroRest(v) < R.HERO_REST, '休息變短');
+  assert.ok(R.heroBoost(5) > R.heroBoost(2) && R.heroBoost(2) > R.heroBoost(1) && R.heroBoost(1) === 1, '等級越高，英雄在場時全隊越強');
+  // 兩邊的英雄都是 5 級時，各族之間還是平衡
+  const m5 = R.simMatrix({ n: 300, rng: seeded(91), heroLv: 5 }); assert.ok(m5.worst < 0.1, '英雄 5 級時各族差距不大（詳細看 npm run sim）');
+  // 高等級的英雄在同樣的兵力下比較常贏
+  let w1 = 0, w5 = 0; const rng = seeded(5);
+  for (let i = 0; i < 400; i++) {
+    if (R.autoBattle({ tribe: 'bunun', w: 5, a: 5, u: 0, hero: true, heroLv: 1 }, { tribe: 'bunun', w: 5, a: 5, u: 0, hero: true, heroLv: 1, wall: 0 }, rng).win) w1++;
+    if (R.autoBattle({ tribe: 'bunun', w: 5, a: 5, u: 0, hero: true, heroLv: 5 }, { tribe: 'bunun', w: 5, a: 5, u: 0, hero: true, heroLv: 1, wall: 0 }, rng).win) w5++;
+  }
+  assert.ok(w5 > w1, `5 級的英雄比較常贏（${w5} > ${w1}）`);
+  v.tiles[0].level = 15; v.heroLv = 5; assert.match(w.act(v.id, { type: 'heroUp' }, now).msg, /最高級/);
+  const old = w.toJSON(); delete old.villages[v.id].heroLv; const w2 = new World(); w2.load(old); assert.equal(w2.villages[v.id].heroLv, 1);
+  check(w);
+});

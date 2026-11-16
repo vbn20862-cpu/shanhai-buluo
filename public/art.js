@@ -474,10 +474,12 @@ window.Art = (function () {
   function pill(x, y, until) {
     return '<g transform="translate(' + f1(x) + ' ' + f1(y) + ')"><rect x="-40" y="-13" width="80" height="26" rx="13" fill="rgba(20,33,42,.9)"/><text y="6" text-anchor="middle" font-size="17" font-weight="700" fill="#E3B341" data-until="' + until + '"></text></g>';
   }
-  function person(color, tribe, i) {   // 有素材就用該族的族人（走路、站著、扛東西），原點在腳底下 9 的地方
-    var vs = ['-villager-a-walk', '-villager-b-stand', '-villager-a-stand'], n = tribe && newArt && AS && AS.people ? tribe + vs[(i || 0) % 3] : '';
-    if (n && AS.people[n]) return '<use href="#vp-' + n + '" transform="translate(0 9) scale(.95)"/>';
-    return '<ellipse cx="0" cy="9" rx="6.5" ry="2.4" fill="#000" opacity=".22"/><path d="M-5.5 9c0-8 2-13 5.5-13s5.5 5 5.5 13z" fill="' + color + '"/><circle cx="0" cy="-8" r="4.8" fill="#B98660"/>';
+  var POSE_ART = { walk: '-villager-a-walk', carry: '-villager-a-walk', work: '-villager-b-stand', stand: '-villager-a-stand' };
+  function person(color, tribe, i, pose) {   // 有素材就用該族的族人（走路、站著、做事），原點在腳底下 9 的地方。pose：walk 走路、carry 揹著收成、work 做事、stand 站著
+    var vs = ['-villager-a-walk', '-villager-b-stand', '-villager-a-stand'], n = tribe && newArt && AS && AS.people ? tribe + (POSE_ART[pose] || vs[(i || 0) % 3]) : '';
+    var load = pose === 'carry' ? '<ellipse cx="-6" cy="-23" rx="6" ry="5" fill="#C9A86A" stroke="#7A5636" stroke-width="1.2"/><path d="M-10 -26l8 6" stroke="#7A5636" stroke-width="1.2"/>' : '';   // 揹在背上的收成
+    if (n && AS.people[n]) return '<g transform="translate(0 9) scale(.95)"><use href="#vp-' + n + '"/>' + load + '</g>';
+    return '<ellipse cx="0" cy="9" rx="6.5" ry="2.4" fill="#000" opacity=".22"/><path d="M-5.5 9c0-8 2-13 5.5-13s5.5 5 5.5 13z" fill="' + color + '"/><circle cx="0" cy="-8" r="4.8" fill="#B98660"/>' + (load ? '<g transform="translate(0 9)">' + load + '</g>' : '');
   }
 
   // ---------- 對戰畫面：山林間的亂戰 ----------
@@ -933,7 +935,11 @@ window.Art = (function () {
     return s;
   }
 
-  return { setTribe: function (id) { spTribe = SP_ICON[id] ? id : null; }, need: need, ready: function (t) { return !AS || !!packs[t]; }, onLoad: function (fn) { onLoad.push(fn); }, icon: icon, iconBody: iconBody, scene: scene, battleShow: battleShow, building: function (type, t, level) { return bld(type, t.look, t, level); },
+  function heroPic(t) {   // 英雄卡上放大的英雄圖（有美術素材才有）
+    var b = newArt && AS && AS.people && AS.people[t + '-hero-stand'];
+    return b ? '<svg class="hpic" viewBox="-50 -72 100 82" role="img" aria-label="傳說英雄" style="color:#E3B341">' + b + '</svg>' : '';
+  }
+  return { heroPic: heroPic, setTribe: function (id) { spTribe = SP_ICON[id] ? id : null; }, need: need, ready: function (t) { return !AS || !!packs[t]; }, onLoad: function (fn) { onLoad.push(fn); }, icon: icon, iconBody: iconBody, scene: scene, battleShow: battleShow, building: function (type, t, level) { return bld(type, t.look, t, level); },
     hasNewArt: function () { return !!AS; }, newArt: function () { return newArt; },
     storyScene: storyScene, setNewArt: function (on) { newArt = !!AS && !!on; try { localStorage.setItem('shanhai_art', newArt ? 'new' : 'old'); } catch (e) { /* 記不住就只在這次有效 */ } }, BW: BW, BH: BH, decor: decor, groundURL: groundURL, sitePos: sitePos, person: person, DEFS: DEFS, SW: SW, SH: SH,
     paintMap: paintMap, mapLabels: mapLabels, shade: shade };

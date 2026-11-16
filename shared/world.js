@@ -220,6 +220,7 @@
     { k: 'scoutPct', g: '獨特兵種與英雄', zh: '山徑斥候：出征時攻擊增加（%）', min: 0, max: 100, step: 1, def: 18 },
     { k: 'swiftPct', g: '獨特兵種與英雄', zh: '平原跑者：每一位讓隊伍的路程縮短（%）', min: 0, max: 10, step: 0.5, def: 3 },
     { k: 'swiftMax', g: '獨特兵種與英雄', zh: '平原跑者：路程最多縮短（%）', min: 0, max: 60, step: 1, def: 30 },
+    { k: 'heroLvAll', g: '獨特兵種與英雄', zh: '英雄每升一級，英雄在場時全隊的攻擊與耐力增加（%）', min: 0, max: 20, step: 0.5, def: 3 },
     { k: 'abCover', g: '獨特兵種與英雄', zh: '雲豹的山徑：第一次交鋒那一回合的攻擊倍率', min: 1, max: 4, step: 0.1, def: 1.4 },
     { k: 'abGatherPct', g: '獨特兵種與英雄', zh: '聚在一起：交鋒後每一回合攻擊多（%）', min: 0, max: 20, step: 0.5, def: 7.5 },
     { k: 'abGatherMax', g: '獨特兵種與英雄', zh: '聚在一起：攻擊最多多（%）', min: 0, max: 100, step: 1, def: 24 }
@@ -477,13 +478,30 @@
    * 回傳 { win, grade（1 險勝、2 獲勝、3 大勝；沒贏是 0）, left 攻方剩下的人, home 守方剩下的人, lostA, lostD, used 用掉的英雄能力,
    *        start 開打時的人數, wall, towerN, log 每一回合的紀錄 }
    * 每一回合的紀錄：{ r 第幾回合（0 是遠射）, a、d 這一回合結束時雙方剩下的人, ha、hd 這一回合發動的英雄能力, backA、backD 歸隊的人數 } */
+  /* 英雄等級（1～5）：每升一級，英雄在場時全隊的攻擊與耐力多 heroLvAll%（預設 3%），用過之後休息的時間少一成。
+   * 試過讓各英雄的能力本身隨等級變強，但能力之間有相剋（例如齊心正好擋住雲豹的山徑），兩邊都 5 級時各族會失衡，所以改成全隊的加成，各族一樣 */
+  var HERO_MAX = 5, HERO_REQ = [0, 0, 6, 9, 12, 15];   // 升到幾級要部落中心幾級
+  function heroLvOf(L) { return Math.max(1, Math.min(HERO_MAX, int(L) || 1)); }
+  function heroBoost(L) { return 1 + TUNE.heroLvAll / 100 * (heroLvOf(L) - 1); }   // 英雄在場時全隊的攻擊與耐力倍數
+  function heroAb(ab) {   // 能力的數字（不隨等級改變）
+    if (ab === 'volley2') return TUNE.abVolley2;
+    if (ab === 'cover') return TUNE.abCover;
+    if (ab === 'unity') return TUNE.abUnity;
+    if (ab === 'steadfast') return TUNE.abSteadfast;
+    if (ab === 'relay') return TUNE.abRelayBack;
+    if (ab === 'gather') return TUNE.abGatherPct;
+    return 1;
+  }
+  function heroCost(to) { var C = HERO_REQ[to] || 1, f = r5(300 * eq(C) * TUNE.cost); return { food: f, mat: f, sp: 10 + 10 * C }; }
+  function heroTime(to) { return 60 * Math.pow(2, to - 2); }   // 正式節奏的分鐘數：2 級 1 小時、3 級 2 小時、4 級 4 小時、5 級 8 小時
+  function heroRest(v) { return HERO_REST * Math.max(0.5, 1 - 0.1 * ((v.heroLv || 1) - 1)); }   // 每升一級，用過之後要休息的時間少一成
   function autoBattle(A, D, rng) {
     rng = rng || Math.random;
     var a = mkSide(A.w, A.a, A.u, A.tribe, false, A.mod), d = mkSide(D.w, D.a, D.u, D.tribe, D.home !== false, D.mod), na = all3(a), nd = all3(d);
     var tw = D.towers || [], towers = tw.reduce(function (s, L) { return s + TUNE.towerPow * L; }, 0);
     var dm = defWall(D.wall || 0, D.uniq) * (D.uniq === 'watch' ? 1 + TUNE.watchDefPct / 100 : 1);
     var heroOf = function (o) { var t = o.hero && Tribes.get(o.tribe); return t && t.hero ? t.hero.ability : null; };
-    var hero = { a: heroOf(A), d: heroOf(D) }, used = { a: null, d: null }, gath = { a: null, d: null }, log = [], brk = TUNE.breakPct / 100, luck = TUNE.luckPct / 100, outA = false, outD = nd === 0;
+    var hero = { a: heroOf(A), d: heroOf(D) }, hf = { a: heroLvOf(A.heroLv), d: heroLvOf(D.heroLv) }, hb = { a: hero.a ? heroBoost(hf.a) : 1, d: hero.d ? heroBoost(hf.d) : 1 }, used = { a: null, d: null }, gath = { a: null, d: null }, log = [], brk = TUNE.breakPct / 100, luck = TUNE.luckPct / 100, outA = false, outD = nd === 0;
     for (var r = 0; r <= FIGHT.rounds && !outA && !outD; r++) {
       var far = r === 0, rec = { r: r }, mod = { a: { out: 1, take: 1 }, d: { out: 1, take: 1 } };
       a.r = d.r = r;
@@ -491,14 +509,15 @@
       [['a', a, na], ['d', d, nd]].forEach(function (x) {   // 英雄能力：時機到了就自動發動
         var sd = x[0], s = x[1], n0 = x[2], ab = hero[sd], left = all3(s), go = false;
         if (!ab) return;
-        if (ab === 'volley2') { go = !far || output(s, true) > 0; if (go) mod[sd].out = TUNE.abVolley2; }                  // 開場就凝神放箭（沒有弓箭的話留到第一次交鋒）
-        else if (ab === 'unity') { go = !far; if (go) mod[sd].take = TUNE.abUnity; }                                       // 第一次交鋒時彼此掩護
-        else if (ab === 'relay') { go = !far && n0 - left >= Math.max(1, Math.ceil(n0 * 0.3)); if (go) rec['back' + sd.toUpperCase()] = rally(s, TUNE.abRelayBack, rng); }   // 負傷的人超過三成：後面的人接上來
-        else if (ab === 'steadfast') { go = !far && left <= n0 * 0.6; if (go) mod[sd].take = TUNE.abSteadfast; }           // 人數剩六成以下：守住陣腳
-        else if (ab === 'cover') { go = !far; if (go) mod[sd].out = TUNE.abCover; }                                      // 走雲豹找到的山徑，第一次交鋒時出其不意
+        if (ab === 'volley2') { go = !far || output(s, true) > 0; if (go) mod[sd].out = heroAb('volley2'); }             // 開場就凝神放箭（沒有弓箭的話留到第一次交鋒）
+        else if (ab === 'unity') { go = !far; if (go) mod[sd].take = heroAb('unity'); }                                  // 第一次交鋒時彼此掩護
+        else if (ab === 'relay') { go = !far && n0 - left >= Math.max(1, Math.ceil(n0 * 0.3)); if (go) rec['back' + sd.toUpperCase()] = rally(s, heroAb('relay'), rng); }   // 負傷的人超過三成：後面的人接上來
+        else if (ab === 'steadfast') { go = !far && left <= n0 * 0.6; if (go) mod[sd].take = heroAb('steadfast'); }      // 人數剩六成以下：守住陣腳
+        else if (ab === 'cover') { go = !far; if (go) mod[sd].out = heroAb('cover'); }                                 // 走雲豹找到的山徑，第一次交鋒時出其不意
         else if (ab === 'gather') { go = !far; if (go) gath[sd] = r; }                                                   // 交鋒之後越打越齊心
         if (go) { rec['h' + sd] = ab; used[sd] = ab; hero[sd] = null; }
       });
+      ['a', 'd'].forEach(function (sd) { mod[sd].out *= hb[sd]; mod[sd].take /= hb[sd]; });   // 英雄在場：等級越高，全隊越有信心
       ['a', 'd'].forEach(function (sd) { if (gath[sd] != null) mod[sd].out *= 1 + Math.min(TUNE.abGatherMax, TUNE.abGatherPct * (r - gath[sd] + 1)) / 100; });
       var scale = TUNE.dmg * (far ? TUNE.farPct / 100 : 1);
       var oa = output(a, far) * mod.a.out * (1 - luck + rng() * 2 * luck) * scale;
@@ -545,8 +564,8 @@
       ids.forEach(function (y) {
         var win = 0, grade = 0;
         for (var i = 0; i < n; i++) {
-          var r = autoBattle({ tribe: x, w: vary('w'), a: vary('a'), u: vary('u'), hero: hero },
-            { tribe: y, w: vary('w'), a: vary('a'), u: vary('u'), hero: hero, wall: wall, towers: towers, uniq: ub ? Tribes.get(y).uniq.building.effect : '' }, rng);
+          var r = autoBattle({ tribe: x, w: vary('w'), a: vary('a'), u: vary('u'), hero: hero, heroLv: o.heroLv || 1 },
+            { tribe: y, w: vary('w'), a: vary('a'), u: vary('u'), hero: hero, heroLv: o.heroLv || 1, wall: wall, towers: towers, uniq: ub ? Tribes.get(y).uniq.building.effect : '' }, rng);
           if (r.win) { win++; grade += r.grade; }
         }
         atk[x + '>' + y] = win / n; sum += win / n;
@@ -697,7 +716,7 @@
       id: this.id('v'), name: o.name, owner: o.owner, tribe: o.tribe, hex: o.at.hex, slot: o.at.slot, pos: o.at.pos, bot: !!o.bot,
       createdAt: now, last: now, res: { food: 120, mat: 120 }, sp: dict(), pop: 4, popAcc: 0,
       jobs: { food: 2, mat: 2, special: 0 }, auto: true, tiles: tiles, land: land, wall: 0, queue: [],
-      units: { w: 0, a: 0, u: 0 }, away: { w: 0, a: 0, u: 0 }, hurt: { w: 0, a: 0, u: 0 }, tech: dict(), research: null, train: [], quest: 0, stat: { trade: 0, point: 0 }, blessUntil: 0, blessNext: 0, heroRest: 0, glory: 0, wins: 0, losses: 0, gifts: 0,
+      units: { w: 0, a: 0, u: 0 }, heroLv: 1, away: { w: 0, a: 0, u: 0 }, hurt: { w: 0, a: 0, u: 0 }, tech: dict(), research: null, train: [], quest: 0, stat: { trade: 0, point: 0 }, blessUntil: 0, blessNext: 0, heroRest: 0, glory: 0, wins: 0, losses: 0, gifts: 0,
       shieldUntil: 0, newbieUntil: o.bot ? 0 : now + this.newbieMs * TUNE.pace * TUNE.guardTime, ally: null, reports: [], cool: dict(),
       lastSay: 0, lastGift: 0, online: !!o.bot, idle: { focus: 'even', upgrade: false, train: false }, offAt: 0, boosts: BOOST_START, qs: 0
     };
@@ -791,6 +810,7 @@
       return false;
     });
     v.train = v.train.filter(function (q) { if (q.doneAt > now) return true; v.units[q.u]++; addPts(v, 1); self.dailyAdd(v, 'train', 1, now); return false; });
+    if (v.heroUp && v.heroUp.doneAt <= now) { v.heroLv = v.heroUp.to; v.heroUp = null; addPts(v, 20 * v.heroLv); }   // 英雄升級完成
     if (v.research && v.research.doneAt <= now) { v.tech = v.tech || dict(); v.tech[v.research.id] = v.research.to; addPts(v, 10 * v.research.to); v.research = null; this.dailyAdd(v, 'tech', 1, now); }   // 技藝學會了
     if (v.hurt && all3(v.hurt) > 0) {   // 療養屋：負傷的人休養好就回到隊伍（名額滿了先等著）
       v.healAcc = Math.min(1, (v.healAcc || 0) + dt * healRate(v) * self.speed) ;
@@ -1280,6 +1300,9 @@
       } else if (a.what === 'train') {
         if (!v.train.length) return { ok: false, msg: '目前沒有在訓練' };
         v.train.forEach(function (t) { t.doneAt = Math.max(now, t.doneAt - cut); });
+      } else if (a.what === 'hero') {
+        if (!v.heroUp) return { ok: false, msg: '英雄沒有在升級' };
+        v.heroUp.doneAt = Math.max(now, v.heroUp.doneAt - cut);
       } else if (a.what === 'chore') {
         var ch = v.chores && v.chores.cur.filter(function (x) { return x.id === String(a.id || '') && x.doneAt > now; })[0];
         if (!ch) return { ok: false, msg: '這件工作已經做完了' };
@@ -1325,6 +1348,17 @@
       if ((v.spts || 0) < SEASON_GOAL[i]) return { ok: false, msg: '季分還不夠' };
       var rw = seasonReward(v, i); v.res.food += rw.food; v.res.mat += rw.mat; v.boosts = (v.boosts || 0) + rw.boost; v.sgot.push(i);
       return { ok: true, msg: '領到本季第 ' + (i + 1) + ' 個目標的獎勵' };
+    },
+    heroUp: function (v, a, now) {   // 替傳說英雄升級：花物資和時間，能力變強、用過之後休息的時間變短
+      var to = (v.heroLv || 1) + 1, c = heroCost(to);
+      if (v.quest < QUESTS.length) return { ok: false, msg: '完成神話主線，才會有傳說英雄' };
+      if (v.heroUp) return { ok: false, msg: '英雄正在升級' };
+      if (to > HERO_MAX) return { ok: false, msg: '英雄已經是最高級了' };
+      if (centerLevel(v) < HERO_REQ[to]) return { ok: false, msg: '部落中心要先升到 ' + HERO_REQ[to] + ' 級' };
+      if (v.res.food < c.food || v.res.mat < c.mat || (v.sp[v.tribe] || 0) < c.sp) return { ok: false, msg: '物資不夠' };
+      v.res.food -= c.food; v.res.mat -= c.mat; addRes(v, 'sp:' + v.tribe, -c.sp);
+      v.heroUp = { to: to, doneAt: now + this.ms(heroTime(to) * 3000) };
+      return { ok: true, msg: '英雄開始準備，升到 ' + to + ' 級' };
     },
     dailyClaim: function (v, a, now) {   // 領今天的小目標裡一件的獎勵
       this.rollDaily(v, now);
@@ -1488,15 +1522,15 @@
     var heroOk = function (x) { return x.quest >= QUESTS.length && now >= (x.heroRest || 0); };
     var guests = this.guestsOf(t.id), gw = 0, ga = 0;   // 駐守在這裡的盟友一起守（照主人部落的加成算）
     guests.forEach(function (g) { gw += g.w; ga += g.a; });
-    var r = autoBattle({ tribe: v.tribe, w: m.w, a: m.a, u: m.u, hero: heroOk(v), mod: battleMod(v, false) },
-      { tribe: t.tribe, w: t.units.w + gw, a: t.units.a + ga, u: t.units.u, hero: heroOk(t), wall: t.wall, towers: levelsOf(t, 'tower'), uniq: uniq(t), mod: battleMod(t, true) }, this.rng);
+    var r = autoBattle({ tribe: v.tribe, w: m.w, a: m.a, u: m.u, hero: heroOk(v), heroLv: v.heroLv || 1, mod: battleMod(v, false) },
+      { tribe: t.tribe, w: t.units.w + gw, a: t.units.a + ga, u: t.units.u, hero: heroOk(t), heroLv: t.heroLv || 1, wall: t.wall, towers: levelsOf(t, 'tower'), uniq: uniq(t), mod: battleMod(t, true) }, this.rng);
     var home = this.splitGuests(t, guests, r, now, v);   // 剩下的人照比例分回主人與各支援隊伍
     var careA = hospitalize(v, { w: m.w - r.left.w, a: m.a - r.left.a, u: m.u - r.left.u }), careD = hospitalize(t, { w: t.units.w - home.w, a: t.units.a - home.a, u: t.units.u - home.u });
     var win = r.win, left = r.left, loot = {}, txt = [];
     t.units.w = home.w; t.units.a = home.a; t.units.u = home.u;
     ['w', 'a', 'u'].forEach(function (k) { v.away[k] = Math.max(0, v.away[k] - (m[k] - left[k])); });
-    if (r.used.a) v.heroRest = now + this.ms(HERO_REST);   // 英雄出過力之後要休息
-    if (r.used.d) t.heroRest = now + this.ms(HERO_REST);
+    if (r.used.a) v.heroRest = now + this.ms(heroRest(v));   // 英雄出過力之後要休息（等級越高休息越短）
+    if (r.used.d) t.heroRest = now + this.ms(heroRest(t));
     if (win && all3(left) > 0) {   // 每位回程的人能背 30 份：先帶特產，剩下的空間分給糧食與建材
       var frac = Math.min(1, LOOT_FRAC[r.grade] * TUNE.loot), carry = 30 * all3(left), prot = caps(t).protect, want = {};
       var take = function (k, n) { n = Math.min(n, carry); if (n <= 0) return; carry -= n; loot[k] = n; addRes(t, k, -n); txt.push(n + ' ' + resName(k)); };
@@ -1938,7 +1972,8 @@
       if (v.quest == null) { v.quest = 0; v.stat = { trade: 0, point: 0 }; v.blessUntil = 0; v.blessNext = 0; v.heroRest = 0; }
       delete v.battle; delete v.def;   // 舊版的對戰狀態與佈防設定，現在用不到了
       v.tech = dict(v.tech); if (!v.hurt) v.hurt = { w: 0, a: 0, u: 0 }; if (v.research === undefined) v.research = null;   // 第二批：技藝、療養
-      if (v.boosts == null) v.boosts = BOOST_START;   // 第三批：加速道具（舊部落也送 3 個）
+      if (v.boosts == null) v.boosts = BOOST_START;
+      if (v.heroLv == null) v.heroLv = 1;   // 英雄等級：舊部落從 1 級開始   // 第三批：加速道具（舊部落也送 3 個）
       if (v.qs == null) v.qs = 2;   // 神話故事關卡之前的部落：直接接在這一章的最後一關（原本的目標），不用重做前兩關
     }
     /* 改版前「佔領之後一直有收穫」的資源點：駐守的人送回部落 */
@@ -1984,6 +2019,7 @@
     resName: resName, derived: derived, eatRate: eatRate, perWorker: perWorker, TECH: TECH, TECH_MAX: TECH_MAX, UNLOCK: UNLOCK, techCost: techCost, techTime: techTime, techMax: techMax, battleMod: battleMod, buildMul: buildMul, marchMul: marchMul, healCap: healCap, bl: bl, eq: eq, centerUp: centerUp, centerReq: centerReq, reqLeft: reqLeft, maxLevelOf: maxLevelOf, wallMul: wallMul, villagePower: villagePower, DEV_START: DEV_START, popCap: popCap, LOOT_FRAC: LOOT_FRAC, GRADE: GRADE, FIGHT: FIGHT,
     armyCap: armyCap, mkSide: mkSide, supportCap: supportCap, ALLY_GOAL: ALLY_GOAL, allyReward: allyReward, QSTAGE: QSTAGE, storySegs: storySegs, stageReward: stageReward, SEASON_GOAL: SEASON_GOAL, SEASON_TOP: SEASON_TOP, seasonReward: seasonReward, CHORES: CHORES, CHORE_MIN: CHORE_MIN, CHORE_EVERY: CHORE_EVERY, choreSlots: choreSlots, choreOffers: choreOffers, choreReward: choreReward, TIER: TIER, tiers: tiers, tierMul: tierMul, helpMax: helpMax, BOOST_START: BOOST_START, BOOST_DEV: BOOST_DEV, BOOST_QUEST: BOOST_QUEST, QUESTS: QUESTS, UNIT_U: UNIT_U, BLESS: BLESS, HERO_REST: HERO_REST, marchMax: marchMax, gatherRate: gatherRate, REL: REL, NODE: NODE, NODE_AMT: NODE_AMT, BOAR_N: BOAR_N, boarSide: boarSide, boarPower: boarPower, wildReward: wildReward, REPAIR_WHAT: REPAIR_WHAT, repairRate: repairRate, SETTLE: SETTLE,
     autoBattle: autoBattle, power: power, odds: odds, ODDS: ODDS, simBattle: simBattle, simMatrix: simMatrix,
+    HERO_MAX: HERO_MAX, HERO_REQ: HERO_REQ, heroBoost: heroBoost, heroCost: heroCost, heroTime: heroTime, heroAb: heroAb, heroRest: heroRest,
     DAILY: DAILY, DAILY_N: DAILY_N, DAILY_BONUS: DAILY_BONUS, dailyReward: dailyReward, SIDE_AT: SIDE_AT, SIDE_LV: SIDE_LV, sideNeed: sideNeed, sideReward: sideReward, sideOf: sideOf,
     swiftMul: swiftMul, defWall: defWall, TUNE_DEF: TUNE_DEF, tuneDefaults: tuneDefaults, setTune: setTune, paced: paced, trainTime: trainTime, marchSecs: marchSecs, shieldMs: shieldMs, OFFER_MS: OFFER_MS
   };

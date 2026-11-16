@@ -477,6 +477,13 @@ p { margin: 4px 0; }
 .sgoals li .gain { flex: 1; min-width: 0; font-size: 12.5px; flex-wrap: wrap; }
 .sgoals li em { font-style: normal; font-size: 12px; color: var(--mute); white-space: nowrap; }
 .sgoals li.can > b { color: var(--gold); } .sgoals li.got { opacity: .6; } .sgoals li.got em { color: var(--good); }
+/* 傳說英雄 */
+.card.hero .hrow { display: flex; gap: 10px; align-items: center; }
+.card.hero .hpic { width: 112px; height: 92px; flex: none; background: radial-gradient(ellipse at 50% 70%, rgba(242, 185, 59, .18), transparent 70%); border-radius: 8px; }
+.card.hero .htxt { min-width: 0; flex: 1; }
+.card.hero .hup { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; }
+.card.hero .hup .time { display: inline-flex; align-items: center; gap: 2px; font-size: 12.5px; color: var(--mute); }
+.card.hero .hup .lack { font-size: 12.5px; color: var(--bad, #E07A5F); }
 /* 今天的小目標、族人的請託 */
 .card.daily { border-color: rgba(227, 179, 65, .55); }
 .dl { list-style: none; margin: 2px 0 0; padding: 0; }
