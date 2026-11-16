@@ -134,7 +134,8 @@
     for (var i = 0; i < x.length; i++) { cur += x[i]; if (x[i] === '。') { parts.push(cur); cur = ''; } }
     if (cur) parts.push(cur);
     while (parts.length < 3) {
-      var li = 0; parts.forEach(function (p, k) { if (p.length > parts[li].length) li = k; });
+      var li = -1; parts.forEach(function (p, k) { if (p.indexOf('，') >= 0 && (li < 0 || p.length > parts[li].length)) li = k; });   // 最長、而且有逗號可以切的那一句
+      if (li < 0) break;
       var p = parts[li], mid = p.length / 2, best = -1;
       for (var j = 0; j < p.length - 1; j++) if (p[j] === '，' && (best < 0 || Math.abs(j - mid) < Math.abs(best - mid))) best = j;
       if (best < 0) break;
@@ -211,7 +212,17 @@
     { k: 'pondFood', g: '獨特建築', zh: '巴拉告：每分鐘固定的糧食（節奏 1 時）', min: 0, max: 60, step: 1, def: 18 },
     { k: 'pondSp', g: '獨特建築', zh: '巴拉告：每分鐘固定的漁獲（節奏 1 時）', min: 0, max: 10, step: 0.1, def: 1.8 },
     { k: 'vaultProt', g: '獨特建築', zh: '芋頭窯：保護量倍率', min: 1, max: 4, step: 0.1, def: 2 },
-    { k: 'vaultCap', g: '獨特建築', zh: '芋頭窯：倉庫容量增加', min: 0, max: 1000, step: 50, def: 300 }
+    { k: 'vaultCap', g: '獨特建築', zh: '芋頭窯：倉庫容量增加', min: 0, max: 1000, step: 50, def: 300 },
+    { k: 'springPop', g: '獨特建築', zh: '山泉取水處：族人增加的速度增加（%）', min: 0, max: 200, step: 5, def: 40 },
+    { k: 'springEat', g: '獨特建築', zh: '山泉取水處：族人吃的糧食減少（%）', min: 0, max: 50, step: 1, def: 10 },
+    { k: 'groveMat', g: '獨特建築', zh: '刺竹林：建材產量增加（%）', min: 0, max: 100, step: 1, def: 15 },
+    { k: 'groveWall', g: '獨特建築', zh: '刺竹林：竹圍的加成再增加（%）', min: 0, max: 200, step: 5, def: 15 },
+    { k: 'scoutPct', g: '獨特兵種與英雄', zh: '山徑斥候：出征時攻擊增加（%）', min: 0, max: 100, step: 1, def: 18 },
+    { k: 'swiftPct', g: '獨特兵種與英雄', zh: '平原跑者：每一位讓隊伍的路程縮短（%）', min: 0, max: 10, step: 0.5, def: 3 },
+    { k: 'swiftMax', g: '獨特兵種與英雄', zh: '平原跑者：路程最多縮短（%）', min: 0, max: 60, step: 1, def: 30 },
+    { k: 'abCover', g: '獨特兵種與英雄', zh: '雲豹的山徑：第一次交鋒那一回合的攻擊倍率', min: 1, max: 4, step: 0.1, def: 1.4 },
+    { k: 'abGatherPct', g: '獨特兵種與英雄', zh: '聚在一起：交鋒後每一回合攻擊多（%）', min: 0, max: 20, step: 0.5, def: 7.5 },
+    { k: 'abGatherMax', g: '獨特兵種與英雄', zh: '聚在一起：攻擊最多多（%）', min: 0, max: 100, step: 1, def: 24 }
   ];
   Tribes.playable().forEach(function (t) {   // 每一族：產量倍率、獨特兵種的攻擊與耐力
     TUNE_DEF.push({ k: 'prod_' + t.id, g: t.zh, zh: t.zh + '：產量倍率', min: 0.5, max: 2, step: 0.01, def: 1 });
@@ -245,7 +256,8 @@
   var TUNE_REV = 2, MAP_REV = 2;   // MAP_REV：地圖的版本（2 是格子變細之後）                        // 對戰規則的版本。存檔比這個舊，對戰相關的可調數值就改用新的預設（舊規則調出來的數字不適用）
   var BOT_NAMES = {
     atayal: ['霧林部落', '溪谷部落'], bunun: ['雲海部落', '楓林部落'],
-    amis: ['浪花部落', '月桃部落'], paiwan: ['晨曦部落', '山風部落']
+    amis: ['浪花部落', '月桃部落'], paiwan: ['晨曦部落', '山風部落'],
+    rukai: ['石屏部落', '山泉部落'], pinuyumayan: ['竹影部落', '平原部落']
   };
   var PHRASES = { hello: 1, thanks: 1, trade: 1, ally: 1, cheer: 1, nice: 1 };
 
@@ -343,6 +355,7 @@
   function all3(o) { return o.w + o.a + (o.u || 0); }
   function armyCap(v) { return sumLevels(v, 'barracks') * 6; }
   function armyTotal(v) { return all3(v.units) + all3(v.away) + v.train.length; }
+  function swiftMul(v, uu) { var st = ustat(v.tribe); return st && st.trait === 'swift' && uu > 0 ? 1 - Math.min(TUNE.swiftMax, TUNE.swiftPct * uu) / 100 : 1; }   // 卑南的平原跑者：隊伍裡有他們，路程縮短
   function marchMax(v) { return 2 + (uniq(v) === 'range' ? 1 : 0); }   // 同時可以有幾支隊伍在外面（布農的石板豬圈多一支）
   function gatherRate(v, n) { return n * TUNE.gatherRate / 60 * (uniq(v) === 'range' ? TUNE.rangeYield : 1) * (1 + TECH.hunt.per / 100 * tech(v, 'hunt')) * TUNE.prod / TUNE.pace; }   // n 個人每秒採多少
   function loadOf(m) { return all3(m) * TUNE.gatherLoad; }
@@ -362,11 +375,12 @@
       out[k] = Math.min(v.jobs[k], s[k]) * perWorker(v, k, speed) * (v.hungry && k !== 'food' ? TUNE.hungryWork : 1);   // 吃不飽：種田的照種，其他工作變慢
     });
     if (uniq(v) === 'pond') { out.food += TUNE.pondFood / 60 * g; out.special += TUNE.pondSp / 60 * g; }
+    if (uniq(v) === 'grove') out.mat *= 1 + TUNE.groveMat / 100;   // 卑南的刺竹林：建材多
     return out;
   }
   function soldiers(v) { return all3(v.units) + all3(v.away) + (v.hurt ? all3(v.hurt) : 0); }   // 出征、採集中、在療養屋休養的也算
   /* 全部落每秒吃掉的糧食：族人加上戰士 */
-  function eatRate(v, speed) { return (v.pop * TUNE.eatPop + soldiers(v) * TUNE.eatUnit) / 60 * speed / TUNE.pace; }
+  function eatRate(v, speed) { return (v.pop * TUNE.eatPop * (uniq(v) === 'spring' ? 1 - TUNE.springEat / 100 : 1) + soldiers(v) * TUNE.eatUnit) / 60 * speed / TUNE.pace; }   // 魯凱的山泉取水處：族人省一點糧
   function foreignKinds(v) { var n = 0; for (var k in v.sp) if (k !== v.tribe && v.sp[k] >= 1) n++; return n; }
   function prosperity(v) {
     var p = 0;
@@ -428,6 +442,7 @@
     var st = s.st, m = 1;
     if (st.trait === 'guard' && s.def) m *= 1 + TUNE.guardPct / 100;                              // 守在自己部落時更強
     if (st.trait === 'band') m *= 1 + Math.min(TUNE.bandMax, TUNE.bandPct * (s.u || 0)) / 100;    // 同行的人越多越強
+    if (st.trait === 'scout' && !s.def) m *= 1 + TUNE.scoutPct / 100;                              // 熟悉山路：出征時更強（守部落時沒有）
     return m;
   }
   function uhp(s) { var st = s.st; return st ? st.hp * (st.trait === 'wall' && s.def ? 1 + TUNE.wallHpPct / 100 : 1) : 1; }
@@ -466,11 +481,12 @@
     rng = rng || Math.random;
     var a = mkSide(A.w, A.a, A.u, A.tribe, false, A.mod), d = mkSide(D.w, D.a, D.u, D.tribe, D.home !== false, D.mod), na = all3(a), nd = all3(d);
     var tw = D.towers || [], towers = tw.reduce(function (s, L) { return s + TUNE.towerPow * L; }, 0);
-    var dm = wallMul(D.wall || 0) * (D.uniq === 'watch' ? 1 + TUNE.watchDefPct / 100 : 1);
+    var dm = defWall(D.wall || 0, D.uniq) * (D.uniq === 'watch' ? 1 + TUNE.watchDefPct / 100 : 1);
     var heroOf = function (o) { var t = o.hero && Tribes.get(o.tribe); return t && t.hero ? t.hero.ability : null; };
-    var hero = { a: heroOf(A), d: heroOf(D) }, used = { a: null, d: null }, log = [], brk = TUNE.breakPct / 100, luck = TUNE.luckPct / 100, outA = false, outD = nd === 0;
+    var hero = { a: heroOf(A), d: heroOf(D) }, used = { a: null, d: null }, gath = { a: null, d: null }, log = [], brk = TUNE.breakPct / 100, luck = TUNE.luckPct / 100, outA = false, outD = nd === 0;
     for (var r = 0; r <= FIGHT.rounds && !outA && !outD; r++) {
       var far = r === 0, rec = { r: r }, mod = { a: { out: 1, take: 1 }, d: { out: 1, take: 1 } };
+      a.r = d.r = r;
       if (far && output(a, true) + output(d, true) + towers === 0) continue;   // 兩邊都沒有弓箭：直接接近
       [['a', a, na], ['d', d, nd]].forEach(function (x) {   // 英雄能力：時機到了就自動發動
         var sd = x[0], s = x[1], n0 = x[2], ab = hero[sd], left = all3(s), go = false;
@@ -479,8 +495,11 @@
         else if (ab === 'unity') { go = !far; if (go) mod[sd].take = TUNE.abUnity; }                                       // 第一次交鋒時彼此掩護
         else if (ab === 'relay') { go = !far && n0 - left >= Math.max(1, Math.ceil(n0 * 0.3)); if (go) rec['back' + sd.toUpperCase()] = rally(s, TUNE.abRelayBack, rng); }   // 負傷的人超過三成：後面的人接上來
         else if (ab === 'steadfast') { go = !far && left <= n0 * 0.6; if (go) mod[sd].take = TUNE.abSteadfast; }           // 人數剩六成以下：守住陣腳
+        else if (ab === 'cover') { go = !far; if (go) mod[sd].out = TUNE.abCover; }                                      // 走雲豹找到的山徑，第一次交鋒時出其不意
+        else if (ab === 'gather') { go = !far; if (go) gath[sd] = r; }                                                   // 交鋒之後越打越齊心
         if (go) { rec['h' + sd] = ab; used[sd] = ab; hero[sd] = null; }
       });
+      ['a', 'd'].forEach(function (sd) { if (gath[sd] != null) mod[sd].out *= 1 + Math.min(TUNE.abGatherMax, TUNE.abGatherPct * (r - gath[sd] + 1)) / 100; });
       var scale = TUNE.dmg * (far ? TUNE.farPct / 100 : 1);
       var oa = output(a, far) * mod.a.out * (1 - luck + rng() * 2 * luck) * scale;
       var od = (output(d, far) * dm + towers) * mod.d.out * (1 - luck + rng() * 2 * luck) * scale;
@@ -497,10 +516,11 @@
    * 守部落時再給 def: true、wall、towers、uniq，圍籬和瞭望台會算進去。出征前的「勝算」就是拿雙方的戰力來比 */
   function power(o) {
     var s = mkSide(o.w || 0, o.a || 0, o.u || 0, o.tribe, !!o.def, o.mod), md = o.mod || {}, atk = output(s, false), hp = s.w * TUNE.hpW * (md.tw || 1) + s.a * TUNE.hpA * (md.ta || 1) + s.u * uhp(s) * (md.tu || 1);
-    if (o.def) atk = atk * wallMul(o.wall || 0) * (o.uniq === 'watch' ? 1 + TUNE.watchDefPct / 100 : 1) + (o.towers || []).reduce(function (t, L) { return t + TUNE.towerPow * L; }, 0);
+    if (o.def) atk = atk * defWall(o.wall || 0, o.uniq) * (o.uniq === 'watch' ? 1 + TUNE.watchDefPct / 100 : 1) + (o.towers || []).reduce(function (t, L) { return t + TUNE.towerPow * L; }, 0);
     return Math.round(Math.sqrt(atk * hp));
   }
   function wallMul(L) { return 1 + TUNE.wallPct / 100 * (Math.min(L, 5) + 0.5 * Math.max(0, L - 5)); }   // 圍籬：5 級以後每級的加成減半
+  function defWall(L, u) { var m = wallMul(L); return u === 'grove' ? 1 + (m - 1) * (1 + TUNE.groveWall / 100) : m; }   // 卑南的刺竹林：竹圍的加成更多
   var ODDS = { high: 1.2, low: 0.95 };   // 我方戰力是對方的幾倍以上算「高」、幾倍以下算「低」（用模擬校正過，見測試）
   function odds(mine, theirs) {
     if (mine <= 0) return 'low';
@@ -779,7 +799,7 @@
     } else v.healAcc = 0;
     var pc = popCap(v);
     if (v.pop < pc && !v.hungry) {
-      v.popAcc += dt * self.speed / TUNE.pace / 10 * (1 + 0.04 * bl(v, 'plaza'));   // 聚會廣場：族人增加得快一點
+      v.popAcc += dt * self.speed / TUNE.pace / 10 * (1 + 0.04 * bl(v, 'plaza')) * (uniq(v) === 'spring' ? 1 + TUNE.springPop / 100 : 1);   // 聚會廣場、山泉取水處：族人增加得快一點
       while (v.popAcc >= 1 && v.pop < pc) { v.pop++; v.popAcc -= 1; }
     } else v.popAcc = 0;
     if (v.auto) this.autoJobs(v);
@@ -1070,7 +1090,7 @@
       v.units.w -= w; v.units.a -= ar; v.units.u -= uu; v.away.w += w; v.away.a += ar; v.away.u += uu;
       v.newbieUntil = 0; v.shieldUntil = 0;   // 主動出征就放棄保護
       var d = Geo.travel(this.map.byId[v.hex], this.map.byId[t.hex]);
-      var travel = marchSecs(d, uniq(t) === 'watch') * marchMul(v) * 1000 / this.speed;   // 對方有望樓：更早被發現，路上多花一半時間
+      var travel = marchSecs(d, uniq(t) === 'watch') * marchMul(v) * swiftMul(v, uu) * 1000 / this.speed;   // 對方有望樓：更早被發現，路上多花一半時間
       this.marches.push({ id: this.id('m'), from: v.id, to: t.id, w: w, a: ar, u: uu,
         departAt: now, arriveAt: now + travel, travel: travel, phase: 'out', loot: null });
       v.cool[t.id] = now + this.ms(120000);
@@ -1090,7 +1110,7 @@
       var holder = !ev && nd.g && this.villages[nd.g.v];   // 野地事件不能搶
       if (holder && v.ally && v.ally === holder.ally) return { ok: false, msg: '盟友正在這裡採集' };
       v.units.w -= w; v.units.a -= ar; v.units.u -= uu; v.away.w += w; v.away.a += ar; v.away.u += uu;
-      var travel = marchSecs(Geo.travel(this.map.byId[v.hex], this.map.byId[nd.hex])) * marchMul(v) * 1000 / this.speed;
+      var travel = marchSecs(Geo.travel(this.map.byId[v.hex], this.map.byId[nd.hex])) * marchMul(v) * swiftMul(v, uu) * 1000 / this.speed;
       var m = { id: this.id('m'), kind: ev ? nd.k : 'gather', from: v.id, to: null, node: nd.id, w: w, a: ar, u: uu, carry: 0, departAt: now, arriveAt: now + travel, travel: travel, phase: 'out', loot: null };
       this.marches.push(m);
       if (holder) {   // 去搶：馬上通知正在採集的那一方
@@ -1303,7 +1323,7 @@
       if (now - v.lastSay < 4000) return { ok: false, msg: '說話慢一點' };
       v.lastSay = now;
       var t = Tribes.get(v.tribe), txt = {
-        hello: t.hello + '！（' + t.lang + '的問候）', thanks: t.thanks + '！（' + t.lang + '的謝謝）',
+        hello: t.hello ? t.hello + '！（' + t.lang + '的問候）' : '大家好！', thanks: t.thanks ? t.thanks + '！（' + t.lang + '的謝謝）' : '謝謝！',   // 還沒查到可靠族語的，用中文
         trade: '有人想交換特產嗎？', ally: '歡迎加入我們的聯盟！', cheer: '大家一起加油！', nice: '這場較量真精彩！'
       }[a.phrase];
       this.log('「' + v.name + '」：' + txt, now, 'say');
@@ -1882,7 +1902,7 @@
     resName: resName, derived: derived, eatRate: eatRate, perWorker: perWorker, TECH: TECH, TECH_MAX: TECH_MAX, UNLOCK: UNLOCK, techCost: techCost, techTime: techTime, techMax: techMax, battleMod: battleMod, buildMul: buildMul, marchMul: marchMul, healCap: healCap, bl: bl, eq: eq, centerUp: centerUp, centerReq: centerReq, reqLeft: reqLeft, maxLevelOf: maxLevelOf, wallMul: wallMul, villagePower: villagePower, DEV_START: DEV_START, popCap: popCap, LOOT_FRAC: LOOT_FRAC, GRADE: GRADE, FIGHT: FIGHT,
     armyCap: armyCap, mkSide: mkSide, supportCap: supportCap, ALLY_GOAL: ALLY_GOAL, allyReward: allyReward, QSTAGE: QSTAGE, storySegs: storySegs, stageReward: stageReward, SEASON_GOAL: SEASON_GOAL, SEASON_TOP: SEASON_TOP, seasonReward: seasonReward, CHORES: CHORES, CHORE_MIN: CHORE_MIN, CHORE_EVERY: CHORE_EVERY, choreSlots: choreSlots, choreOffers: choreOffers, choreReward: choreReward, TIER: TIER, tiers: tiers, tierMul: tierMul, helpMax: helpMax, BOOST_START: BOOST_START, BOOST_DEV: BOOST_DEV, BOOST_QUEST: BOOST_QUEST, QUESTS: QUESTS, UNIT_U: UNIT_U, BLESS: BLESS, HERO_REST: HERO_REST, marchMax: marchMax, gatherRate: gatherRate, REL: REL, NODE: NODE, NODE_AMT: NODE_AMT, BOAR_N: BOAR_N, boarSide: boarSide, boarPower: boarPower, wildReward: wildReward, REPAIR_WHAT: REPAIR_WHAT, repairRate: repairRate, SETTLE: SETTLE,
     autoBattle: autoBattle, power: power, odds: odds, ODDS: ODDS, simBattle: simBattle, simMatrix: simMatrix,
-    TUNE_DEF: TUNE_DEF, tuneDefaults: tuneDefaults, setTune: setTune, paced: paced, trainTime: trainTime, marchSecs: marchSecs, shieldMs: shieldMs, OFFER_MS: OFFER_MS
+    swiftMul: swiftMul, defWall: defWall, TUNE_DEF: TUNE_DEF, tuneDefaults: tuneDefaults, setTune: setTune, paced: paced, trainTime: trainTime, marchSecs: marchSecs, shieldMs: shieldMs, OFFER_MS: OFFER_MS
   };
   Object.defineProperty(World.rules, 'TUNE', { get: function () { return TUNE; } });   // 目前生效的可調數值
   return World;

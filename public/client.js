@@ -8,13 +8,17 @@
   function traitFx(tr) {
     var T = R.TUNE;
     return tr === 'guard' ? '守在自己部落時，攻擊多 ' + T.guardPct + '%' : tr === 'sharp' ? '遠程，開場的遠射就能出手，攻擊力比弓手高'
-      : tr === 'band' ? '一起出征的同伴越多越強（每多一位加 ' + T.bandPct + '%，最多 ' + T.bandMax + '%）' : '守在自己部落時更耐打（多 ' + T.wallHpPct + '%）';
+      : tr === 'band' ? '一起出征的同伴越多越強（每多一位加 ' + T.bandPct + '%，最多 ' + T.bandMax + '%）'
+      : tr === 'scout' ? '出征時攻擊多 ' + T.scoutPct + '%（守部落時沒有加成）'
+      : tr === 'swift' ? '隊伍裡每有一位，出征和採集的路程少 ' + T.swiftPct + '%（最多 ' + T.swiftMax + '%）' : '守在自己部落時更耐打（多 ' + T.wallHpPct + '%）';
   }
   function abilityFx(ab) {   // 英雄能力是自動發動的：寫出什麼時候發動、效果是什麼
     var T = R.TUNE;
     return ab === 'volley2' ? '開場的遠射時發動，那一輪我方的攻擊變成 ' + T.abVolley2 + ' 倍'
       : ab === 'relay' ? '負傷的人超過三成時發動，負傷的人有 ' + pct(T.abRelayBack) + ' 回到隊伍裡'
-      : ab === 'unity' ? '第一次交鋒時發動，那一回合我方的損失只有原本的 ' + pct(T.abUnity) : '人數剩六成以下時發動，那一回合我方的損失只有原本的 ' + pct(T.abSteadfast);
+      : ab === 'unity' ? '第一次交鋒時發動，那一回合我方的損失只有原本的 ' + pct(T.abUnity)
+      : ab === 'cover' ? '第一次交鋒時發動，那一回合我方的攻擊變成 ' + T.abCover + ' 倍'
+      : ab === 'gather' ? '第一次交鋒時發動，之後每一回合我方的攻擊多 ' + T.abGatherPct + '%（最多 ' + T.abGatherMax + '%）' : '人數剩六成以下時發動，那一回合我方的損失只有原本的 ' + pct(T.abSteadfast);
   }
   var ODDS_ZH = { high: '高', mid: '中', low: '低' };
   function oddsHTML(mine, theirs) { var o = R.odds(mine, theirs); return '<span class="odds ' + o + '">勝算' + ODDS_ZH[o] + '</span>'; }
@@ -63,6 +67,10 @@
   function ago(ms) { var m = Math.round(ms / 60000); return m < 1 ? '不到 1 分鐘' : m < 60 ? m + ' 分鐘' : Math.floor(m / 60) + ' 小時 ' + (m % 60) + ' 分鐘'; }
   function myTribe() { return Tribes.get(S.me.tribe); }
   function bdef(t, type) { return type === 'unique' ? t.uniq.building : t.b[type]; }   // 建築的名稱與說明；獨特建築另外放在 uniq
+  function greetHTML(t, bare) {   // 族語問候：還沒查到可靠說法的族群，寫明原因、不放
+    if (!t.hello) return '<span class="muted">' + esc(t.noGreet || '還沒查到，先不放') + '</span>';
+    return '<i class="nat">' + esc(t.hello) + '</i>' + (t.helloZh ? '（' + esc(t.helloZh) + '）' : '') + (bare ? '' : '（' + t.lang + '）');
+  }
   function nat(o) { return esc(o.zh) + (o.native ? ' <i class="nat">' + esc(o.native) + '</i>' : ''); }
   function all3(o) { return o.w + o.a + (o.u || 0); }
   function uniqFx(t) {
@@ -72,6 +80,8 @@
       case 'range': return '到野地採集的速度快 ' + pct(T.rangeYield - 1) + '，可以多派 1 支隊伍';
       case 'pond': return '不用人手，固定多 ' + perTime(T.pondFood / 60 * g) + ' 的' + t.res.food + '和 ' + perTime(T.pondSp / 60 * g) + ' 的' + t.sp.zh;
       case 'vault': return '倉庫受保護的份量變成 ' + T.vaultProt + ' 倍，倉庫容量 +' + T.vaultCap;
+      case 'spring': return '家屋增加族人的速度快 ' + T.springPop + '%，族人吃的' + t.res.food + '少 ' + T.springEat + '%';
+      case 'grove': return '建材的產量多 ' + T.groveMat + '%；竹圍守部落的加成多 ' + T.groveWall + '%';
     }
     return '';
   }
@@ -779,7 +789,7 @@
   function tribeCard(t, cells) {
     var h = '<section class="card tribe"><h3><span class="dot" style="background:' + t.color + '"></span>' + t.zh + '<span class="chipst ' + (t.playable ? 'on' : '') + '">' + (t.playable ? '可以落腳' : '之後開放') + '</span></h3>' +
       '<p class="en">' + esc(t.en) + ' · ' + t.terrain + (cells ? ' · 地圖上 ' + cells + ' 格' : '') + '</p><p>' + t.intro + '</p><p class="muted">分布：' + t.area + '</p>';
-    if (t.playable) h += '<dl class="facts"><dt>特產</dt><dd>' + t.sp.zh + '（' + t.sp.desc + '）</dd><dt>特長</dt><dd>' + t.bonus.text + '</dd><dt>獨特</dt><dd>' + esc(t.uniq.building.zh) + '、' + esc(t.uniq.unit.zh) + '（完成任務後解鎖）</dd><dt>故事</dt><dd>' + esc(t.story.t) + '</dd><dt>問候</dt><dd><i class="nat">' + esc(t.hello) + '</i>（' + t.lang + '）</dd></dl>';
+    if (t.playable) h += '<dl class="facts"><dt>特產</dt><dd>' + t.sp.zh + '（' + t.sp.desc + '）</dd><dt>特長</dt><dd>' + t.bonus.text + '</dd><dt>獨特</dt><dd>' + esc(t.uniq.building.zh) + '、' + esc(t.uniq.unit.zh) + '（完成任務後解鎖）</dd><dt>故事</dt><dd>' + esc(t.story.t) + '</dd><dt>問候</dt><dd>' + greetHTML(t) + '</dd></dl>';
     return h + '</section>';
   }
   function zonePanel() {
@@ -835,7 +845,7 @@
   }
   function codexPanel(me) {
     var t = myTribe(), h = '<section class="card"><h3><span class="dot" style="background:' + t.color + '"></span>' + t.zh + '<span class="lv">' + esc(t.en) + '</span></h3><p>' + t.intro + '</p>' +
-      '<dl class="facts"><dt>問候</dt><dd><i class="nat">' + esc(t.hello) + '</i></dd><dt>謝謝</dt><dd><i class="nat">' + esc(t.thanks) + '</i></dd><dt>語別</dt><dd>' + t.lang + '</dd><dt>特長</dt><dd>' + t.bonus.text + '</dd></dl></section>';
+      '<dl class="facts"><dt>問候</dt><dd>' + greetHTML(t, true) + '</dd><dt>謝謝</dt><dd>' + (t.thanks ? '<i class="nat">' + esc(t.thanks) + '</i>' : '<span class="muted">' + esc(t.noThanks || '還沒查到可靠的說法，先不放') + '</span>') + '</dd><dt>語別</dt><dd>' + t.lang + '</dd><dt>特長</dt><dd>' + t.bonus.text + '</dd></dl></section>';
     h += '<section class="card"><h3>' + Art.icon('book') + '神話故事：' + esc(t.story.t) + '<span class="lv">' + Math.min(me.quest, R.QUESTS.length) + ' / ' + R.QUESTS.length + ' 章</span></h3>';
     t.quests.forEach(function (q, i) {
       h += i < me.quest ? '<p class="story"><b>' + (i + 1) + '. ' + esc(q.t) + '</b>' + esc(q.x) + '</p>' : i === me.quest ? '<p class="story"><b>' + (i + 1) + '. ' + esc(q.t) + '</b>' + esc(R.storySegs(q.x).slice(0, (me.qs || 0) + 1).join('')) + '<span class="more">（過關之後繼續）</span></p>' : '<p class="muted">' + (i + 1) + '. 完成前面的章節後就能讀到。</p>';

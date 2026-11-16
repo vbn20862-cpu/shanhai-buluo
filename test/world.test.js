@@ -35,7 +35,7 @@ test('新部落能加入、生產並蓋建築', () => {
 test('示範部落長時間運作不會出現負數或壞值', () => {
   const w = new World({ speed: 4, rng: seeded(7) });
   let now = 1e6; w.ensureBots(now);
-  assert.equal(Object.keys(w.villages).length, 8);
+  assert.equal(Object.keys(w.villages).length, 2 * require('../shared/tribes.js').playable().length, '每一族兩個示範部落');
   for (let i = 0; i < 3000; i++) { now += 1000; w.tick(now); if (i % 200 === 0) check(w); }
   check(w);
   const levels = Object.values(w.villages).map(v => v.tiles[0].level);
@@ -493,6 +493,42 @@ test('獨特建築的效果：望樓讓來襲變慢、芋頭窯保護量加倍�
   assert.ok(Math.abs(toWatch - Math.min(60, 6 + 2.5 * d1) * 1500) < 1, '出征有望樓的部落，路上多花一半時間');
 });
 
+test('魯凱與卑南：山泉取水處省糧、刺竹林多建材又讓竹圍更強；斥候出征才加攻擊；跑者縮短路程；兩位英雄的時機', () => {
+  const w = new World({ rng: seeded(73) });
+  let now = 1e6;
+  const mk = (tok, tribe) => { const v = w.villages[w.join(tok, { owner: tok, name: tok, tribe }, now).id]; v.newbieUntil = 0; return v; };
+  const r = mk('r', 'rukai'), p = mk('p', 'pinuyumayan'), t = mk('t', 'atayal');
+  const Tribes = require('../shared/tribes.js'); assert.ok(Tribes.get('rukai').playable && Tribes.get('pinuyumayan').playable);
+  const free = v => v.tiles.findIndex((x, i) => i > 0 && !x);
+  [r, p].forEach(v => { v.quest = 3; v.tiles[free(v)] = { type: 'unique', level: 0 }; });
+  const eat0 = R.derived(r, 1).eat, mat0 = R.derived(p, 1).rates.mat;
+  [r, p].forEach(v => { v.tiles.forEach(x => { if (x && x.type === 'unique') x.level = 1; }); });
+  assert.equal(R.derived(r, 1).uniq, 'spring'); assert.equal(R.derived(p, 1).uniq, 'grove');
+  assert.ok(R.derived(r, 1).eat < eat0, '山泉取水處：族人吃得少一點');
+  assert.ok(Math.abs(R.derived(p, 1).rates.mat / mat0 - (1 + R.TUNE.groveMat / 100)) < 1e-9, '刺竹林：建材多');
+  assert.ok(R.defWall(2, 'grove') > R.wallMul(2) && R.defWall(0, 'grove') === 1, '竹圍的加成更多；沒有竹圍就沒有加成');
+  // 山徑斥候：出征時攻擊比較高，守部落時一樣
+  const atk = R.mkSide(0, 0, 4, 'rukai', false), def = R.mkSide(0, 0, 4, 'rukai', true);
+  assert.ok(atk.st.trait === 'scout' && def.def === true);
+  assert.ok(R.power({ tribe: 'rukai', u: 4 }) > R.power({ tribe: 'rukai', u: 4, def: true, wall: 0 }), '斥候出征的戰力比守部落時高');
+  assert.equal(R.power({ tribe: 'paiwan', u: 4 }) > R.power({ tribe: 'paiwan', u: 4, def: true, wall: 0 }), false, '別族的兵沒有這個差別');
+  // 平原跑者：隊伍裡有他們，路程縮短，有上限
+  assert.equal(R.swiftMul(p, 0), 1); assert.ok(R.swiftMul(p, 2) < 1); assert.equal(R.swiftMul(p, 100), 1 - R.TUNE.swiftMax / 100); assert.equal(R.swiftMul(r, 5), 1, '別族沒有這個效果');
+  p.quest = 4; p.units.u = 4; p.units.w = 2; r.units.w = 2;
+  assert.ok(w.act(p.id, { type: 'attack', to: t.id, w: 2, a: 0, u: 4 }, now).ok);
+  assert.ok(w.act(r.id, { type: 'attack', to: t.id, w: 2, a: 0 }, now).ok);
+  const geo = require('../shared/geo.js'), mp = w.marches.find(m => m.from === p.id), mr = w.marches.find(m => m.from === r.id);
+  const base = v => R.marchSecs(geo.travel(w.map.byId[v.hex], w.map.byId[t.hex])) * R.marchMul(v) * 1000 / w.speed;
+  assert.ok(Math.abs(mp.travel - base(p) * R.swiftMul(p, 4)) < 1, '有跑者的隊伍路程縮短');
+  assert.ok(Math.abs(mr.travel - base(r)) < 1);
+  // 英雄：雲豹的山徑在第一次交鋒發動；聚在一起從第一次交鋒開始越打越強
+  const rr = R.autoBattle({ tribe: 'rukai', w: 6, a: 4, u: 0, hero: true }, { tribe: 'atayal', w: 6, a: 4, u: 0 }, seeded(5));
+  assert.equal(rr.log.find(x => x.ha).r, 1); assert.equal(rr.log.find(x => x.ha).ha, 'cover');
+  const pr = R.autoBattle({ tribe: 'atayal', w: 6, a: 4, u: 0 }, { tribe: 'pinuyumayan', w: 6, a: 4, u: 0, hero: true }, seeded(5));
+  assert.equal(pr.log.find(x => x.hd).r, 1); assert.equal(pr.log.find(x => x.hd).hd, 'gather');
+  check(w);
+});
+
 test('獨特兵種能上場；英雄能力自動發動、一場一次，用過要休息', () => {
   const w = new World({ rng: seeded(71) });
   let now = 1e6;
@@ -610,7 +646,8 @@ test('自動模擬對戰：同一組亂數結果相同；兵力差不多時任�
   new World();
   const m1 = R.simMatrix({ n: 300, rng: seeded(5) }), m2 = R.simMatrix({ n: 300, rng: seeded(5) });
   assert.deepEqual(m1.duel, m2.duel);
-  assert.equal(m1.pairs.length, 16); assert.equal(m1.duel.length, 6); assert.equal(m1.tribes.length, 4);
+  const NT = require('../shared/tribes.js').playable().length;
+  assert.equal(m1.pairs.length, NT * NT); assert.equal(m1.duel.length, NT * (NT - 1) / 2); assert.equal(m1.tribes.length, NT);
   [['標準', {}], ['沒有獨特兵種', { army: { w: 6, a: 6, u: 0 } }], ['大隊', { army: { w: 6, a: 6, u: 6 }, wall: 2, towers: [1] }]].forEach(([name, o], i) => {
     const m = R.simMatrix(Object.assign({ n: 2500, rng: seeded(11 + i) }, o));
     assert.ok(m.ok && m.worst <= 0.05, name + '：最大偏差 ' + (m.worst * 100).toFixed(1) + '%：' + m.duel.map(d => d.x + '-' + d.y + ' ' + (d.score * 100).toFixed(1)).join(' '));

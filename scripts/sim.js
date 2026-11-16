@@ -1,10 +1,10 @@
 /* 自動模擬對戰：列出各族互打的勝率，用來檢查平衡（目標是任兩族之間落在 45%～55%）。
- * 用法：npm run sim            每一組打 2000 場
+ * 用法：npm run sim            每一組打 6000 場（六族有 15 組、6 種情境，場數少的話運氣的起伏會蓋過真正的強弱）
  *       npm run sim -- 5000    每一組打 5000 場
  * 對戰是自動的，人數完全相同時幾乎都是戰力高的一方贏，所以每一場雙方的人數各自在基準的上下浮動三成，量的是「兵力差不多時誰比較常贏」。
  * 用的是 shared/world.js 裡的預設數值；線上世界調過的數值，請到後台的「模擬對戰」看。 */
 const World = require('../shared/world.js'), Tribes = require('../shared/tribes.js'), R = World.rules;
-const n = Number(process.argv[2]) || 2000, ids = Tribes.playable().map(t => t.id), zh = id => Tribes.get(id).zh.replace('族', '');
+const n = Number(process.argv[2]) || 6000, ids = Tribes.playable().map(t => t.id), zh = id => Tribes.get(id).zh.replace('族', '');
 const pct = x => (x * 100).toFixed(1) + '%';
 const CASES = [
   ['標準：勇士、弓手、獨特兵種各約 4 人，圍籬 1 級', {}],

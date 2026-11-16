@@ -142,6 +142,9 @@ window.Art = (function () {
     center: function (k, t) {
       if (t.id === 'amis') return house(k, { w: 2.9, d: 2.4, h: 26, rh: 32, open: true, ov: 0.4 });   // 聚會所：四面開放的大茅草屋
       var s = house(k, { w: 2.7, d: 2.2, h: 30, rh: 26 }), p;
+      if (t.id === 'rukai') {    // 頭目家屋前寬廣的石板前庭（不畫木雕、百合花或任何有身分意義的紋樣）
+        s += '<g transform="translate(' + f1(q(0, 2.15)[0]) + ' ' + f1(q(0, 2.15)[1]) + ')">' + plot(1.9, 0.6, '#7E7A72') + '</g>';
+      }
       if (t.id === 'paiwan') {   // 頭目家屋前的石砌平臺與立石（不畫任何雕刻紋樣）
         s += '<g transform="translate(' + f1(q(0, 2.1)[0]) + ' ' + f1(q(0, 2.1)[1]) + ')">' + plot(1.5, 0.55, '#8A877F') + '</g>';
         p = q(1.5, 2.1); s += '<rect x="' + f1(p[0] - 4) + '" y="' + f1(p[1] - 34) + '" width="8" height="34" rx="3" fill="#6E6B64"/>';
@@ -164,7 +167,7 @@ window.Art = (function () {
     },
     mat: function (k, t) {
       var s = plot(1.15, 1.0, '#000', ' opacity=".16" transform="translate(5 3)"');
-      if (t.id === 'paiwan' || t.id === 'bunun') {   // 石板堆
+      if (t.id === 'paiwan' || t.id === 'bunun' || t.id === 'rukai') {   // 石板堆
         [[1.0, 0.8, 0, '#74777C', '#8F9297'], [0.8, 0.64, 7, '#7F8287', '#9DA0A5'], [0.6, 0.48, 14, '#8A8D92', '#AEB1B5']].forEach(function (L) {
           s += poly([q(-L[0], L[1], L[2]), q(L[0], L[1], L[2]), q(L[0], L[1], L[2] + 7), q(-L[0], L[1], L[2] + 7)], L[3]) +
             poly([q(L[0], L[1], L[2]), q(L[0], -L[1], L[2]), q(L[0], -L[1], L[2] + 7), q(L[0], L[1], L[2] + 7)], shade(L[3], -16)) +
@@ -179,9 +182,23 @@ window.Art = (function () {
     },
     special: function (k, t) {
       if (t.id === 'paiwan') return ISO.farm(k, t, '#D4476B');   // 紅藜田
+      if (t.id === 'rukai') {   // 樹豆田：一排排矮矮的樹豆，枝上掛著豆莢
+        var f = plot(1.35, 1.25, '#5C422B') + plot(1.25, 1.15, '#7A5A3A'), pp;
+        for (var r2 = 0; r2 < 3; r2++) for (var c2 = 0; c2 < 4; c2++) {
+          pp = q(-0.9 + c2 * 0.6, -0.8 + r2 * 0.8);
+          f += seg(pp, [pp[0], pp[1] - 10], '#6B4A32', 1.6) + '<circle cx="' + f1(pp[0]) + '" cy="' + f1(pp[1] - 15) + '" r="7.5" fill="#557F3E"/><circle cx="' + f1(pp[0] + 3) + '" cy="' + f1(pp[1] - 18) + '" r="5" fill="#6FA04B"/>' +
+            '<path d="M' + f1(pp[0] - 5) + ' ' + f1(pp[1] - 12) + 'l-2 6M' + f1(pp[0] + 5) + ' ' + f1(pp[1] - 11) + 'l2 6" stroke="#9C7A3C" stroke-width="2" stroke-linecap="round"/>';
+        }
+        return f;
+      }
       var hut = '<g transform="translate(' + f1(q(-0.55, -0.1)[0]) + ' ' + f1(q(-0.55, -0.1)[1]) + ')">' + house(k, { w: 1.3, d: 1.1, h: 14, rh: 15 }) + '</g>';
       if (t.id === 'atayal') return hut + rack(k, 0.95, 0.3, function (x, y, i) {   // 織布屋：晾著一般條紋的布
         return '<rect x="' + f1(x - 5) + '" y="' + f1(y) + '" width="10" height="17" fill="#F2EAD6"/><rect x="' + f1(x - 5) + '" y="' + f1(y + 4) + '" width="10" height="3" fill="' + (i % 2 ? k.trim : '#2F3B45') + '"/><rect x="' + f1(x - 5) + '" y="' + f1(y + 10) + '" width="10" height="3" fill="' + k.trim + '"/>';
+      });
+      if (t.id === 'pinuyumayan') return hut + rack(k, 0.95, 0.3, function (x, y) {   // 繡布工坊：晾著素面的布，只有一般的十字繡幾何邊
+        var e = '<rect x="' + f1(x - 5) + '" y="' + f1(y) + '" width="10" height="17" fill="#F2EAD6"/>';
+        for (var j = 0; j < 3; j++) e += '<path d="M' + f1(x - 4 + j * 3) + ' ' + f1(y + 12) + 'l2.2 2.4m0 -2.4l-2.2 2.4" stroke="' + (j % 2 ? '#2F3B45' : '#B5483A') + '" stroke-width=".9"/>';
+        return e;
       });
       if (t.id === 'amis') return hut + rack(k, 0.95, 0.3, function (x, y) {      // 漁寮：曬魚
         return '<path d="M' + f1(x) + ' ' + f1(y) + 'c5 4 5 11 0 16c-5-5-5-12 0-16z" fill="#8FB8C9"/><path d="M' + f1(x - 3) + ' ' + f1(y + 20) + 'l3-5 3 5z" fill="#8FB8C9"/>';
@@ -238,6 +255,34 @@ window.Art = (function () {
       s += poly([q(-1.25, 1.1), q(1.25, 1.1), q(1.25, 1.1, 13), q(-1.25, 1.1, 13)], '#8A8D92') + poly([q(1.25, 1.1), q(1.25, -1.1), q(1.25, -1.1, 13), q(1.25, 1.1, 13)], '#74777C');
       for (i = 1; i < 5; i++) s += seg(q(-1.25 + 0.5 * i, 1.1), q(-1.25 + 0.5 * i, 1.1, 13), '#6A6D72', 1.2);
       return s + seg(q(-1.25, 1.1, 13), q(1.25, 1.1, 13), '#A5A8AC', 2.4) + seg(q(1.25, 1.1, 13), q(1.25, -1.1, 13), '#8F9297', 2.4);
+    }
+    if (t.id === 'rukai') {    // 山泉取水處：山壁流下細細的瀑布，黑灰色板岩圍成小水池，旁邊有接水的竹管和竹筒（不畫雲豹、不畫祭儀）
+      var at = function (c, str) { var o = q(c[0], c[1]); return '<g transform="translate(' + f1(o[0]) + ' ' + f1(o[1]) + ')">' + str + '</g>'; };
+      s = plot(1.35, 1.2, '#000', ' opacity=".16" transform="translate(5 3)"') + plot(1.25, 1.1, '#77736A');
+      s += at([-0.62, -0.58], box(0.55, 0.45, 0, 46, '#5E6264', '#4B4F52', '#767A7C'));   // 後方的山壁：疊起來的板岩
+      for (i = 1; i < 5; i++) s += at([-0.62, -0.58], seg(q(-0.55, 0.45, i * 9.5), q(0.55, 0.45, i * 9.5), '#474B4E', 1.2));
+      s += at([-0.62, -0.58], seg(q(0.1, 0.45, 46), q(0.1, 0.45, 4), '#BFE3F0', 5, ' opacity=".9"') + seg(q(0.1, 0.45, 44), q(0.1, 0.45, 6), '#F2FAFC', 1.6));   // 細細的瀑布
+      s += at([0.12, 0.18], plot(0.62, 0.55, '#4E5254') + plot(0.48, 0.42, '#3F86A6') + plot(0.3, 0.26, '#5BA4C4', ' opacity=".7"'));   // 板岩圍成的水池
+      s += at([0.12, 0.18], '<ellipse cx="' + f1(q(-0.35, -0.3)[0] + 4) + '" cy="' + f1(q(-0.35, -0.3)[1] + 3) + '" rx="9" ry="3" fill="none" stroke="#E3F3F8" stroke-width="1.2" opacity=".8"/>');
+      s += seg(q(1.0, -0.85), q(1.0, -0.85, 20), dk, 2.4) + seg(q(1.0, -0.85, 20), q(0.42, -0.2, 10), '#8FB56A', 4.2) + seg(q(1.0, -0.85, 20), q(0.42, -0.2, 10), '#B5D58C', 1.2);   // 接水的竹管
+      [[0.85, 0.75], [1.0, 0.55], [0.7, 0.95]].forEach(function (c) { p = q(c[0], c[1]); s += seg(p, [p[0], p[1] - 13], '#8FB56A', 5.5) + '<ellipse cx="' + f1(p[0]) + '" cy="' + f1(p[1] - 13) + '" rx="2.8" ry="1.2" fill="#5E7A3E"/>'; });   // 竹筒
+      return s;
+    }
+    if (t.id === 'pinuyumayan') {   // 刺竹林：一叢一叢高大的刺竹，竹叢之間堆著綁好的竹束，旁邊一塊整平的空地
+      s = plot(1.35, 1.2, '#000', ' opacity=".14" transform="translate(5 3)"') + plot(1.25, 1.1, '#7D7A4E') + plot(0.62, 0.5, '#A08C62', ' transform="translate(' + f1(q(0.45, 0.45)[0]) + ' ' + f1(q(0.45, 0.45)[1]) + ')"');
+      var clump = function (c, hgt) {
+        var o = q(c[0], c[1]), out = '<ellipse cx="' + f1(o[0]) + '" cy="' + f1(o[1] + 1) + '" rx="16" ry="5" fill="#000" opacity=".2"/>';
+        [-9, -5, -1, 3, 7, 10].forEach(function (dx, j) {
+          var top = [o[0] + dx * 2.2, o[1] - hgt + (j % 2) * 10];
+          out += '<path d="M' + f1(o[0] + dx * 0.6) + ' ' + f1(o[1]) + 'Q' + f1(o[0] + dx * 0.9) + ' ' + f1(o[1] - hgt * 0.6) + ' ' + f1(top[0]) + ' ' + f1(top[1]) + '" stroke="' + (j % 2 ? '#6E9A48' : '#86AE58') + '" stroke-width="2.4" fill="none" stroke-linecap="round"/>' +
+            '<ellipse cx="' + f1(top[0]) + '" cy="' + f1(top[1] + 4) + '" rx="8" ry="5" fill="' + (j % 2 ? '#3F7A3A' : '#4E8A44') + '"/>';
+        });
+        return out;
+      };
+      s += clump([-0.75, -0.7], 70) + clump([0.55, -0.85], 62) + clump([-0.95, 0.35], 58);
+      [0, 1, 2].forEach(function (n) { var a = q(-0.1 + n * 0.08, 0.35 - n * 0.06, 3 + n * 3.4), b = q(0.85 + n * 0.08, 0.35 - n * 0.06, 3 + n * 3.4); s += seg(a, b, '#C9B97A', 4.2) + seg(a, b, '#A8975C', 1.2, ' transform="translate(0 1.4)"'); });   // 綁好的竹束
+      [0.15, 0.6].forEach(function (x) { s += seg(q(x, 0.4, 2), q(x - 0.06, 0.24, 13), dk, 2.2); });
+      return s + clump([1.05, 0.15], 50);
     }
     if (t.id === 'amis') {     // 巴拉告：水道裡用竹筒和樹枝搭出來、讓魚蝦棲息的地方
       s = plot(1.4, 1.25, '#6E5A3E') + plot(1.25, 1.1, '#3F86A6') + plot(0.95, 0.8, '#5BA4C4', ' opacity=".7"');
@@ -317,7 +362,7 @@ window.Art = (function () {
     '<g id="bt-a"><ellipse cx="0" cy="1" rx="17" ry="5" fill="#000" opacity=".25"/><path d="M-5 0C-4 -30 -4 -50 -3 -72h6C4 -50 5 -30 6 0Z" fill="#6B4A32"/><path d="M1 0C2 -30 2 -50 1.5 -72h1.5C4 -50 5 -30 6 0Z" fill="#573A26"/><path d="M-2 -48l-14 -14" stroke="#6B4A32" stroke-width="3" stroke-linecap="round"/><circle cx="-17" cy="-78" r="19" fill="#357245"/><circle cx="15" cy="-82" r="21" fill="#2F6A40"/><circle cx="-2" cy="-98" r="21" fill="#3E7D4E"/><circle cx="-8" cy="-104" r="10" fill="#5A9E64" opacity=".85"/></g>' +
     '<g id="bt-c"><ellipse cx="0" cy="1" rx="15" ry="4.6" fill="#000" opacity=".25"/><rect x="-3.5" y="-46" width="7" height="47" fill="#6B4A32"/><rect x="0" y="-46" width="3.5" height="47" fill="#573A26"/><polygon points="-24,-36 0,-78 24,-36" fill="#2F6B4F"/><polygon points="0,-78 24,-36 0,-36" fill="#25573F"/><polygon points="-19,-62 0,-100 19,-62" fill="#3A7C5B"/><polygon points="0,-100 19,-62 0,-62" fill="#2D6449"/><polygon points="-13,-86 0,-118 13,-86" fill="#468A66"/><polygon points="0,-118 13,-86 0,-86" fill="#357052"/></g>' +
     '<g id="bt-p"><ellipse cx="0" cy="1" rx="11" ry="3.6" fill="#000" opacity=".25"/><path d="M-2.5 0C-1 -40 0 -70 1 -92h3C4 -70 3 -40 3 0Z" fill="#8A7A5A"/><path d="M-1.6 -20h4M-1 -40h4M-.4 -60h3.6M.4 -78h3" stroke="#6E6046" stroke-width="1.4"/><g fill="none" stroke="#3E8A4E" stroke-width="5" stroke-linecap="round"><path d="M2 -92q-16 -14 -30 -2"/><path d="M2 -92q16 -14 30 -2"/><path d="M2 -92q-10 -24 -24 -24"/><path d="M2 -92q10 -24 24 -24"/><path d="M2 -92q0 -20 2 -30"/></g><circle cx="2" cy="-92" r="4" fill="#2F6A40"/></g>' +
-    (AS ? Object.keys(AS.building).filter(function (n) { return !/^(atayal|bunun|amis|paiwan)-/.test(n) || /-center$/.test(n); }).map(function (n) { return '<symbol id="b-' + n + '" viewBox="-80 -140 160 180" overflow="visible">' + AS.building[n] + '</symbol>'; }).join('') : '') +   // 共用的美術素材：建地、1 級的中心建築
+    (AS ? Object.keys(AS.building).filter(function (n) { return !/^(atayal|bunun|amis|paiwan|rukai|pinuyumayan)-/.test(n) || /-center$/.test(n); }).map(function (n) { return '<symbol id="b-' + n + '" viewBox="-80 -140 160 180" overflow="visible">' + AS.building[n] + '</symbol>'; }).join('') : '') +   // 共用的美術素材：建地、1 級的中心建築
     preDefs +   // 已經載好的各族素材（單機預覽版）
     '</defs>';
   function use(id, x, y, sc) { return '<use href="#' + id + '" transform="translate(' + f1(x) + ' ' + f1(y) + ') scale(' + sc.toFixed(2) + ')"/>'; }
@@ -329,9 +374,10 @@ window.Art = (function () {
   function shore(x) { return 1096 + 24 * Math.sin(x / 190); }
   var decorCache = {}, WALL_A = 15.6;   // WALL_A：方形圍籬離部落中央的距離（地面單位），每邊 13 段、每段 2.4
   function natureOn(t) { return newArt && AS && AS.nature && AS.nature[t.id + '-tree-a'] ? true : false; }
-  function treeId(t, r, small) {   // 素材的樹：依隨機數挑一種
-    if (small) return 'n-' + t.id + (r < 0.3 ? '-bush' : r < 0.65 ? '-tree-a' : r < 0.85 ? '-tree-b' : '-tree-c');
-    return 'n-' + t.id + (r < 0.05 ? '-rock' : r < 0.15 ? '-bush' : r < 0.45 ? '-tree-big' : r < 0.66 ? '-tree-a' : r < 0.83 ? '-tree-b' : r < 0.99 ? '-tree-c' : '-log');
+  function treeId(t, r, small) {   // 素材的樹：依隨機數挑一種；那一族還沒有這一種（美術只交了樣張）就用 tree-a
+    var k = small ? (r < 0.3 ? '-bush' : r < 0.65 ? '-tree-a' : r < 0.85 ? '-tree-b' : '-tree-c')
+      : (r < 0.05 ? '-rock' : r < 0.15 ? '-bush' : r < 0.45 ? '-tree-big' : r < 0.66 ? '-tree-a' : r < 0.83 ? '-tree-b' : r < 0.99 ? '-tree-c' : '-log');
+    return 'n-' + t.id + (AS.nature[t.id + k] ? k : '-tree-a');
   }
   function decor(t) {   // 開墾地外面的山林：位置固定，每次都一樣
     var art = natureOn(t), key = t.id + (art ? '+' : '');
@@ -774,7 +820,7 @@ window.Art = (function () {
 
   /* 地面底圖：畫在畫布上再當成一張圖，縮放平移才順。 */
   var groundCache = {};
-  var GRASS = { amis: '#8DB55C', atayal: '#84AC58', bunun: '#7BA262', paiwan: '#89B15A' };   // 新的美術：和部落場景示意圖一樣明亮的草地
+  var GRASS = { amis: '#8DB55C', atayal: '#84AC58', bunun: '#7BA262', paiwan: '#89B15A', rukai: '#7FA35A', pinuyumayan: '#93B862' };   // 新的美術：和部落場景示意圖一樣明亮的草地
   function groundURL(t) {
     var art = natureOn(t), key = t.id + (art ? '+' : '');
     if (groundCache[key]) return groundCache[key];

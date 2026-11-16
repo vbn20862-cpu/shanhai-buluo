@@ -73,7 +73,7 @@ function splitFront(body, name) {
 function files(dir) { const d = path.join(root, 'art', dir); return fs.existsSync(d) ? fs.readdirSync(d).filter(f => f.endsWith('.svg')).sort().map(f => path.join(d, f)) : []; }
 
 const BLD = '-80 -140 160 180';
-const TRIBES = ['atayal', 'bunun', 'amis', 'paiwan'];
+const TRIBES = ['atayal', 'bunun', 'amis', 'paiwan', 'rukai', 'pinuyumayan'];
 function tribeOf(name) { const t = name.split('-')[0]; return TRIBES.indexOf(t) >= 0 ? t : null; }
 const core = { building: {}, height: {}, icon: {}, people: {}, nature: {}, field: {}, fx: {}, logo: {} };
 const packs = {}; TRIBES.forEach(t => { packs[t] = { tribe: t, building: {}, height: {}, people: {}, nature: {}, field: {} }; });
