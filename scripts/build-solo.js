@@ -5,13 +5,16 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const read = f => fs.readFileSync(path.join(root, f), 'utf8');
 // 單機預覽版沒有伺服器，各族的美術素材全部先包進去（排在 art.js 前面，載入時會先放進佇列）
-const scripts = ['shared/geo.js', 'shared/tribes.js', 'shared/world.js', 'public/assets.js'].concat(fs.readdirSync(path.join(root, 'public/art')).filter(f => f.endsWith('.js')).sort().map(f => 'public/art/' + f)).concat(['public/art.js', 'public/net.js', 'public/client.js']);
+const scripts = ['shared/geo.js', 'shared/tribes.js', 'shared/world.js', 'public/assets.js'].concat(fs.readdirSync(path.join(root, 'public/art')).filter(f => f.endsWith('.js')).sort().map(f => 'public/art/' + f)).concat(['public/art.js', 'public/music.js', 'public/net.js', 'public/client.js']);
+// 背景音樂也包進去（base64），排在 music.js 前面
+const AUDIO = {}; fs.readdirSync(path.join(root, 'public/audio')).forEach(f => { const m = f.match(/^(\w+)\.(ogg|m4a)$/); if (m) (AUDIO[m[1]] = AUDIO[m[1]] || {})[m[2]] = fs.readFileSync(path.join(root, 'public/audio', f)).toString('base64'); });
 const out = [
   '<title>山海部落</title>',
   '<meta name="claude:viewport-fit-sides" content="cover">',
   '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@700&family=Noto+Sans+TC:wght@400;500;700&display=swap">',
   '<style>\n' + read('public/style.css') + '</style>',
-  '<div id="app"></div>'
+  '<div id="app"></div>',
+  '<script>window.ShanhaiAudio = ' + JSON.stringify(AUDIO) + ';</script>'
 ].concat(scripts.map(f => '<script>\n' + read(f) + '</script>')).join('\n');
 fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
 fs.writeFileSync(path.join(root, 'dist/shanhai-buluo.html'), out);

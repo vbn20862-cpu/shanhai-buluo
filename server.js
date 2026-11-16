@@ -77,7 +77,7 @@ function save() {
 
 // ---------- 網頁 ----------
 const ROOTS = { '/shared/': path.join(__dirname, 'shared'), '/': path.join(__dirname, 'public') };
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4' };   // 背景音樂
 const fileCache = Object.create(null);   // 檔案內容與壓縮後的版本，檔案沒變就重複使用
 /* 瀏覽器的安全設定：不讓別的網站把遊戲嵌進去、不猜檔案類型、不外洩來源網址；
  * 網頁只能載入自己網站的程式（外加 Google 字型），降低被塞進惡意程式的風險 */

@@ -52,9 +52,9 @@
   function scene() { return S.visit ? 'village' : (!S.me || S.view === 'map') ? 'map' : 'village'; }   // 畫面是部落還是大地圖
   var DRAWERS = { tech: '技藝', army: '軍事', social: '聯盟', trade: '交易', reports: '戰報', codex: '圖鑑', test: '測試工具', tribe: '族人', quest: '任務', rank: '排行' };
   /* 設定（只存在這臺裝置）：字放大、減少動畫。手機有開「減少動態效果」時，預設就減少動畫 */
-  var P = { big: false, calm: false };
-  try { P.calm = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); var sp = JSON.parse(localStorage.getItem('shanhai_prefs') || 'null'); if (sp) { P.big = !!sp.big; P.calm = !!sp.calm; } } catch (e) { /* 讀不到就用預設 */ }
-  function applyPrefs() { var c = document.documentElement.classList; c.toggle('big', P.big); c.toggle('calm', P.calm); }
+  var P = { big: false, calm: false, vol: 0.5 };   // vol：背景音樂的音量（0 是關掉）
+  try { P.calm = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); var sp = JSON.parse(localStorage.getItem('shanhai_prefs') || 'null'); if (sp) { P.big = !!sp.big; P.calm = !!sp.calm; if (sp.vol != null && isFinite(+sp.vol)) P.vol = Math.max(0, Math.min(1, +sp.vol)); } } catch (e) { /* 讀不到就用預設 */ }
+  function applyPrefs() { var c = document.documentElement.classList; c.toggle('big', P.big); c.toggle('calm', P.calm); if (window.Music) Music.setVolume(P.vol); }
   function savePrefs() { applyPrefs(); try { localStorage.setItem('shanhai_prefs', JSON.stringify(P)); } catch (e) { /* 記不住就只在這次有效 */ } }
   applyPrefs();
   function drawer() { return !S.me ? 'start' : S.visit ? null : DRAWERS[S.tab] ? S.tab : null; }   // 打開的視窗（蓋在畫面上）
@@ -727,8 +727,9 @@
     return '<section class="card"><h3>設定<span class="lv">只存在這臺裝置</span></h3>' +
       '<p class="label">字的大小</p>' + seg('pref-big', P.big ? 'on' : 'off', [['off', '標準'], ['on', '大']]) +
       '<p class="label">動畫</p>' + seg('pref-calm', P.calm ? 'on' : 'off', [['off', '一般'], ['on', '減少']]) +
+      '<p class="label">背景音樂</p>' + seg('pref-vol', String(P.vol), [['0', '關'], ['0.25', '小'], ['0.5', '中'], ['0.8', '大']]) +
       (Art.hasNewArt() ? '<p class="label">畫面風格</p>' + seg('art-style', Art.newArt() ? 'new' : 'old', [['new', '新的美術'], ['old', '原本的畫法']]) : '') +
-      '<p class="muted">字放大會放大視窗、小視窗裡的字。減少動畫：族人不走動、樹葉不飄、閃爍停止（對戰的演出照常）。</p></section>';
+      '<p class="muted">字放大會放大視窗、小視窗裡的字。減少動畫：族人不走動、樹葉不飄、閃爍停止（對戰的演出照常）。背景音樂在點一下畫面之後開始播，部落和大地圖各有一首。</p></section>';
   }
   function codeCard() {   // 換裝置繼續玩：部落代碼。只有連線版有（單機試玩的進度存在這個瀏覽器裡）
     if (S.mode !== 'online') return '';
@@ -795,6 +796,7 @@
       '<p>以臺灣原住民族為主題的部落經營遊戲，背景是虛構的「南島時期」。目前開放泰雅、布農、阿美、排灣四族，其他族會陸續加入。</p>' +
       '<p>遊戲裡的族語、建築、物產與神話故事，整理自原住民族委員會、文化部、學術研究與出版品等公開資料，並標明語別或地區。<b>這些內容還沒有經過族人與專家審閱</b>，各部落的說法也不盡相同；如果有錯誤或不妥的地方，歡迎指正。</p>' +
       '<p>遊戲不呈現獵首與傷亡（戰敗一律是「負傷撤退」），神聖或有身分意義的物品不會成為戰利品，各族專屬的紋樣在取得授權前只用一般的幾何形狀；祭儀不會出現在畫面上，神靈也不是可以操控的角色。</p>' +
+      '<p>背景音樂：部落是 Emmntt 的〈I think I\'d stay (jungle chill)〉，大地圖是 TinyWorlds 的〈Forest Ambience〉，都來自 OpenGameArt.org，以 CC0 授權釋出。這兩首是一般的器樂與森林環境音，<b>不是任何一族的傳統音樂</b>；各族的傳統歌謠多半有祭儀或身分的意義，沒有部落同意不放進遊戲。</p>' +
       '<p>我們只記下你取的名字、部落名稱與遊戲進度，不蒐集其他個人資料。為了防止灌水，伺服器會暫時記住連線的網路位置，但不會存下來。</p>' +
       (S.contact ? '<p>' + esc(S.contact) + '</p>' : '') + '</details>';
   }
@@ -1334,6 +1336,7 @@
     el.stage.inert = !!sheet;
     if (sheet && mod && !sheet.contains(document.activeElement)) { sheet.tabIndex = -1; try { sheet.focus({ preventScroll: true }); } catch (x) { sheet.focus(); } }
     if (sc === 'village') renderVillage(); else renderMarks();
+    if (window.Music) Music.play(sc === 'map' || !S.me ? 'map' : 'village');   // 部落一首、大地圖（和開始畫面）一首
     syncBack();
   }
 
@@ -1432,6 +1435,7 @@
       var rv = S.pubs.filter(function (x) { return x.id === b.getAttribute('data-id'); })[0];
       if (rv) { S.view = 'map'; S.tab = 'map'; S.node = null; S.zone = rv.hex; render(); MV.focus(rv.pos[0], rv.pos[1], Math.max(MV.k, 4.5)); render(); }
     }
+    else if (a === 'pref-vol') { P.vol = +b.getAttribute('data-v') || 0; savePrefs(); render(); }
     else if (a === 'pref-big' || a === 'pref-calm') { P[a === 'pref-big' ? 'big' : 'calm'] = b.getAttribute('data-v') === 'on'; savePrefs(); render(); placePop(); }
     else if (a === 'go-tile') { var gt = +b.getAttribute('data-tile'); S.view = 'village'; S.tab = 'build'; if (gt >= 0) { S.selTile = gt; var gp = Art.sitePos(gt); VV.focus(gp[0], gp[1], VV.k); } else S.tab = 'army'; render(); }
     else if (a === 'go-march') {   // 追蹤欄的隊伍：到地圖上看

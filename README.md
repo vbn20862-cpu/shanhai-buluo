@@ -119,3 +119,7 @@ npm run build:art
 ```
 
 把 `art/` 裡的美術素材（建築、圖示）打包給遊戲使用。換了素材之後跑一次，再跑 `npm run build:solo`。
+
+## 素材出處
+
+- 背景音樂（`public/audio/`，CC0）：部落畫面是 Emmntt 的〈I think I'd stay (jungle chill)〉（https://opengameart.org/content/i-think-id-stay-jungle-chill ），大地圖是 TinyWorlds 的〈Forest Ambience〉（https://opengameart.org/content/forest-ambience ）。都是一般的器樂與環境音，不是任何一族的傳統音樂。
