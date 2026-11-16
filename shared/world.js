@@ -787,10 +787,11 @@
       if (q.type === 'wall') { v.wall = q.to; addPts(v, q.to); }
       else if (q.type === 'clear') { v.land[q.tile] = 1; v.res.mat += q.gain; addPts(v, 3); }
       else if (v.tiles[q.tile]) { v.tiles[q.tile].level = q.to; delete v.tiles[q.tile].busy; addPts(v, q.to); }   // 季分：升到幾級就加幾分
+      self.dailyAdd(v, 'build', 1, now);
       return false;
     });
-    v.train = v.train.filter(function (q) { if (q.doneAt > now) return true; v.units[q.u]++; addPts(v, 1); return false; });
-    if (v.research && v.research.doneAt <= now) { v.tech = v.tech || dict(); v.tech[v.research.id] = v.research.to; addPts(v, 10 * v.research.to); v.research = null; }   // 技藝學會了
+    v.train = v.train.filter(function (q) { if (q.doneAt > now) return true; v.units[q.u]++; addPts(v, 1); self.dailyAdd(v, 'train', 1, now); return false; });
+    if (v.research && v.research.doneAt <= now) { v.tech = v.tech || dict(); v.tech[v.research.id] = v.research.to; addPts(v, 10 * v.research.to); v.research = null; this.dailyAdd(v, 'tech', 1, now); }   // 技藝學會了
     if (v.hurt && all3(v.hurt) > 0) {   // 療養屋：負傷的人休養好就回到隊伍（名額滿了先等著）
       v.healAcc = Math.min(1, (v.healAcc || 0) + dt * healRate(v) * self.speed) ;
       while (v.healAcc >= 1 && all3(v.hurt) > 0 && armyTotal(v) < armyCap(v)) {
@@ -818,6 +819,7 @@
     var own = v.sp[v.tribe] || 0;
     if (rt.special > 0 && own < c.sp) v.sp[v.tribe] = Math.min(c.sp, own + rt.special * dt);
     this.refreshChores(v, now);
+    this.rollDaily(v, now);
   };
   /* 有聚會廣場的部落：時間到了就換一批定時任務（正在做的不受影響） */
   World.prototype.refreshChores = function (v, now) {
@@ -830,6 +832,30 @@
       var r = this.rng(), star = r < 0.5 ? 1 : r < 0.85 ? 2 : 3, k = pool.splice(Math.floor(this.rng() * pool.length), 1)[0];
       c.list.push({ id: this.id('c'), k: k, star: star, rw: choreReward(v, star) });
     }
+  };
+
+  World.prototype.dayLen = function () { return this.ms(864e5 / 20); };
+  World.prototype.dayOf = function (now) { return Math.floor((now - DAILY_OFF) / this.dayLen()); };
+  /* 換一天了：重新出今天的 4 件小目標（沒領的獎勵就沒了，不另外懲罰） */
+  World.prototype.rollDaily = function (v, now) {
+    if (v.bot) return;
+    var day = this.dayOf(now);
+    if (v.daily && v.daily.day === day) return;
+    var self = this, rnd = hashRng(v.id + ':' + day);
+    var army = bl(v, 'barracks') > 0 || armyTotal(v) > 0;   // 做不到的題目不出：還沒有訓練場也沒有戰士，就不出訓練、採集、野地事件
+    var can = { train: bl(v, 'barracks') > 0, gather: army, chore: bl(v, 'plaza') > 0, help: !!(v.ally && this.alliances[v.ally]), tech: bl(v, 'craft') > 0,
+      wild: army && Object.keys(this.nodes).some(function (k) { var nd = self.nodes[k]; return NODE[nd.k] && !!NODE[nd.k].ev; }) };
+    var pick = function (pool, n) { var out = []; pool = pool.slice(); while (out.length < n && pool.length) out.push(pool.splice(Math.floor(rnd() * pool.length), 1)[0]); return out; };
+    var ok = function (k) { return can[k] !== false; };
+    var first = pick(DAILY_BASE.filter(ok), 2), rest = Object.keys(DAILY).filter(function (k) { return DAILY_BASE.indexOf(k) < 0 && ok(k); });
+    v.daily = { day: day, next: (day + 1) * this.dayLen() + DAILY_OFF, bonus: false,   // 剛開始的部落能做的事比較少，可能只有 3 件
+      list: first.concat(pick(rest, DAILY_N - first.length)).map(function (k) { return { k: k, n: DAILY[k].n, cur: 0, got: false }; }) };
+  };
+  /* 做了某件事：今天的小目標裡有這一項的話，進度加上去（只在事情做完的那一刻變動） */
+  World.prototype.dailyAdd = function (v, k, n, now) {
+    if (!v || v.bot) return;
+    this.rollDaily(v, now);
+    v.daily.list.forEach(function (x) { if (x.k === k && x.cur < x.n) x.cur = Math.min(x.n, x.cur + (n || 1)); });
   };
 
   // ---------- 族群關係 ----------
@@ -865,6 +891,30 @@
   ];
   function allyGoalN(al, i) { return ALLY_GOAL[i].per * Math.max(2, al.members.length); }
   function allyReward(v, i) { var f = r5(50 * eq(centerLevel(v)) * TUNE.cost); return { food: f, mat: f, boost: i === 2 ? 2 : 1 }; }
+  /* 今天的小目標（每日任務）：每天換一批 4 件（前兩件從蓋建築、訓練、採集挑，後兩件從其他的挑），做完各領一份，4 件都做完再加碼。
+   * 正式節奏時臺灣時間每天早上 5 點換；節奏 1 時大約 72 分鐘換一次。題目都是一個人做得到的事，不要求去打別的玩家；沒有連續登入的獎勵 */
+  var DAILY = {
+    build: { zh: '蓋好或升級建築', n: 1, unit: '次' }, train: { zh: '訓練好戰士', n: 5, unit: '名' }, gather: { zh: '派隊伍到野地採集，帶回物資', n: 1, unit: '次' },
+    chore: { zh: '完成聚會廣場的工作', n: 1, unit: '件' }, trade: { zh: '到市集或中立聚落交易', n: 1, unit: '次' }, gift: { zh: '送禮給別的部落', n: 1, unit: '次' },
+    help: { zh: '幫盟友加速', n: 2, unit: '次' }, tech: { zh: '學完一項技藝', n: 1, unit: '項' }, wild: { zh: '處理野地事件（趕山豬或搶修）', n: 1, unit: '次' }
+  }, DAILY_BASE = ['build', 'train', 'gather'], DAILY_N = 4, DAILY_OFF = 21 * 3600e3, DAILY_BONUS = { boost: 1, sp: 10, pts: 20 };   // DAILY_OFF：臺灣時間早上 5 點是 UTC 21 點
+  function dailyReward(v) { var f = r5(20 * eq(centerLevel(v)) * TUNE.cost); return { food: f, mat: f }; }
+  function hashRng(str) {   // 用部落代號和日期決定題目：每個人每天的組合固定，也不會動到世界的亂數
+    var h = 2166136261; for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return function () { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
+  }
+  /* 族人的請託（支線任務）：每族 3 件（shared/tribes.js 的 side），部落中心到 3、6、9 級各出現一件，一次做一件。
+   * 目標有四種：交出物資（give）、存到多少物資（have）、某種建築升到幾級（level）、派隊伍到某種資源點採集一趟（trip） */
+  var SIDE_AT = [3, 6, 9], SIDE_LV = [3, 5, 8], SIDE_PTS = 30;
+  function sideNeed(i, g) { return g.k === 'level' ? SIDE_LV[i] : g.k === 'trip' ? 1 : g.r === 'sp' ? 10 + 10 * SIDE_AT[i] : r5(80 * eq(SIDE_AT[i]) * TUNE.cost); }
+  function sideReward(i) { var f = r5(60 * eq(SIDE_AT[i]) * TUNE.cost); return { food: f, mat: f, boost: 1 }; }
+  function sideOf(v) {   // 目前這件請託的進度：{ i, need, have, can }；還沒出現、或三件都做完了回傳 null
+    var t = Tribes.get(v.tribe), i = v.side ? v.side.i || 0 : 0, s = t && t.side && t.side[i];
+    if (!s || centerLevel(v) < SIDE_AT[i]) return null;
+    var g = s.goal, need = sideNeed(i, g);
+    var have = g.k === 'level' ? bl(v, g.b) : g.k === 'trip' ? (v.side && v.side.trip ? 1 : 0) : Math.floor(g.r === 'sp' ? v.sp[v.tribe] || 0 : v.res[g.r] || 0);
+    return { i: i, need: need, have: Math.min(need, have), can: have >= need };
+  }
   var BOOST_START = 3, BOOST_DEV = 1, BOOST_QUEST = 2;   // 加速道具：新部落送 3 個；部落發展每一步送 1 個、神話主線每一章送 2 個（不賣）
   function devReward(d) {   // 獎勵：升級類的給那一級花費的三成，其他給固定的量
     if (d.k === 'units') return { food: 120, mat: 0 };
@@ -1172,7 +1222,7 @@
       if (!bySp && pay !== 'food' && pay !== 'mat') return { ok: false, msg: '請選要拿什麼來換' };
       if (stock[t.id] < gain) return { ok: false, msg: '聚落裡的' + t.sp.zh + '換完了，過一陣子再來' };
       if (getRes(v, key) < cost) return { ok: false, msg: resName(key) + '不夠' };
-      addRes(v, key, -cost); addRes(v, 'sp:' + t.id, gain); stock[t.id] -= gain; v.stat.trade++;
+      addRes(v, key, -cost); addRes(v, 'sp:' + t.id, gain); stock[t.id] -= gain; v.stat.trade++; this.dailyAdd(v, 'trade', 1, now);
       return { ok: true, msg: '換到 ' + gain + ' 份' + t.sp.zh };
     },
     seen: function (v, a) { v.reports.forEach(function (r) { if (!a.id || r.id === a.id) r.seen = true; }); },
@@ -1183,7 +1233,7 @@
       if (now - v.lastGift < 5000) return { ok: false, msg: '稍等一下再送' };
       if (getRes(v, k) < n) return { ok: false, msg: '數量不夠' };
       this.tickVillage(t, now);
-      addRes(v, k, -n); addRes(t, k, n); v.lastGift = now; v.gifts++; this.relAdd(v.tribe, t.tribe, REL.gift * relMul(v));
+      addRes(v, k, -n); addRes(t, k, n); v.lastGift = now; v.gifts++; this.relAdd(v.tribe, t.tribe, REL.gift * relMul(v)); this.dailyAdd(v, 'gift', 1, now);
       this.log('「' + v.name + '」送給「' + t.name + '」' + n + ' 份' + resName(k) + '。', now, 'gift');
       return { ok: true, msg: '禮物送到了' };
     },
@@ -1213,8 +1263,8 @@
       if (st === 'hostile') return { ok: false, msg: '兩族的關係緊張，暫時不能直接交易' };
       this.market.splice(i, 1);
       addRes(v, o.want, -o.wantN); addRes(v, o.give, Math.floor(o.giveN * bonus));   // 兩族友好時，雙方各多拿一成
-      if (s) { this.tickVillage(s, now); addRes(s, o.want, Math.floor(o.wantN * bonus)); this.relAdd(v.tribe, s.tribe, REL.trade * relMul(v)); s.stat.trade++; }
-      v.stat.trade++;
+      if (s) { this.tickVillage(s, now); addRes(s, o.want, Math.floor(o.wantN * bonus)); this.relAdd(v.tribe, s.tribe, REL.trade * relMul(v)); s.stat.trade++; this.dailyAdd(s, 'trade', 1, now); }
+      v.stat.trade++; this.dailyAdd(v, 'trade', 1, now);
       this.log('「' + v.name + '」和「' + (s ? s.name : '遠方部落') + '」完成交易：' + o.giveN + ' ' + resName(o.give) + ' 換 ' + o.wantN + ' ' + resName(o.want) + '。', now, 'trade');
       return { ok: true, msg: '交易完成' };
     },
@@ -1252,7 +1302,7 @@
       var c = v.chores, id = String(a.id || ''), o = c && c.cur.filter(function (x) { return x.id === id; })[0];
       if (!o) return { ok: false, msg: '找不到這件工作' };
       if (o.doneAt > now) return { ok: false, msg: '還沒做完' };
-      c.cur = c.cur.filter(function (x) { return x !== o; }); c.n = (c.n || 0) + 1; addPts(v, 5 * o.star);
+      c.cur = c.cur.filter(function (x) { return x !== o; }); c.n = (c.n || 0) + 1; addPts(v, 5 * o.star); this.dailyAdd(v, 'chore', 1, now);
       v.res.food += o.rw.food; v.res.mat += o.rw.mat; if (o.rw.sp) addRes(v, 'sp:' + v.tribe, o.rw.sp); v.boosts = (v.boosts || 0) + (o.rw.boost || 0);
       return { ok: true, msg: '「' + CHORES[o.k] + '」做完了，領到獎勵' };
     },
@@ -1275,6 +1325,33 @@
       if ((v.spts || 0) < SEASON_GOAL[i]) return { ok: false, msg: '季分還不夠' };
       var rw = seasonReward(v, i); v.res.food += rw.food; v.res.mat += rw.mat; v.boosts = (v.boosts || 0) + rw.boost; v.sgot.push(i);
       return { ok: true, msg: '領到本季第 ' + (i + 1) + ' 個目標的獎勵' };
+    },
+    dailyClaim: function (v, a, now) {   // 領今天的小目標裡一件的獎勵
+      this.rollDaily(v, now);
+      var i = int(a.i), x = i >= 0 && v.daily.list[i];
+      if (!x) return { ok: false, msg: '沒有這個目標' };
+      if (x.got) return { ok: false, msg: '已經領過了' };
+      if (x.cur < x.n) return { ok: false, msg: '還沒完成' };
+      var rw = dailyReward(v); v.res.food += rw.food; v.res.mat += rw.mat; x.got = true;
+      return { ok: true, msg: '領到「' + (DAILY[x.k] || { zh: '小目標' }).zh + '」的獎勵' };
+    },
+    dailyBonus: function (v, a, now) {   // 4 件都完成：領加碼（還沒領的那幾件一起領）
+      this.rollDaily(v, now);
+      var d = v.daily, self = this;
+      if (d.bonus) return { ok: false, msg: '今天已經領過了' };
+      if (!d.list.every(function (x) { return x.cur >= x.n; })) return { ok: false, msg: '全部完成才能領' };
+      d.list.forEach(function (x, i) { if (!x.got) ACTIONS.dailyClaim.call(self, v, { i: i }, now); });
+      d.bonus = true; v.boosts = (v.boosts || 0) + DAILY_BONUS.boost; addRes(v, 'sp:' + v.tribe, DAILY_BONUS.sp); addPts(v, DAILY_BONUS.pts);
+      return { ok: true, msg: '今天的小目標全部完成！' };
+    },
+    side: function (v, a, now) {   // 完成族人的請託
+      var t = Tribes.get(v.tribe), o = sideOf(v), s = o && t.side[o.i];
+      if (!s) return { ok: false, msg: '現在沒有族人的請託' };
+      if (!o.can) return { ok: false, msg: '還沒準備好' };
+      if (s.goal.k === 'give') addRes(v, s.goal.r === 'sp' ? 'sp:' + v.tribe : s.goal.r, -o.need);
+      var rw = sideReward(o.i); v.res.food += rw.food; v.res.mat += rw.mat; v.boosts = (v.boosts || 0) + rw.boost; addPts(v, SIDE_PTS);
+      v.side = { i: o.i + 1, trip: 0 };
+      return { ok: true, msg: '「' + s.t + '」完成了，族人謝謝你' };
     },
     askHelp: function (v, a) {   // 請盟友幫忙這項工程
       if (!v.ally || !this.alliances[v.ally]) return { ok: false, msg: '加入聯盟才能請盟友幫忙' };
@@ -1339,7 +1416,7 @@
       o.queue.forEach(function (q) {
         if (!q.ask || q.hn >= q.hmax || q.doneAt <= now || (q.hby || []).indexOf(v.id) >= 0) return;
         var cut = Math.max(self.ms(TUNE.helpMin * 3000), (q.doneAt - now) * TUNE.helpPct / 100);
-        q.doneAt = Math.max(now, q.doneAt - cut); q.hn++; (q.hby = q.hby || []).push(v.id); n++; addPts(v, 2); self.allyAdd(v, 'help', 1, now);
+        q.doneAt = Math.max(now, q.doneAt - cut); q.hn++; (q.hby = q.hby || []).push(v.id); n++; addPts(v, 2); self.allyAdd(v, 'help', 1, now); self.dailyAdd(v, 'help', 1, now);
       });
     });
     return n;
@@ -1499,7 +1576,11 @@
     if (nd && nd.amt < 1) { delete this.nodes[nd.id]; this.nodesV++; }
     var k = nd ? NODE[nd.k].res : (m.res || 'food'); m.res = k;
     if (m.carry > 0) { m.loot = {}; m.loot[k] = m.carry; }
-    if (v && m.carry > 0) { addPts(v, 5); this.allyAdd(v, 'gather', m.carry, now); }
+    if (v && m.carry > 0) {
+      addPts(v, 5); this.allyAdd(v, 'gather', m.carry, now); this.dailyAdd(v, 'gather', 1, now);
+      var so = sideOf(v), sg = so && Tribes.get(v.tribe).side[so.i].goal;   // 族人的請託：派隊伍到某種資源點採集一趟
+      if (sg && sg.k === 'trip' && nd && nd.k === sg.node) { v.side = v.side || { i: so.i, trip: 0 }; v.side.trip = 1; }
+    }
     if (v && m.carry > 0 && !early) {
       v.stat.point++;
       this.pushReport(v, { t: now, role: 'atk', point: nd ? NODE[nd.k].zh : '資源點', other: '', otherTribe: v.tribe, win: true, note: '採集完成，帶著 ' + m.carry + ' ' + resName(k) + '回部落。' });
@@ -1555,7 +1636,7 @@
     var care = hospitalize(v, { w: m.w - r.left.w, a: m.a - r.left.a, u: (m.u || 0) - r.left.u });
     ['w', 'a', 'u'].forEach(function (k) { v.away[k] = Math.max(0, v.away[k] - ((m[k] || 0) - r.left[k])); m[k] = r.left[k]; });
     var rw = null;
-    addPts(v, r.win ? 8 * nd.lv : 2); if (r.win) this.allyAdd(v, 'wild', 1, now);
+    addPts(v, r.win ? 8 * nd.lv : 2); if (r.win) { this.allyAdd(v, 'wild', 1, now); this.dailyAdd(v, 'wild', 1, now); }
     if (r.win) { rw = wildReward('boar', nd.lv); delete this.nodes[nd.id]; v.stat.point++; v.boosts = (v.boosts || 0) + rw.boost; m.loot = { food: rw.food, mat: rw.mat }; }
     else nd.bn = Math.max(1, r.home.w);
     this.nodesV++;
@@ -1572,7 +1653,7 @@
     if (m.phase === 'gather') {   // 修好了
       var lv = nd ? nd.lv : 1, rw = wildReward('repair', lv), hx = nd && this.map.byId[nd.hex], ht = hx && hx.tribe;
       if (nd) { delete this.nodes[nd.id]; this.nodesV++; }
-      v.stat.point++; v.boosts = (v.boosts || 0) + rw.boost; m.loot = { food: rw.food, mat: rw.mat }; addPts(v, 8 * lv); this.allyAdd(v, 'wild', 1, now);
+      v.stat.point++; v.boosts = (v.boosts || 0) + rw.boost; m.loot = { food: rw.food, mat: rw.mat }; addPts(v, 8 * lv); this.allyAdd(v, 'wild', 1, now); this.dailyAdd(v, 'wild', 1, now);
       if (ht && ht !== v.tribe && Tribes.get(ht) && Tribes.get(ht).playable) this.relAdd(v.tribe, ht, REL.gift);   // 幫別族的區域搶修：兩族的關係變好
       this.pushReport(v, { t: now, role: 'atk', point: '颱風後搶修', ev: 'repair', other: '', otherTribe: v.tribe, win: true,
         note: '修好了' + (nd ? REPAIR_WHAT[nd.what || 0] : '') + '，帶回謝禮：' + rw.food + ' ' + resName('food') + '、' + rw.mat + ' ' + resName('mat') + (rw.boost ? '，另外得到 ' + rw.boost + ' 個加速' : '') + '。' + (ht && ht !== v.tribe ? '這裡是' + Tribes.get(ht).zh + '的區域，兩族的關係變好了。' : '') });
@@ -1779,6 +1860,7 @@
     TUNE = this.tune;
     var v = this.villages[id], self = this;
     if (!v) return null;
+    this.rollDaily(v, now);   // 換天了就先出今天的小目標
     var me = JSON.parse(JSON.stringify(v));
     delete me.offSnap; delete me.offLog; delete me.cool; delete me.last; delete me.popAcc; delete me.ate; delete me.healAcc;   // 玩家用不到的欄位不傳
     me.d = derived(v, this.speed);
@@ -1902,6 +1984,7 @@
     resName: resName, derived: derived, eatRate: eatRate, perWorker: perWorker, TECH: TECH, TECH_MAX: TECH_MAX, UNLOCK: UNLOCK, techCost: techCost, techTime: techTime, techMax: techMax, battleMod: battleMod, buildMul: buildMul, marchMul: marchMul, healCap: healCap, bl: bl, eq: eq, centerUp: centerUp, centerReq: centerReq, reqLeft: reqLeft, maxLevelOf: maxLevelOf, wallMul: wallMul, villagePower: villagePower, DEV_START: DEV_START, popCap: popCap, LOOT_FRAC: LOOT_FRAC, GRADE: GRADE, FIGHT: FIGHT,
     armyCap: armyCap, mkSide: mkSide, supportCap: supportCap, ALLY_GOAL: ALLY_GOAL, allyReward: allyReward, QSTAGE: QSTAGE, storySegs: storySegs, stageReward: stageReward, SEASON_GOAL: SEASON_GOAL, SEASON_TOP: SEASON_TOP, seasonReward: seasonReward, CHORES: CHORES, CHORE_MIN: CHORE_MIN, CHORE_EVERY: CHORE_EVERY, choreSlots: choreSlots, choreOffers: choreOffers, choreReward: choreReward, TIER: TIER, tiers: tiers, tierMul: tierMul, helpMax: helpMax, BOOST_START: BOOST_START, BOOST_DEV: BOOST_DEV, BOOST_QUEST: BOOST_QUEST, QUESTS: QUESTS, UNIT_U: UNIT_U, BLESS: BLESS, HERO_REST: HERO_REST, marchMax: marchMax, gatherRate: gatherRate, REL: REL, NODE: NODE, NODE_AMT: NODE_AMT, BOAR_N: BOAR_N, boarSide: boarSide, boarPower: boarPower, wildReward: wildReward, REPAIR_WHAT: REPAIR_WHAT, repairRate: repairRate, SETTLE: SETTLE,
     autoBattle: autoBattle, power: power, odds: odds, ODDS: ODDS, simBattle: simBattle, simMatrix: simMatrix,
+    DAILY: DAILY, DAILY_N: DAILY_N, DAILY_BONUS: DAILY_BONUS, dailyReward: dailyReward, SIDE_AT: SIDE_AT, SIDE_LV: SIDE_LV, sideNeed: sideNeed, sideReward: sideReward, sideOf: sideOf,
     swiftMul: swiftMul, defWall: defWall, TUNE_DEF: TUNE_DEF, tuneDefaults: tuneDefaults, setTune: setTune, paced: paced, trainTime: trainTime, marchSecs: marchSecs, shieldMs: shieldMs, OFFER_MS: OFFER_MS
   };
   Object.defineProperty(World.rules, 'TUNE', { get: function () { return TUNE; } });   // 目前生效的可調數值

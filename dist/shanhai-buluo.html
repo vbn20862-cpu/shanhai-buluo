@@ -272,7 +272,7 @@ p { margin: 4px 0; }
 .rep .neg { color: var(--warn); }
 .reqs { list-style: none; margin: 6px 0 2px; padding: 0; font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .reqs .ok { color: var(--good); } .reqs .no { color: var(--warn); font-weight: 700; }
-.card.dev.ready { border-color: var(--gold); }
+.card.dev.ready, .card.daily.ready, .card.side.ready { border-color: var(--gold); }
 .chip.bless { border-color: var(--gold); color: var(--gold); }
 /* 部落代碼（換裝置用） */
 .codebox { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; letter-spacing: .04em; background: var(--bg); border: 1px dashed var(--gold); border-radius: 8px; padding: 7px 10px; word-break: break-all; user-select: all; -webkit-user-select: all; margin: 4px 0; }
@@ -481,6 +481,21 @@ p { margin: 4px 0; }
 .sgoals li .gain { flex: 1; min-width: 0; font-size: 12.5px; flex-wrap: wrap; }
 .sgoals li em { font-style: normal; font-size: 12px; color: var(--mute); white-space: nowrap; }
 .sgoals li.can > b { color: var(--gold); } .sgoals li.got { opacity: .6; } .sgoals li.got em { color: var(--good); }
+/* 今天的小目標、族人的請託 */
+.card.daily { border-color: rgba(227, 179, 65, .55); }
+.dl { list-style: none; margin: 2px 0 0; padding: 0; }
+.dl li { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px dashed var(--line); min-height: 34px; }
+.dl li:first-child { border-top: 0; }
+.dl .dn { flex: 1; min-width: 0; }
+.dl .dc { flex: none; font-variant-numeric: tabular-nums; color: var(--mute); font-weight: 600; }
+.dl .gain { flex: none; font-size: 12px; display: inline-flex; gap: 0 2px; align-items: center; color: var(--mute); }
+.dl em { font-style: normal; font-size: 12px; color: var(--good); white-space: nowrap; }
+.dl li.can .dc { color: var(--gold); } .dl li.got { opacity: .6; }
+.card.daily .act, .card.side .act { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; }
+.card.daily .act .gain, .card.side .act .gain { font-size: 12.5px; display: inline-flex; flex-wrap: wrap; gap: 0 2px; align-items: center; }
+.card.side .src { font-size: 12px; color: var(--mute); margin: 2px 0 6px; }
+.card.side .story b { display: block; margin-bottom: 2px; color: var(--gold); }
+.lv.helped { color: var(--good); display: inline-flex; align-items: center; gap: 3px; }
 /* 神話故事關卡 */
 .sscene { display: block; width: 100%; height: 108px; border-radius: 8px; margin: 4px 0 6px; border: 1px solid var(--line); }
 .spath { display: flex; justify-content: space-between; gap: 4px; margin: 2px 0 6px; }
@@ -534,7 +549,7 @@ p { margin: 4px 0; }
 .sheet h2, .pcard h3, #pbody .card h3 { color: var(--rim2); text-shadow: 0 2px 0 var(--ember); }
 @keyframes win-pop { from { opacity: 0; transform: scale(.92); } }
 #pbody .card, .sheet .card { background: linear-gradient(180deg, #4E3825, #3F2C1C); border: 1.5px solid #8A6238; border-radius: 12px; box-shadow: inset 0 1px 0 rgba(255, 230, 170, .22), 0 2px 0 rgba(0, 0, 0, .35); }
-#pbody .card.sel, #pbody .card.quest.ready, #pbody .card.dev.ready { border-color: var(--rim2); }
+#pbody .card.sel, #pbody .card.quest.ready, #pbody .card.dev.ready, #pbody .card.daily.ready, #pbody .card.side.ready { border-color: var(--rim2); }
 .pcard .card { background: none; border: 0; box-shadow: none; }
 .pcard .x, #dhead .x { top: 5px; right: 6px; width: 30px; height: 30px; background: radial-gradient(circle at 35% 30%, #D2704A, #8E3A22); color: #FFF3DC; border: 2px solid var(--rim2); box-shadow: 0 2px 0 #3A1408; font-size: 18px; }
 /* 按鈕：金色是主要的動作，木頭色是次要的；按下去會往下壓 */
@@ -869,6 +884,11 @@ p { margin: 4px 0; }
         { zh: '背簍', native: "kiri'", note: '背在背上的簍子，用來裝採收的作物。' },
         { zh: '背網袋', native: 'tokan', note: '背在身上的網袋，出門時用來裝東西。' }
       ],
+      side: [   // 族人的請託：只用上面查證過的說明，寫成日常的工作（遊戲設計，不代表傳統上有這樣的任務）
+        { t: '換工的飯菜', x: '農忙了，親族來幫忙收小米。照換工（sbayux）的習慣，主人要準備飯菜招待來幫忙的人。', src: '文化卡〈換工 Sbayux〉', card: '換工 Sbayux', goal: { k: 'give', r: 'food' } },
+        { t: '修好穀倉', x: "新收的小米要放進穀倉（khu'）。穀倉架高在柱子上，柱子上的防鼠板要修好。", src: "建築說明〈穀倉 khu'〉", card: "高架穀倉 Khu'", goal: { k: 'level', b: 'storage' } },
+        { t: '織一批苧麻布', x: '從種麻、刮麻、捻線到織成布，要花很多工夫。存下一批苧麻布。', src: '文化卡〈苧麻織布〉', card: '苧麻織布', goal: { k: 'have', r: 'sp' } }
+      ],
       story: { t: '射日傳說', credit: '泰雅族的射日傳說，各地的說法不同（太陽的數目、射日的人數都不一樣）。依文化部、原住民族委員會等公開資料改寫。' },
       quests: [
         { t: '兩個太陽', x: '很久以前，天上有兩個太陽輪流照著大地，沒有黑夜。天氣酷熱，作物長不好，人們也沒辦法好好休息。' },
@@ -913,6 +933,11 @@ p { margin: 4px 0; }
       items: [
         { zh: '臼與杵', native: 'nusung、husau', note: '木臼（nusung）和杵（husau），用來搗小米，多數家庭都有。郡社群的說法。' },
         { zh: '背架', native: 'patakan', note: '用來揹重物的背架。名稱是巒社群的說法。' }
+      ],
+      side: [   // 族人的請託：只用上面查證過的說明，寫成日常的工作（遊戲設計，不代表傳統上有這樣的任務）
+        { t: '分享山肉', x: '獵人不能獨占獵物，帶回來的山肉要和親族分享。', src: '建築說明〈獵寮 taluhan〉', goal: { k: 'give', r: 'sp' } },
+        { t: '搗小米', x: '用木臼（nusung）和杵（husau）把小米搗好，多數家庭都有這兩樣用具。', src: '器物〈臼與杵〉（郡社群的說法）', goal: { k: 'give', r: 'food' } },
+        { t: '加蓋家屋的牆', x: '各地家屋的建材不同：南投多用石板砌牆，花蓮以木板為主，臺東與高雄是石砌基座加上木牆或竹牆。準備木石，把家屋的牆加蓋起來。', src: '建築說明〈家屋 lumah〉', goal: { k: 'give', r: 'mat' } }
       ],
       story: { t: '與月亮的約定', credit: '布農族「征伐太陽」與「與月亮的約定」傳說，各社群的說法不同。依《與月亮的約定》等公開出版的版本改寫。' },
       quests: [
@@ -960,6 +985,11 @@ p { margin: 4px 0; }
         { zh: '臼與杵', native: "dodang、'asolo", note: "木臼（dodang）和杵（'asolo），用來搗小米。" },
         { zh: '竹筏', native: 'dadangoyan', note: '用竹子綁成的筏，可以出海捕魚、載運東西。名稱是港口部落（花蓮豐濱）的說法。' }
       ],
+      side: [   // 族人的請託：只用上面查證過的說明，寫成日常的工作（遊戲設計，不代表傳統上有這樣的任務）
+        { t: '去採野菜', x: '阿美族熟悉各種可以吃的野菜（dateng），採野菜叫 midateng。派一支隊伍到地圖上的野菜地採一趟。', src: '文化卡〈野菜知識〉', card: '野菜知識', goal: { k: 'trip', node: 'forage' } },
+        { t: '捕魚分享', x: '用八卦網（tafokod）、魚筌（rakar）在溪流與海邊捕魚，漁獲由大家分享。', src: '建築說明〈漁寮 foting〉', goal: { k: 'give', r: 'sp' } },
+        { t: '守望的瞭望臺', x: '阿美族的部落幾乎都設有瞭望臺，由青年輪流守望。把瞭望臺修得更高、更穩。', src: '建築說明〈瞭望臺〉', goal: { k: 'level', b: 'tower' } }
+      ],
       story: { t: '美崙山的巨人', credit: '流傳於花蓮阿美族與撒奇萊雅族的美崙山巨人（阿里嘎該 Alikakay）傳說，各部落的版本不同。依公開出版的版本改寫，省略了比較驚悚的情節。' },
       quests: [
         { t: '山上的巨人', x: '傳說花蓮的美崙山上住著一群巨人，叫做阿里嘎該（Alikakay）。他們身材高大，還會變成別的樣子。' },
@@ -1005,6 +1035,11 @@ p { margin: 4px 0; }
       items: [
         { zh: '木臼與木杵', note: '家家戶戶都有的用具，用來搗小米。' },
         { zh: '網袋', native: 'sikau', note: '男女都會背的網袋，用來裝東西。臺東達仁一帶叫 karay。' }
+      ],
+      side: [   // 族人的請託：只用上面查證過的說明，寫成日常的工作（遊戲設計，不代表傳統上有這樣的任務）
+        { t: '紅藜收成', x: '紅藜（djulis）是臺灣原生的作物，耐旱，大約四個月就能收成。存下一批紅藜。', src: '建築說明〈紅藜田 djulis〉', card: '紅藜 Djulis', goal: { k: 'have', r: 'sp' } },
+        { t: '修補石板屋', x: '北、中排灣用板岩砌成石板屋。準備石板，把家屋修補好。', src: '建築說明〈石板屋 umaq〉', card: '石板屋與木板屋', goal: { k: 'give', r: 'mat' } },
+        { t: '搗小米', x: '木臼與木杵是家家戶戶都有的用具，用來搗小米。', src: '器物〈木臼與木杵〉', goal: { k: 'give', r: 'food' } }
       ],
       story: { t: '紅眼睛的巴里', credit: '排灣族的巴里（palji）傳說，各部落的說法與結局都不一樣。依國家教育研究院《臺灣小故事101》的版本改寫，採用平安的結局。' },
       quests: [
@@ -1062,6 +1097,11 @@ p { margin: 4px 0; }
         { zh: '儲穀桶', note: '存放小米的木桶。' },
         { zh: '背簍', note: '揹在背上的簍子，上山工作、搬運石板和收成時用。' }
       ],
+      side: [   // 族人的請託：只用上面查證過的說明，寫成日常的工作（遊戲設計，不代表傳統上有這樣的任務）
+        { t: '修補石板屋', x: '石板屋用黑灰色的板岩與頁岩一片片層層堆疊，不用灰泥。準備石板，把家屋修補好。', src: '建築說明〈石板屋〉', card: '石板屋', goal: { k: 'give', r: 'mat' } },
+        { t: '烤芋頭乾', x: '把芋頭烤成芋頭乾，方便長期儲存與攜帶，是飢荒時重要的食物。把芋頭田照顧好，多收一些芋頭。', src: '文化卡〈芋頭乾〉', card: '芋頭乾', goal: { k: 'level', b: 'taro' } },
+        { t: '綁小米、留種子', x: '小米大約三十穗綁成一把疊放，另外選一些留作種子。把穀倉整理好，存得下更多收成。', src: '建築說明〈穀倉〉', goal: { k: 'level', b: 'storage' } }
+      ],
       story: { t: '雲豹的傳人', credit: '屏東霧臺好茶部落（Kucapungane）世代流傳的口述傳說；各版本的細節不同（始祖是一個人或一對兄弟、有沒有老鷹指路）。依維基百科〈好茶村〉與公開報導改寫，不替人物取名。' },
       quests: [
         { t: '東邊的古好茶', x: '在好茶部落世代流傳的傳說裡，好茶人的始祖原本住在臺東太麻里與知本之間的 Sikipalrici，也就是古好茶。' },
@@ -1107,6 +1147,11 @@ p { margin: 4px 0; }
       items: [
         { zh: '竹簍', note: '用竹子編的簍子，背東西用。' },
         { zh: '背袋', note: '肩背的袋子，袋面常繡上十字繡的花紋。' }
+      ],
+      side: [   // 族人的請託：只用上面查證過的說明，寫成日常的工作（遊戲設計，不代表傳統上有這樣的任務）
+        { t: '砍刺竹修家屋', x: '家屋的柱子、牆壁、屋頂鋪面都用刺竹，主柱用堅硬的櫸木，屋頂蓋白茅。準備刺竹，把家屋修好。', src: "建築說明〈家屋 ruma'〉", card: '刺竹與白茅的家屋', goal: { k: 'give', r: 'mat' } },
+        { t: '繡一批布', x: '卑南族以十字繡聞名。繡好一批有一般幾何花紋的布。', src: '建築說明〈繡布工坊〉', goal: { k: 'have', r: 'sp' } },
+        { t: '編竹簍', x: '用竹子編簍子，背東西用。準備刺竹來編。', src: '器物〈竹簍〉', goal: { k: 'give', r: 'mat' } }
       ],
       story: { t: '竹子裡的祖先', credit: '卑南族南王部落（Puyuma）的建社傳說，屬於竹生系統；人名有多種拼法，各版本細節不同（也有說巴督勞一家繼續往北、不知所終）。依維基百科〈南王部落起源傳說〉改寫，省略了不適合的情節。' },
       quests: [
@@ -1933,10 +1978,11 @@ p { margin: 4px 0; }
       if (q.type === 'wall') { v.wall = q.to; addPts(v, q.to); }
       else if (q.type === 'clear') { v.land[q.tile] = 1; v.res.mat += q.gain; addPts(v, 3); }
       else if (v.tiles[q.tile]) { v.tiles[q.tile].level = q.to; delete v.tiles[q.tile].busy; addPts(v, q.to); }   // 季分：升到幾級就加幾分
+      self.dailyAdd(v, 'build', 1, now);
       return false;
     });
-    v.train = v.train.filter(function (q) { if (q.doneAt > now) return true; v.units[q.u]++; addPts(v, 1); return false; });
-    if (v.research && v.research.doneAt <= now) { v.tech = v.tech || dict(); v.tech[v.research.id] = v.research.to; addPts(v, 10 * v.research.to); v.research = null; }   // 技藝學會了
+    v.train = v.train.filter(function (q) { if (q.doneAt > now) return true; v.units[q.u]++; addPts(v, 1); self.dailyAdd(v, 'train', 1, now); return false; });
+    if (v.research && v.research.doneAt <= now) { v.tech = v.tech || dict(); v.tech[v.research.id] = v.research.to; addPts(v, 10 * v.research.to); v.research = null; this.dailyAdd(v, 'tech', 1, now); }   // 技藝學會了
     if (v.hurt && all3(v.hurt) > 0) {   // 療養屋：負傷的人休養好就回到隊伍（名額滿了先等著）
       v.healAcc = Math.min(1, (v.healAcc || 0) + dt * healRate(v) * self.speed) ;
       while (v.healAcc >= 1 && all3(v.hurt) > 0 && armyTotal(v) < armyCap(v)) {
@@ -1964,6 +2010,7 @@ p { margin: 4px 0; }
     var own = v.sp[v.tribe] || 0;
     if (rt.special > 0 && own < c.sp) v.sp[v.tribe] = Math.min(c.sp, own + rt.special * dt);
     this.refreshChores(v, now);
+    this.rollDaily(v, now);
   };
   /* 有聚會廣場的部落：時間到了就換一批定時任務（正在做的不受影響） */
   World.prototype.refreshChores = function (v, now) {
@@ -1976,6 +2023,30 @@ p { margin: 4px 0; }
       var r = this.rng(), star = r < 0.5 ? 1 : r < 0.85 ? 2 : 3, k = pool.splice(Math.floor(this.rng() * pool.length), 1)[0];
       c.list.push({ id: this.id('c'), k: k, star: star, rw: choreReward(v, star) });
     }
+  };
+
+  World.prototype.dayLen = function () { return this.ms(864e5 / 20); };
+  World.prototype.dayOf = function (now) { return Math.floor((now - DAILY_OFF) / this.dayLen()); };
+  /* 換一天了：重新出今天的 4 件小目標（沒領的獎勵就沒了，不另外懲罰） */
+  World.prototype.rollDaily = function (v, now) {
+    if (v.bot) return;
+    var day = this.dayOf(now);
+    if (v.daily && v.daily.day === day) return;
+    var self = this, rnd = hashRng(v.id + ':' + day);
+    var army = bl(v, 'barracks') > 0 || armyTotal(v) > 0;   // 做不到的題目不出：還沒有訓練場也沒有戰士，就不出訓練、採集、野地事件
+    var can = { train: bl(v, 'barracks') > 0, gather: army, chore: bl(v, 'plaza') > 0, help: !!(v.ally && this.alliances[v.ally]), tech: bl(v, 'craft') > 0,
+      wild: army && Object.keys(this.nodes).some(function (k) { var nd = self.nodes[k]; return NODE[nd.k] && !!NODE[nd.k].ev; }) };
+    var pick = function (pool, n) { var out = []; pool = pool.slice(); while (out.length < n && pool.length) out.push(pool.splice(Math.floor(rnd() * pool.length), 1)[0]); return out; };
+    var ok = function (k) { return can[k] !== false; };
+    var first = pick(DAILY_BASE.filter(ok), 2), rest = Object.keys(DAILY).filter(function (k) { return DAILY_BASE.indexOf(k) < 0 && ok(k); });
+    v.daily = { day: day, next: (day + 1) * this.dayLen() + DAILY_OFF, bonus: false,   // 剛開始的部落能做的事比較少，可能只有 3 件
+      list: first.concat(pick(rest, DAILY_N - first.length)).map(function (k) { return { k: k, n: DAILY[k].n, cur: 0, got: false }; }) };
+  };
+  /* 做了某件事：今天的小目標裡有這一項的話，進度加上去（只在事情做完的那一刻變動） */
+  World.prototype.dailyAdd = function (v, k, n, now) {
+    if (!v || v.bot) return;
+    this.rollDaily(v, now);
+    v.daily.list.forEach(function (x) { if (x.k === k && x.cur < x.n) x.cur = Math.min(x.n, x.cur + (n || 1)); });
   };
 
   // ---------- 族群關係 ----------
@@ -2011,6 +2082,30 @@ p { margin: 4px 0; }
   ];
   function allyGoalN(al, i) { return ALLY_GOAL[i].per * Math.max(2, al.members.length); }
   function allyReward(v, i) { var f = r5(50 * eq(centerLevel(v)) * TUNE.cost); return { food: f, mat: f, boost: i === 2 ? 2 : 1 }; }
+  /* 今天的小目標（每日任務）：每天換一批 4 件（前兩件從蓋建築、訓練、採集挑，後兩件從其他的挑），做完各領一份，4 件都做完再加碼。
+   * 正式節奏時臺灣時間每天早上 5 點換；節奏 1 時大約 72 分鐘換一次。題目都是一個人做得到的事，不要求去打別的玩家；沒有連續登入的獎勵 */
+  var DAILY = {
+    build: { zh: '蓋好或升級建築', n: 1, unit: '次' }, train: { zh: '訓練好戰士', n: 5, unit: '名' }, gather: { zh: '派隊伍到野地採集，帶回物資', n: 1, unit: '次' },
+    chore: { zh: '完成聚會廣場的工作', n: 1, unit: '件' }, trade: { zh: '到市集或中立聚落交易', n: 1, unit: '次' }, gift: { zh: '送禮給別的部落', n: 1, unit: '次' },
+    help: { zh: '幫盟友加速', n: 2, unit: '次' }, tech: { zh: '學完一項技藝', n: 1, unit: '項' }, wild: { zh: '處理野地事件（趕山豬或搶修）', n: 1, unit: '次' }
+  }, DAILY_BASE = ['build', 'train', 'gather'], DAILY_N = 4, DAILY_OFF = 21 * 3600e3, DAILY_BONUS = { boost: 1, sp: 10, pts: 20 };   // DAILY_OFF：臺灣時間早上 5 點是 UTC 21 點
+  function dailyReward(v) { var f = r5(20 * eq(centerLevel(v)) * TUNE.cost); return { food: f, mat: f }; }
+  function hashRng(str) {   // 用部落代號和日期決定題目：每個人每天的組合固定，也不會動到世界的亂數
+    var h = 2166136261; for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return function () { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
+  }
+  /* 族人的請託（支線任務）：每族 3 件（shared/tribes.js 的 side），部落中心到 3、6、9 級各出現一件，一次做一件。
+   * 目標有四種：交出物資（give）、存到多少物資（have）、某種建築升到幾級（level）、派隊伍到某種資源點採集一趟（trip） */
+  var SIDE_AT = [3, 6, 9], SIDE_LV = [3, 5, 8], SIDE_PTS = 30;
+  function sideNeed(i, g) { return g.k === 'level' ? SIDE_LV[i] : g.k === 'trip' ? 1 : g.r === 'sp' ? 10 + 10 * SIDE_AT[i] : r5(80 * eq(SIDE_AT[i]) * TUNE.cost); }
+  function sideReward(i) { var f = r5(60 * eq(SIDE_AT[i]) * TUNE.cost); return { food: f, mat: f, boost: 1 }; }
+  function sideOf(v) {   // 目前這件請託的進度：{ i, need, have, can }；還沒出現、或三件都做完了回傳 null
+    var t = Tribes.get(v.tribe), i = v.side ? v.side.i || 0 : 0, s = t && t.side && t.side[i];
+    if (!s || centerLevel(v) < SIDE_AT[i]) return null;
+    var g = s.goal, need = sideNeed(i, g);
+    var have = g.k === 'level' ? bl(v, g.b) : g.k === 'trip' ? (v.side && v.side.trip ? 1 : 0) : Math.floor(g.r === 'sp' ? v.sp[v.tribe] || 0 : v.res[g.r] || 0);
+    return { i: i, need: need, have: Math.min(need, have), can: have >= need };
+  }
   var BOOST_START = 3, BOOST_DEV = 1, BOOST_QUEST = 2;   // 加速道具：新部落送 3 個；部落發展每一步送 1 個、神話主線每一章送 2 個（不賣）
   function devReward(d) {   // 獎勵：升級類的給那一級花費的三成，其他給固定的量
     if (d.k === 'units') return { food: 120, mat: 0 };
@@ -2318,7 +2413,7 @@ p { margin: 4px 0; }
       if (!bySp && pay !== 'food' && pay !== 'mat') return { ok: false, msg: '請選要拿什麼來換' };
       if (stock[t.id] < gain) return { ok: false, msg: '聚落裡的' + t.sp.zh + '換完了，過一陣子再來' };
       if (getRes(v, key) < cost) return { ok: false, msg: resName(key) + '不夠' };
-      addRes(v, key, -cost); addRes(v, 'sp:' + t.id, gain); stock[t.id] -= gain; v.stat.trade++;
+      addRes(v, key, -cost); addRes(v, 'sp:' + t.id, gain); stock[t.id] -= gain; v.stat.trade++; this.dailyAdd(v, 'trade', 1, now);
       return { ok: true, msg: '換到 ' + gain + ' 份' + t.sp.zh };
     },
     seen: function (v, a) { v.reports.forEach(function (r) { if (!a.id || r.id === a.id) r.seen = true; }); },
@@ -2329,7 +2424,7 @@ p { margin: 4px 0; }
       if (now - v.lastGift < 5000) return { ok: false, msg: '稍等一下再送' };
       if (getRes(v, k) < n) return { ok: false, msg: '數量不夠' };
       this.tickVillage(t, now);
-      addRes(v, k, -n); addRes(t, k, n); v.lastGift = now; v.gifts++; this.relAdd(v.tribe, t.tribe, REL.gift * relMul(v));
+      addRes(v, k, -n); addRes(t, k, n); v.lastGift = now; v.gifts++; this.relAdd(v.tribe, t.tribe, REL.gift * relMul(v)); this.dailyAdd(v, 'gift', 1, now);
       this.log('「' + v.name + '」送給「' + t.name + '」' + n + ' 份' + resName(k) + '。', now, 'gift');
       return { ok: true, msg: '禮物送到了' };
     },
@@ -2359,8 +2454,8 @@ p { margin: 4px 0; }
       if (st === 'hostile') return { ok: false, msg: '兩族的關係緊張，暫時不能直接交易' };
       this.market.splice(i, 1);
       addRes(v, o.want, -o.wantN); addRes(v, o.give, Math.floor(o.giveN * bonus));   // 兩族友好時，雙方各多拿一成
-      if (s) { this.tickVillage(s, now); addRes(s, o.want, Math.floor(o.wantN * bonus)); this.relAdd(v.tribe, s.tribe, REL.trade * relMul(v)); s.stat.trade++; }
-      v.stat.trade++;
+      if (s) { this.tickVillage(s, now); addRes(s, o.want, Math.floor(o.wantN * bonus)); this.relAdd(v.tribe, s.tribe, REL.trade * relMul(v)); s.stat.trade++; this.dailyAdd(s, 'trade', 1, now); }
+      v.stat.trade++; this.dailyAdd(v, 'trade', 1, now);
       this.log('「' + v.name + '」和「' + (s ? s.name : '遠方部落') + '」完成交易：' + o.giveN + ' ' + resName(o.give) + ' 換 ' + o.wantN + ' ' + resName(o.want) + '。', now, 'trade');
       return { ok: true, msg: '交易完成' };
     },
@@ -2398,7 +2493,7 @@ p { margin: 4px 0; }
       var c = v.chores, id = String(a.id || ''), o = c && c.cur.filter(function (x) { return x.id === id; })[0];
       if (!o) return { ok: false, msg: '找不到這件工作' };
       if (o.doneAt > now) return { ok: false, msg: '還沒做完' };
-      c.cur = c.cur.filter(function (x) { return x !== o; }); c.n = (c.n || 0) + 1; addPts(v, 5 * o.star);
+      c.cur = c.cur.filter(function (x) { return x !== o; }); c.n = (c.n || 0) + 1; addPts(v, 5 * o.star); this.dailyAdd(v, 'chore', 1, now);
       v.res.food += o.rw.food; v.res.mat += o.rw.mat; if (o.rw.sp) addRes(v, 'sp:' + v.tribe, o.rw.sp); v.boosts = (v.boosts || 0) + (o.rw.boost || 0);
       return { ok: true, msg: '「' + CHORES[o.k] + '」做完了，領到獎勵' };
     },
@@ -2421,6 +2516,33 @@ p { margin: 4px 0; }
       if ((v.spts || 0) < SEASON_GOAL[i]) return { ok: false, msg: '季分還不夠' };
       var rw = seasonReward(v, i); v.res.food += rw.food; v.res.mat += rw.mat; v.boosts = (v.boosts || 0) + rw.boost; v.sgot.push(i);
       return { ok: true, msg: '領到本季第 ' + (i + 1) + ' 個目標的獎勵' };
+    },
+    dailyClaim: function (v, a, now) {   // 領今天的小目標裡一件的獎勵
+      this.rollDaily(v, now);
+      var i = int(a.i), x = i >= 0 && v.daily.list[i];
+      if (!x) return { ok: false, msg: '沒有這個目標' };
+      if (x.got) return { ok: false, msg: '已經領過了' };
+      if (x.cur < x.n) return { ok: false, msg: '還沒完成' };
+      var rw = dailyReward(v); v.res.food += rw.food; v.res.mat += rw.mat; x.got = true;
+      return { ok: true, msg: '領到「' + (DAILY[x.k] || { zh: '小目標' }).zh + '」的獎勵' };
+    },
+    dailyBonus: function (v, a, now) {   // 4 件都完成：領加碼（還沒領的那幾件一起領）
+      this.rollDaily(v, now);
+      var d = v.daily, self = this;
+      if (d.bonus) return { ok: false, msg: '今天已經領過了' };
+      if (!d.list.every(function (x) { return x.cur >= x.n; })) return { ok: false, msg: '全部完成才能領' };
+      d.list.forEach(function (x, i) { if (!x.got) ACTIONS.dailyClaim.call(self, v, { i: i }, now); });
+      d.bonus = true; v.boosts = (v.boosts || 0) + DAILY_BONUS.boost; addRes(v, 'sp:' + v.tribe, DAILY_BONUS.sp); addPts(v, DAILY_BONUS.pts);
+      return { ok: true, msg: '今天的小目標全部完成！' };
+    },
+    side: function (v, a, now) {   // 完成族人的請託
+      var t = Tribes.get(v.tribe), o = sideOf(v), s = o && t.side[o.i];
+      if (!s) return { ok: false, msg: '現在沒有族人的請託' };
+      if (!o.can) return { ok: false, msg: '還沒準備好' };
+      if (s.goal.k === 'give') addRes(v, s.goal.r === 'sp' ? 'sp:' + v.tribe : s.goal.r, -o.need);
+      var rw = sideReward(o.i); v.res.food += rw.food; v.res.mat += rw.mat; v.boosts = (v.boosts || 0) + rw.boost; addPts(v, SIDE_PTS);
+      v.side = { i: o.i + 1, trip: 0 };
+      return { ok: true, msg: '「' + s.t + '」完成了，族人謝謝你' };
     },
     askHelp: function (v, a) {   // 請盟友幫忙這項工程
       if (!v.ally || !this.alliances[v.ally]) return { ok: false, msg: '加入聯盟才能請盟友幫忙' };
@@ -2485,7 +2607,7 @@ p { margin: 4px 0; }
       o.queue.forEach(function (q) {
         if (!q.ask || q.hn >= q.hmax || q.doneAt <= now || (q.hby || []).indexOf(v.id) >= 0) return;
         var cut = Math.max(self.ms(TUNE.helpMin * 3000), (q.doneAt - now) * TUNE.helpPct / 100);
-        q.doneAt = Math.max(now, q.doneAt - cut); q.hn++; (q.hby = q.hby || []).push(v.id); n++; addPts(v, 2); self.allyAdd(v, 'help', 1, now);
+        q.doneAt = Math.max(now, q.doneAt - cut); q.hn++; (q.hby = q.hby || []).push(v.id); n++; addPts(v, 2); self.allyAdd(v, 'help', 1, now); self.dailyAdd(v, 'help', 1, now);
       });
     });
     return n;
@@ -2645,7 +2767,11 @@ p { margin: 4px 0; }
     if (nd && nd.amt < 1) { delete this.nodes[nd.id]; this.nodesV++; }
     var k = nd ? NODE[nd.k].res : (m.res || 'food'); m.res = k;
     if (m.carry > 0) { m.loot = {}; m.loot[k] = m.carry; }
-    if (v && m.carry > 0) { addPts(v, 5); this.allyAdd(v, 'gather', m.carry, now); }
+    if (v && m.carry > 0) {
+      addPts(v, 5); this.allyAdd(v, 'gather', m.carry, now); this.dailyAdd(v, 'gather', 1, now);
+      var so = sideOf(v), sg = so && Tribes.get(v.tribe).side[so.i].goal;   // 族人的請託：派隊伍到某種資源點採集一趟
+      if (sg && sg.k === 'trip' && nd && nd.k === sg.node) { v.side = v.side || { i: so.i, trip: 0 }; v.side.trip = 1; }
+    }
     if (v && m.carry > 0 && !early) {
       v.stat.point++;
       this.pushReport(v, { t: now, role: 'atk', point: nd ? NODE[nd.k].zh : '資源點', other: '', otherTribe: v.tribe, win: true, note: '採集完成，帶著 ' + m.carry + ' ' + resName(k) + '回部落。' });
@@ -2701,7 +2827,7 @@ p { margin: 4px 0; }
     var care = hospitalize(v, { w: m.w - r.left.w, a: m.a - r.left.a, u: (m.u || 0) - r.left.u });
     ['w', 'a', 'u'].forEach(function (k) { v.away[k] = Math.max(0, v.away[k] - ((m[k] || 0) - r.left[k])); m[k] = r.left[k]; });
     var rw = null;
-    addPts(v, r.win ? 8 * nd.lv : 2); if (r.win) this.allyAdd(v, 'wild', 1, now);
+    addPts(v, r.win ? 8 * nd.lv : 2); if (r.win) { this.allyAdd(v, 'wild', 1, now); this.dailyAdd(v, 'wild', 1, now); }
     if (r.win) { rw = wildReward('boar', nd.lv); delete this.nodes[nd.id]; v.stat.point++; v.boosts = (v.boosts || 0) + rw.boost; m.loot = { food: rw.food, mat: rw.mat }; }
     else nd.bn = Math.max(1, r.home.w);
     this.nodesV++;
@@ -2718,7 +2844,7 @@ p { margin: 4px 0; }
     if (m.phase === 'gather') {   // 修好了
       var lv = nd ? nd.lv : 1, rw = wildReward('repair', lv), hx = nd && this.map.byId[nd.hex], ht = hx && hx.tribe;
       if (nd) { delete this.nodes[nd.id]; this.nodesV++; }
-      v.stat.point++; v.boosts = (v.boosts || 0) + rw.boost; m.loot = { food: rw.food, mat: rw.mat }; addPts(v, 8 * lv); this.allyAdd(v, 'wild', 1, now);
+      v.stat.point++; v.boosts = (v.boosts || 0) + rw.boost; m.loot = { food: rw.food, mat: rw.mat }; addPts(v, 8 * lv); this.allyAdd(v, 'wild', 1, now); this.dailyAdd(v, 'wild', 1, now);
       if (ht && ht !== v.tribe && Tribes.get(ht) && Tribes.get(ht).playable) this.relAdd(v.tribe, ht, REL.gift);   // 幫別族的區域搶修：兩族的關係變好
       this.pushReport(v, { t: now, role: 'atk', point: '颱風後搶修', ev: 'repair', other: '', otherTribe: v.tribe, win: true,
         note: '修好了' + (nd ? REPAIR_WHAT[nd.what || 0] : '') + '，帶回謝禮：' + rw.food + ' ' + resName('food') + '、' + rw.mat + ' ' + resName('mat') + (rw.boost ? '，另外得到 ' + rw.boost + ' 個加速' : '') + '。' + (ht && ht !== v.tribe ? '這裡是' + Tribes.get(ht).zh + '的區域，兩族的關係變好了。' : '') });
@@ -2925,6 +3051,7 @@ p { margin: 4px 0; }
     TUNE = this.tune;
     var v = this.villages[id], self = this;
     if (!v) return null;
+    this.rollDaily(v, now);   // 換天了就先出今天的小目標
     var me = JSON.parse(JSON.stringify(v));
     delete me.offSnap; delete me.offLog; delete me.cool; delete me.last; delete me.popAcc; delete me.ate; delete me.healAcc;   // 玩家用不到的欄位不傳
     me.d = derived(v, this.speed);
@@ -3048,6 +3175,7 @@ p { margin: 4px 0; }
     resName: resName, derived: derived, eatRate: eatRate, perWorker: perWorker, TECH: TECH, TECH_MAX: TECH_MAX, UNLOCK: UNLOCK, techCost: techCost, techTime: techTime, techMax: techMax, battleMod: battleMod, buildMul: buildMul, marchMul: marchMul, healCap: healCap, bl: bl, eq: eq, centerUp: centerUp, centerReq: centerReq, reqLeft: reqLeft, maxLevelOf: maxLevelOf, wallMul: wallMul, villagePower: villagePower, DEV_START: DEV_START, popCap: popCap, LOOT_FRAC: LOOT_FRAC, GRADE: GRADE, FIGHT: FIGHT,
     armyCap: armyCap, mkSide: mkSide, supportCap: supportCap, ALLY_GOAL: ALLY_GOAL, allyReward: allyReward, QSTAGE: QSTAGE, storySegs: storySegs, stageReward: stageReward, SEASON_GOAL: SEASON_GOAL, SEASON_TOP: SEASON_TOP, seasonReward: seasonReward, CHORES: CHORES, CHORE_MIN: CHORE_MIN, CHORE_EVERY: CHORE_EVERY, choreSlots: choreSlots, choreOffers: choreOffers, choreReward: choreReward, TIER: TIER, tiers: tiers, tierMul: tierMul, helpMax: helpMax, BOOST_START: BOOST_START, BOOST_DEV: BOOST_DEV, BOOST_QUEST: BOOST_QUEST, QUESTS: QUESTS, UNIT_U: UNIT_U, BLESS: BLESS, HERO_REST: HERO_REST, marchMax: marchMax, gatherRate: gatherRate, REL: REL, NODE: NODE, NODE_AMT: NODE_AMT, BOAR_N: BOAR_N, boarSide: boarSide, boarPower: boarPower, wildReward: wildReward, REPAIR_WHAT: REPAIR_WHAT, repairRate: repairRate, SETTLE: SETTLE,
     autoBattle: autoBattle, power: power, odds: odds, ODDS: ODDS, simBattle: simBattle, simMatrix: simMatrix,
+    DAILY: DAILY, DAILY_N: DAILY_N, DAILY_BONUS: DAILY_BONUS, dailyReward: dailyReward, SIDE_AT: SIDE_AT, SIDE_LV: SIDE_LV, sideNeed: sideNeed, sideReward: sideReward, sideOf: sideOf,
     swiftMul: swiftMul, defWall: defWall, TUNE_DEF: TUNE_DEF, tuneDefaults: tuneDefaults, setTune: setTune, paced: paced, trainTime: trainTime, marchSecs: marchSecs, shieldMs: shieldMs, OFFER_MS: OFFER_MS
   };
   Object.defineProperty(World.rules, 'TUNE', { get: function () { return TUNE; } });   // 目前生效的可調數值
@@ -4698,6 +4826,9 @@ window.Net = (function () {
     if (idle > 0) rows.push('<div class="q idle">' + Art.icon('build') + '<span>' + (idle > 1 ? idle + ' 位工人閒著' : '工人閒著') + '，點建築升級</span></div>');   // 閒著的工人合成一行
     var agi = me.ag ? me.ag.goals.map(function (x) { return x.can; }).indexOf(true) : -1;
     if (agi >= 0) rows.push('<button class="q help" data-act="ally-claim" data-i="' + agi + '">' + Art.icon('alliance') + '<span>聯盟目標達成</span><b>領取</b></button>');
+    if (dailyReady(me)) rows.push('<button class="q help" data-act="tab" data-tab="quest">' + Art.icon('star') + '<span>今天的小目標可以領獎勵</span><b>去領</b></button>');
+    var sdo = R.sideOf(me);
+    if (sdo && sdo.can) rows.push('<button class="q help" data-act="tab" data-tab="quest">' + Art.icon('pop') + '<span>族人的請託「' + esc(myTribe().side[sdo.i].t) + '」準備好了</span><b>去完成</b></button>');
     var sgi = seasonReady(me);
     if (sgi >= 0) rows.push('<button class="q help" data-act="season-claim" data-i="' + sgi + '">' + Art.icon('star') + '<span>本季第 ' + (sgi + 1) + ' 個目標達成</span><b>領取</b></button>');
     if (me.chores && R.bl(me, 'plaza')) {   // 定時任務：做完的可以領；沒在做的話提醒可以選一件
@@ -4770,7 +4901,7 @@ window.Net = (function () {
     else if (dn === 'social') html = socialPanel(me, 'social');
     else if (dn === 'trade') html = socialPanel(me, 'trade');
     else if (dn === 'tribe') html = hungryCard(me) + jobsCard(me) + queueCard(me) + idleCard(me) + codeCard() + prefsCard();
-    else if (dn === 'quest') html = devCard(me) + seasonCard(me) + choreCard(me) + questCard(me);
+    else if (dn === 'quest') html = dailyCard(me) + devCard(me) + sideCard(me) + seasonCard(me) + choreCard(me) + questCard(me);
     else if (dn === 'tech') html = techPanel(me);
     else if (dn === 'rank') html = rankPanel(me);
     else if (dn === 'test') html = testPanel(me);
@@ -5020,6 +5151,37 @@ window.Net = (function () {
     });
     return h + '<p class="muted">聚會廣場每 5 級多列一件可以選，每 10 級可以多同時做一件；等級越高獎勵越多。</p></section>';
   }
+  /* 今天的小目標：每天換一批，做完各領一份，全部完成再加碼 */
+  function dailyCard(me) {
+    var d = me.daily; if (!d) return '';
+    var t = myTribe(), rw = R.dailyReward(me), B = R.DAILY_BONUS, all = d.list.every(function (x) { return x.cur >= x.n; });
+    var h = '<section class="card daily' + (dailyReady(me) ? ' ready' : '') + '"><h3>' + Art.icon('star') + '今天的小目標<span class="lv"><b data-until="' + d.next + '" data-coarse="1"></b>後換新的</span></h3><ul class="dl">';
+    d.list.forEach(function (x, i) {
+      var D = R.DAILY[x.k] || { zh: '小目標', unit: '' }, ok = x.cur >= x.n;
+      h += '<li class="' + (x.got ? 'got' : ok ? 'can' : '') + '"><span class="dn">' + D.zh + '</span><b class="dc">' + x.cur + ' / ' + x.n + ' ' + D.unit + '</b>' +
+        (x.got ? '<em>已領</em>' : ok ? '<button class="btn sm" data-act="daily-claim" data-i="' + i + '">領取</button>' : '<span class="gain">' + Art.icon('food') + rw.food + '　' + Art.icon('mat') + rw.mat + '</span>') + '</li>';
+    });
+    h += '</ul><div class="act">' + (d.bonus ? '<span class="eff">' + Art.icon('star') + ' 今天全部完成了！</span>'
+      : '<button class="btn sm' + (all ? '' : ' ghost') + '" data-act="daily-bonus"' + (all ? '' : ' disabled') + '>全部完成再加碼</button><span class="gain">' + Art.icon('speed') + '加速 ' + B.boost + '　' + Art.icon('sp') + B.sp + ' ' + t.sp.zh + '　季分 ' + B.pts + '</span>');
+    return h + '</div><p class="muted">題目都是自己一個人就做得到的事。漏掉一天也沒關係，不會有懲罰。</p></section>';
+  }
+  function dailyReady(me) { var d = me.daily; return !!d && (d.list.some(function (x) { return x.cur >= x.n && !x.got; }) || (!d.bonus && d.list.every(function (x) { return x.cur >= x.n; }))); }
+  /* 族人的請託：部落中心到 3、6、9 級各出現一件，內容引用遊戲裡查證過的說明 */
+  function sideGoalText(t, g, n) {
+    var rn = g.r === 'sp' ? t.sp.zh : g.r === 'food' ? t.res.food : t.res.mat;
+    return g.k === 'give' ? '交出 ' + n + ' ' + rn : g.k === 'have' ? '存到 ' + n + ' ' + rn : g.k === 'level' ? esc(bdef(t, g.b).zh) + '升到 ' + n + ' 級' : '派隊伍到「' + R.NODE[g.node].zh + '」採集一趟';
+  }
+  function sideCard(me) {
+    var t = myTribe(), i = me.side ? me.side.i || 0 : 0, s = t.side && t.side[i], n = (t.side || []).length;
+    var head = function (cls) { return '<section class="card side' + (cls || '') + '"><h3>' + Art.icon('pop') + '族人的請託<span class="lv">' + Math.min(i + 1, n) + ' / ' + n + ' 件</span></h3>'; };
+    if (!s) return n && i >= n ? head() + '<p class="muted">' + n + ' 件請託都完成了，族人很謝謝你。</p></section>' : '';
+    var o = R.sideOf(me);
+    if (!o) return head() + '<p class="muted">' + esc(t.b.center.zh) + '升到 ' + R.SIDE_AT[i] + ' 級時，族人會來請你幫忙。</p></section>';
+    var g = s.goal, rw = R.sideReward(i);
+    return head(o.can ? ' ready' : '') + '<p class="story"><b>' + esc(s.t) + '</b>' + esc(s.x) + '</p><p class="src">出自遊戲裡的' + esc(s.src) + '</p>' +
+      '<div class="goal"><span>目標：' + sideGoalText(t, g, o.need) + '</span><b>' + o.have + ' / ' + o.need + '</b></div><div class="bar" role="img" aria-label="進度 ' + o.have + ' / ' + o.need + '"><i style="width:' + Math.round(100 * o.have / o.need) + '%"></i></div>' +
+      '<div class="act"><button class="btn sm' + (o.can ? '' : ' ghost') + '" data-act="side"' + (o.can ? '' : ' disabled') + '>' + (o.can ? (g.k === 'give' ? '交給族人' : '完成') : '還沒準備好') + '</button><span class="gain">謝禮：' + Art.icon('food') + rw.food + '　' + Art.icon('mat') + rw.mat + '　' + Art.icon('speed') + '加速 ' + rw.boost + '</span></div></section>';
+  }
   function devCard(me) {   // 部落發展：一步一步帶著升級，完成就領獎勵
     var t = myTribe(), q = me.dq;
     if (!q) return '';
@@ -5200,7 +5362,8 @@ window.Net = (function () {
     if (me.quest >= 4) got.push(['獨特兵種', t.uniq.unit, traitFx(t.uniq.unit.trait)]);
     if (me.quest >= 5) got.push(['傳說英雄', t.hero, '能力「' + t.hero.abilityZh + '」：' + abilityFx(t.hero.ability)], ['共聚', t.bless, '舉辦後一段時間所有產量 +' + Math.round((R.TUNE.blessMult - 1) * 100) + '%']);
     got.forEach(function (g) { h += '<section class="card"><h3>' + nat(g[1]) + '<span class="lv">' + g[0] + '</span></h3><p class="eff">' + g[2] + '</p><p class="note">' + esc(g[1].note) + '</p></section>'; });
-    t.cards.forEach(function (c) { h += '<section class="card"><h3>' + esc(c.t) + '</h3><p>' + esc(c.x) + '</p></section>'; });
+    var helped = (t.side || []).filter(function (x, i) { return x.card && me.side && i < (me.side.i || 0); }).map(function (x) { return x.card; });   // 做過的請託：對應的文化卡標上「幫過族人」
+    t.cards.forEach(function (c) { h += '<section class="card"><h3>' + esc(c.t) + (helped.indexOf(c.t) >= 0 ? '<span class="lv helped">' + Art.icon('pop') + ' 幫過族人</span>' : '') + '</h3><p>' + esc(c.x) + '</p></section>'; });
     h += '<p class="label">島上的 17 族</p><ul class="tlist">';
     Tribes.LIST.forEach(function (o) { h += '<li><span class="dot" style="background:' + o.color + '"></span><div><b>' + o.zh + '</b><span class="muted"> ' + o.area + '</span><p>' + o.intro + '</p></div></li>'; });
     h += '</ul>' + aboutCard();
@@ -5772,7 +5935,7 @@ window.Net = (function () {
     if (foc && foc !== b && /^(INPUT|SELECT)$/.test(foc.tagName) && foc.type !== 'checkbox') foc.blur();
     var a = b.getAttribute('data-act'), me = S.me, tile = +b.getAttribute('data-tile');
     if (window.Sfx) Sfx.play(a === 'tab' && b.getAttribute('data-tab') !== S.tab && !/^(build|map)$/.test(b.getAttribute('data-tab')) ? 'open' : 'tap');   // 按鈕的聲音；打開視窗是一陣風
-    if (me && /^(dev|quest|chore-done|season-claim|ally-claim)$/.test(a)) {   // 領獎勵：記下按鈕的位置和現在的物資，等新的狀態來了，把多出來的東西從按鈕往上飄
+    if (me && /^(dev|quest|chore-done|season-claim|ally-claim|daily-claim|daily-bonus|side)$/.test(a)) {   // 領獎勵：記下按鈕的位置和現在的物資，等新的狀態來了，把多出來的東西從按鈕往上飄
       var br = b.getBoundingClientRect();
       S.fly = { x: br.left + br.width / 2, y: br.top, t: Date.now(), food: me.res.food, mat: me.res.mat, sp: me.sp[me.tribe] || 0, boosts: me.boosts || 0 };
     }
@@ -5815,6 +5978,9 @@ window.Net = (function () {
     else if (a === 'rank-by') { S.rankBy = b.getAttribute('data-v'); render(); }
     else if (a === 'rank-kind') { S.rankKind = b.getAttribute('data-v'); render(); }
     else if (a === 'season-claim') act({ type: 'seasonClaim', i: +b.getAttribute('data-i') });
+    else if (a === 'daily-claim') act({ type: 'dailyClaim', i: +b.getAttribute('data-i') });
+    else if (a === 'daily-bonus') act({ type: 'dailyBonus' });
+    else if (a === 'side') act({ type: 'side' });
     else if (a === 'ally-claim') act({ type: 'allyClaim', i: +b.getAttribute('data-i') });
     else if (a === 'rank-go') {   // 排行裡的部落：到地圖上看
       var rv = S.pubs.filter(function (x) { return x.id === b.getAttribute('data-id'); })[0];

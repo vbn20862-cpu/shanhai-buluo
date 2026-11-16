@@ -268,7 +268,7 @@ p { margin: 4px 0; }
 .rep .neg { color: var(--warn); }
 .reqs { list-style: none; margin: 6px 0 2px; padding: 0; font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .reqs .ok { color: var(--good); } .reqs .no { color: var(--warn); font-weight: 700; }
-.card.dev.ready { border-color: var(--gold); }
+.card.dev.ready, .card.daily.ready, .card.side.ready { border-color: var(--gold); }
 .chip.bless { border-color: var(--gold); color: var(--gold); }
 /* 部落代碼（換裝置用） */
 .codebox { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; letter-spacing: .04em; background: var(--bg); border: 1px dashed var(--gold); border-radius: 8px; padding: 7px 10px; word-break: break-all; user-select: all; -webkit-user-select: all; margin: 4px 0; }
@@ -477,6 +477,21 @@ p { margin: 4px 0; }
 .sgoals li .gain { flex: 1; min-width: 0; font-size: 12.5px; flex-wrap: wrap; }
 .sgoals li em { font-style: normal; font-size: 12px; color: var(--mute); white-space: nowrap; }
 .sgoals li.can > b { color: var(--gold); } .sgoals li.got { opacity: .6; } .sgoals li.got em { color: var(--good); }
+/* 今天的小目標、族人的請託 */
+.card.daily { border-color: rgba(227, 179, 65, .55); }
+.dl { list-style: none; margin: 2px 0 0; padding: 0; }
+.dl li { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px dashed var(--line); min-height: 34px; }
+.dl li:first-child { border-top: 0; }
+.dl .dn { flex: 1; min-width: 0; }
+.dl .dc { flex: none; font-variant-numeric: tabular-nums; color: var(--mute); font-weight: 600; }
+.dl .gain { flex: none; font-size: 12px; display: inline-flex; gap: 0 2px; align-items: center; color: var(--mute); }
+.dl em { font-style: normal; font-size: 12px; color: var(--good); white-space: nowrap; }
+.dl li.can .dc { color: var(--gold); } .dl li.got { opacity: .6; }
+.card.daily .act, .card.side .act { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; }
+.card.daily .act .gain, .card.side .act .gain { font-size: 12.5px; display: inline-flex; flex-wrap: wrap; gap: 0 2px; align-items: center; }
+.card.side .src { font-size: 12px; color: var(--mute); margin: 2px 0 6px; }
+.card.side .story b { display: block; margin-bottom: 2px; color: var(--gold); }
+.lv.helped { color: var(--good); display: inline-flex; align-items: center; gap: 3px; }
 /* 神話故事關卡 */
 .sscene { display: block; width: 100%; height: 108px; border-radius: 8px; margin: 4px 0 6px; border: 1px solid var(--line); }
 .spath { display: flex; justify-content: space-between; gap: 4px; margin: 2px 0 6px; }
@@ -530,7 +545,7 @@ p { margin: 4px 0; }
 .sheet h2, .pcard h3, #pbody .card h3 { color: var(--rim2); text-shadow: 0 2px 0 var(--ember); }
 @keyframes win-pop { from { opacity: 0; transform: scale(.92); } }
 #pbody .card, .sheet .card { background: linear-gradient(180deg, #4E3825, #3F2C1C); border: 1.5px solid #8A6238; border-radius: 12px; box-shadow: inset 0 1px 0 rgba(255, 230, 170, .22), 0 2px 0 rgba(0, 0, 0, .35); }
-#pbody .card.sel, #pbody .card.quest.ready, #pbody .card.dev.ready { border-color: var(--rim2); }
+#pbody .card.sel, #pbody .card.quest.ready, #pbody .card.dev.ready, #pbody .card.daily.ready, #pbody .card.side.ready { border-color: var(--rim2); }
 .pcard .card { background: none; border: 0; box-shadow: none; }
 .pcard .x, #dhead .x { top: 5px; right: 6px; width: 30px; height: 30px; background: radial-gradient(circle at 35% 30%, #D2704A, #8E3A22); color: #FFF3DC; border: 2px solid var(--rim2); box-shadow: 0 2px 0 #3A1408; font-size: 18px; }
 /* 按鈕：金色是主要的動作，木頭色是次要的；按下去會往下壓 */

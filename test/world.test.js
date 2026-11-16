@@ -1210,3 +1210,94 @@ test('聯盟共同目標：一起採集、照顧野地、互相幫忙；達成�
   assert.equal(w2.snapshot(a.id, now).me.ag.sn, 2);
   check(w);
 });
+
+test('今天的小目標：做不到的不出、事情做完才加進度、各自領一次、全部完成加碼、換天重新出；舊存檔也有', () => {
+  const R = World.rules, w = new World({ rng: seeded(81) });
+  let now = 1e9 - 2e6; w.ensureBots(now);
+  const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'atayal' }, now).id]; v.newbieUntil = 0;
+  now += 1000; w.tickVillage(v, now);
+  const ks = v.daily.list.map(x => x.k);
+  assert.ok(!ks.includes('train') && !ks.includes('gather') && !ks.includes('wild'), '還沒有訓練場也沒有戰士：不出訓練、採集、野地事件');
+  assert.ok(ks.includes('build') && ks.length >= 3);
+  Object.values(w.villages).filter(x => x.bot).forEach(b => assert.equal(b.daily, undefined, '示範部落沒有每日任務'));
+  // 有訓練場之後：4 件，前兩件從蓋建築、訓練、採集裡挑
+  v.tiles[3] = { type: 'barracks', level: 2 }; v.daily = null; w.rollDaily(v, now);
+  assert.equal(v.daily.list.length, R.DAILY_N);
+  assert.ok(v.daily.list.slice(0, 2).every(x => ['build', 'train', 'gather'].includes(x.k)));
+  const again = JSON.stringify(v.daily); v.daily = null; w.rollDaily(v, now); assert.equal(JSON.stringify(v.daily), again, '同一天的題目固定');
+  // 強制成固定的 4 件，方便測
+  v.daily.list = ['build', 'train', 'trade', 'gift'].map(k => ({ k, n: R.DAILY[k].n, cur: 0, got: false }));
+  v.res.food = v.res.mat = 5000;
+  for (let i = 0; i < 5; i++) assert.ok(w.act(v.id, { type: 'train', u: 'w' }, now).ok);
+  const s1 = w.snapshot(v.id, now).me.daily; now += 1000; w.tickVillage(v, now);
+  assert.deepEqual(w.snapshot(v.id, now).me.daily, s1, '沒做完事情時，每日任務的資料不會每秒變動');
+  for (let k = 0; k < 60; k++) { now += 2000; w.tickVillage(v, now); }
+  assert.equal(v.daily.list[1].cur, 5, '訓練好 5 名');
+  assert.equal(w.act(v.id, { type: 'dailyClaim', i: 0 }, now).ok, false, '還沒完成不能領');
+  const f0 = v.res.food;
+  assert.ok(w.act(v.id, { type: 'dailyClaim', i: 1 }, now).ok);
+  assert.equal(v.res.food - f0, R.dailyReward(v).food);
+  assert.equal(w.act(v.id, { type: 'dailyClaim', i: 1 }, now).ok, false, '只能領一次');
+  for (const bad of [-1, 9, 'toString', '__proto__']) assert.equal(w.act(v.id, { type: 'dailyClaim', i: bad }, now).ok, false);
+  assert.equal(w.act(v.id, { type: 'dailyBonus' }, now).ok, false, '全部完成才能加碼');
+  // 蓋建築、交易（中立聚落）、送禮
+  assert.ok(w.act(v.id, { type: 'upgrade', tile: 0 }, now).ok || w.act(v.id, { type: 'build', tile: 1, type2: 'house' }, now).ok);
+  for (let k = 0; k < 200 && v.daily.list[0].cur < 1; k++) { now += 5000; w.tickVillage(v, now); }
+  assert.equal(v.daily.list[0].cur, 1, '蓋好或升級建築');
+  const other = Object.values(w.villages).find(x => x.bot && x.tribe !== 'atayal');
+  v.sp.atayal = 50;
+  assert.ok(w.act(v.id, { type: 'gift', to: other.id, key: 'food', n: 5 }, now).ok);
+  const st = w.map.settlements[0];
+  assert.ok(w.act(v.id, { type: 'barter', at: st.id, want: 'bunun', pay: 'food' }, now).ok);
+  assert.ok(v.daily.list.every(x => x.cur >= x.n), JSON.stringify(v.daily.list));
+  const b0 = v.boosts, sp0 = v.sp.atayal || 0, p0 = v.spts || 0;
+  assert.ok(w.act(v.id, { type: 'dailyBonus' }, now).ok);
+  assert.ok(v.daily.list.every(x => x.got), '沒領的一起領');
+  assert.equal(v.boosts - b0, R.DAILY_BONUS.boost); assert.equal(Math.round(v.sp.atayal - sp0), R.DAILY_BONUS.sp); assert.ok(v.spts - p0 >= R.DAILY_BONUS.pts);
+  assert.equal(w.act(v.id, { type: 'dailyBonus' }, now).ok, false);
+  // 換天：重新出題，進度歸零
+  const day = v.daily.day; now = v.daily.next + 10; w.tickVillage(v, now);
+  assert.equal(v.daily.day, day + 1); assert.ok(v.daily.list.every(x => x.cur === 0 && !x.got) && !v.daily.bonus);
+  // 舊存檔沒有 daily：讀進來、拿快照時就有
+  const old = w.toJSON(); delete old.villages[v.id].daily;
+  const w2 = new World(); w2.load(old); assert.ok(w2.snapshot(v.id, now).me.daily.list.length >= 3);
+  check(w);
+});
+
+test('族人的請託：中心 3、6、9 級各出現一件；交出物資、建築等級、去野菜地採集；一次一件，做完才出下一件', () => {
+  const R = World.rules, Tribes = require('../shared/tribes.js'), w = new World({ rng: seeded(83) });
+  let now = 1e9; w.ensureBots(now);
+  Tribes.playable().forEach(t => {
+    assert.equal(t.side.length, 3, t.id + ' 有 3 件請託');
+    t.side.forEach(s => { assert.ok(s.t && s.x && s.src && ['give', 'have', 'level', 'trip'].includes(s.goal.k)); if (s.card) assert.ok(t.cards.some(c => c.t === s.card), s.card); });
+  });
+  const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'atayal' }, now).id]; v.newbieUntil = 0;
+  assert.equal(R.sideOf(v), null, '中心 1 級還沒有請託');
+  v.tiles[0].level = 3;
+  let o = R.sideOf(v); assert.equal(o.i, 0); assert.equal(o.need, R.sideNeed(0, Tribes.get('atayal').side[0].goal));
+  v.res.food = o.need - 1;
+  assert.equal(w.act(v.id, { type: 'side' }, now).ok, false, '小米不夠');
+  v.res.food = o.need + 100; const m0 = v.res.mat, b0 = v.boosts;
+  assert.ok(w.act(v.id, { type: 'side' }, now).ok);
+  assert.equal(Math.round(v.res.food), 100 + R.sideReward(0).food, '交出小米，拿到謝禮'); assert.equal(Math.round(v.res.mat - m0), R.sideReward(0).mat); assert.equal(v.boosts - b0, 1);
+  assert.equal(R.sideOf(v), null, '下一件要中心 6 級');
+  v.tiles[0].level = 6; o = R.sideOf(v); assert.equal(o.i, 1); assert.equal(o.need, R.SIDE_LV[1]);
+  v.tiles[7] = { type: 'storage', level: 4 }; assert.equal(R.sideOf(v).can, false);
+  v.tiles[7].level = 5; assert.ok(R.sideOf(v).can);
+  const f1 = v.res.food; assert.ok(w.act(v.id, { type: 'side' }, now).ok); assert.equal(Math.round(v.res.food - f1), R.sideReward(1).food, '建築等級的請託不扣物資');
+  v.tiles[0].level = 9; v.sp.atayal = R.sideOf(v).need; assert.ok(w.act(v.id, { type: 'side' }, now).ok);
+  assert.equal(v.sp.atayal, R.sideNeed(2, Tribes.get('atayal').side[2].goal), '「存到」的請託不扣');
+  assert.equal(R.sideOf(v), null); assert.equal(w.act(v.id, { type: 'side' }, now).ok, false, '三件都做完了');
+  // 阿美：去野菜地採一趟
+  const a = w.villages[w.join('b', { owner: 'B', name: '乙', tribe: 'amis' }, now).id]; a.newbieUntil = 0; a.tiles[0].level = 3; a.units.w = 6;
+  assert.equal(R.sideOf(a).can, false);
+  w.tick(now);
+  const veg = Object.values(w.nodes).find(n => n.k === 'forage' && !n.g) || Object.values(w.nodes).find(n => n.k === 'forage');
+  const notVeg = Object.values(w.nodes).find(n => R.NODE[n.k].res === 'food' && n.k !== 'forage' && !n.g);
+  assert.ok(w.act(a.id, { type: 'gather', node: notVeg.id, w: 3, a: 0 }, now).ok);
+  assert.ok(w.act(a.id, { type: 'gather', node: veg.id, w: 3, a: 0 }, now).ok);
+  for (let k = 0; k < 400 && w.marches.some(m => m.from === a.id); k++) { now += 20000; w.tick(now); }
+  assert.ok(R.sideOf(a).can, '去野菜地採過一趟');
+  assert.ok(w.act(a.id, { type: 'side' }, now).ok); assert.equal(a.side.i, 1);
+  check(w);
+});
