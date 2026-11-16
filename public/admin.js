@@ -8,9 +8,9 @@
   var restoreName = '', tunePending = null;
   var PACES = [[1, '快速試玩'], [5, '加速測試'], [20, '正式']];
   var SIMPRE = [['標準', 4, 4, 4, 1, ''], ['沒有獨特兵種', 6, 6, 0, 1, ''], ['獨特兵種為主', 2, 2, 8, 1, ''], ['大隊加工事', 6, 6, 6, 2, '1'], ['沒有圍籬的小隊', 3, 3, 3, 0, '']];
-  var COLS = [['name', '部落', 'l'], ['owner', '主人', 'l'], ['tribe', '族群', 'l'], ['online', '狀態', 'l'], ['center', '中心等級'], ['pop', '族人'], ['food', '糧食'], ['mat', '建材'], ['sp', '特產'],
+  var COLS = [['name', '部落', 'l'], ['owner', '主人', 'l'], ['tribe', '族群', 'l'], ['online', '狀態', 'l'], ['center', '中心等級'], ['pop', '族人'], ['food', '小米'], ['wood', '木頭'], ['stone', '石頭'], ['meat', '肉'], ['sp', '特產'],
     ['land', '開墾地'], ['buildings', '建築'], ['army', '戰士'], ['quest', '任務'], ['prosperity', '繁榮'], ['idle', '掛機', 'l'], ['seen', '最後上線', 'l']];
-  var FOCUS = { even: '平均', food: '糧食', mat: '建材', special: '特產' };
+  var FOCUS = { even: '平均', food: '小米', mat: '平均', special: '特產' };
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function store(v) { try { if (v === undefined) return sessionStorage.getItem('shanhai_admin') || ''; if (v) sessionStorage.setItem('shanhai_admin', v); else sessionStorage.removeItem('shanhai_admin'); } catch (e) { return ''; } }
   function when(t, now) { var m = Math.round((now - t) / 60000); return m < 1 ? '剛剛' : m < 60 ? m + ' 分鐘前' : m < 1440 ? Math.floor(m / 60) + ' 小時前' : Math.floor(m / 1440) + ' 天前'; }
@@ -74,8 +74,8 @@
     $('rows').innerHTML = rows.length ? rows.map(function (r) {
       var t = Tribes.get(r.tribe);
       return '<tr><td class="l">' + esc(r.name) + '</td><td class="l' + (r.bot ? ' bot' : '') + '">' + esc(r.owner) + '</td><td class="l"><span class="dot" style="background:' + t.color + '"></span>' + t.zh + '</td>' +
-        '<td class="l ' + (r.bot ? 'bot' : r.online ? 'on' : 'off') + '">' + (r.bot ? '示範' : r.online ? '在線上' : '離線') + '</td><td>' + r.center + '</td><td>' + r.pop + '/' + r.popCap + '</td><td>' + r.food + '</td><td>' + r.mat + '</td><td>' + r.sp + '</td>' +
-        '<td>' + r.land + '</td><td>' + r.buildings + '</td><td>' + r.army + '</td><td>' + r.quest + '/5</td><td>' + r.prosperity + '</td><td class="l">' + FOCUS[r.idle.focus] + (r.idle.upgrade ? '・自動升級' : '') + '</td><td class="l">' + (r.online || r.bot ? '—' : when(r.seen, data.now)) + '</td><td class="l"><button class="btn sm ghost" data-adj="' + esc(r.id) + '">調整</button></td></tr>';
+        '<td class="l ' + (r.bot ? 'bot' : r.online ? 'on' : 'off') + '">' + (r.bot ? '示範' : r.online ? '在線上' : '離線') + '</td><td>' + r.center + '</td><td>' + r.pop + '/' + r.popCap + '</td><td>' + r.food + '</td><td>' + r.wood + '</td><td>' + r.stone + '</td><td>' + r.meat + '</td><td>' + r.sp + '</td>' +
+        '<td>' + r.land + '</td><td>' + r.buildings + '</td><td>' + r.army + '</td><td>' + r.quest + '/5</td><td>' + r.prosperity + '</td><td class="l">' + FOCUS[r.idle.focus] + (r.idle.upgrade ? '・自動升級' : '') + (r.idle.gather !== false ? '・自動採集' : '') + '</td><td class="l">' + (r.online || r.bot ? '—' : when(r.seen, data.now)) + '</td><td class="l"><button class="btn sm ghost" data-adj="' + esc(r.id) + '">調整</button></td></tr>';
     }).join('') : '<tr><td class="l muted" colspan="' + (COLS.length + 1) + '">還沒有玩家建立部落。勾選「顯示示範部落」可以看到電腦的示範部落。</td></tr>';
     drawMap(v);
   }
@@ -237,15 +237,15 @@
     var r = data.villages.filter(function (x) { return x.id === id; })[0]; if (!r) return;
     adjId = id;
     $('adjT').textContent = '調整「' + r.name + '」';
-    $('adjNow').textContent = Tribes.get(r.tribe).zh + ' · 主人 ' + r.owner + ' · 現在糧食 ' + r.food + '、建材 ' + r.mat + '、自己的特產 ' + r.sp + '（倉庫容量 ' + r.cap + '）';
+    $('adjNow').textContent = Tribes.get(r.tribe).zh + ' · 主人 ' + r.owner + ' · 現在小米 ' + r.food + '、木頭 ' + r.wood + '、石頭 ' + r.stone + '、肉 ' + r.meat + '、自己的特產 ' + r.sp + '（倉庫容量 ' + r.cap + '）';
     $('j-spk').innerHTML = Tribes.playable().map(function (t) { return '<option value="' + t.id + '"' + (t.id === r.tribe ? ' selected' : '') + '>' + t.sp.zh + '（' + t.zh + '）</option>'; }).join('');
-    ['j-food', 'j-mat', 'j-spn', 'j-sh'].forEach(function (i) { $(i).value = ''; });
+    ['j-food', 'j-wood', 'j-stone', 'j-meat', 'j-spn', 'j-sh'].forEach(function (i) { $(i).value = ''; });
     $('r-name').value = r.name; $('r-owner').value = r.owner; armed.rem = 0; $('remB').textContent = '移除部落';
     $('adj').showModal();
   }
   function sendAdj(e) {
     e.preventDefault();
-    var body = { id: adjId, food: +$('j-food').value || 0, mat: +$('j-mat').value || 0, sp: {} };
+    var body = { id: adjId, food: +$('j-food').value || 0, wood: +$('j-wood').value || 0, stone: +$('j-stone').value || 0, meat: +$('j-meat').value || 0, sp: {} };
     if (+$('j-spn').value) body.sp[$('j-spk').value] = +$('j-spn').value;
     if ($('j-sh').value !== '') body.shieldMin = +$('j-sh').value;
     post('admin/api/adjust', body).then(function (j) {

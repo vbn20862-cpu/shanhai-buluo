@@ -422,10 +422,12 @@ p { margin: 4px 0; }
   .sheet.wide { padding: 9px 14px; }
   .sheet.wide h2 { font-size: 18px; }
 }
-@media (max-width: 700px) { .chip .cap { display: none; } .vname .sub { display: none; } #hud .mode:not(.off) { display: none; } }   /* 很窄的螢幕：連線正常時不顯示狀態，把位置留給部落名稱 */
+@media (max-width: 700px) { .chip .cap { display: none; } .vname .sub { display: none; } #hud .mode:not(.off) { display: none; } #hud .pill small { display: none; } .pill.grp { gap: 4px; } .pill.grp .ic { width: 18px; height: 18px; } }   /* 很窄的螢幕：連線正常時不顯示狀態，把位置留給部落名稱 */
 @media (orientation: portrait) {   /* 直式：按鈕列排滿下方，視窗從下方升起 */
   #hud { flex-wrap: wrap; row-gap: 3px; }
   .pill { padding: 1px 7px 1px 5px; font-size: 12px; } .pill small { display: none; }
+  .pill.grp { gap: 4px; } .pill.grp .ic { width: 18px; height: 18px; }
+  #hud { column-gap: 4px; } #hud .pill { padding: 1px 6px 1px 2px; } #hud .pill > .ic { width: 20px; height: 20px; } #hud .pill b { font-size: 13px; }   /* 直式：資源列排成兩行 */
   .turn { display: block; }
   #left { top: calc(92px + var(--st)); width: 158px; max-height: calc(100% - 170px - var(--st) - var(--sb)); }
   #dock { left: 4px; right: 4px; justify-content: space-between; }
@@ -534,6 +536,9 @@ p { margin: 4px 0; }
 .pill > .ic { width: 22px; height: 22px; padding: 3px; box-sizing: border-box; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #7A5232, #2E1D10); border: 1.5px solid var(--rim2); }
 .pill b { font-family: var(--display); font-size: 15px; letter-spacing: .02em; text-shadow: 0 2px 0 #1A0F06; }
 .pill.warn { border-color: var(--warn); }
+.pill.grp { gap: 7px; padding-right: 9px; }   /* 木頭、石頭、肉合在一格，省下邊框的空間 */
+.pill.grp .gi { display: flex; align-items: center; gap: 2px; }
+.pill.grp .gi.full b { color: var(--gold); }
 .mode { background: rgba(42, 28, 16, .85); border-color: var(--line); }
 /* 下方的圓形按鈕：木頭圓章加金邊；大地圖是綠色的大圓章 */
 .db span { background: radial-gradient(circle at 35% 30%, #7E5634, #3E2816 70%); border: 3px solid var(--rim); box-shadow: inset 0 2px 0 rgba(255, 230, 170, .35), 0 3px 0 #22140A, 0 5px 10px rgba(0, 0, 0, .45); transition: transform .06s; }

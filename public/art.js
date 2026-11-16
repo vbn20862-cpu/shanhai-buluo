@@ -13,6 +13,9 @@ window.Art = (function () {
   var ICONS = {
     food: '<path d="M8 15V5" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/><g fill="currentColor"><ellipse cx="8" cy="3" rx="1.6" ry="2.2"/><ellipse cx="5.2" cy="6.2" rx="1.5" ry="2" transform="rotate(-32 5.2 6.2)"/><ellipse cx="10.8" cy="6.2" rx="1.5" ry="2" transform="rotate(32 10.8 6.2)"/><ellipse cx="5.4" cy="10" rx="1.4" ry="1.9" transform="rotate(-32 5.4 10)"/><ellipse cx="10.6" cy="10" rx="1.4" ry="1.9" transform="rotate(32 10.6 10)"/></g>',
     mat: '<g fill="currentColor"><rect x="1.5" y="9.2" width="13" height="4.6" rx="2.3"/><rect x="3.5" y="3.6" width="9" height="4.6" rx="2.3"/></g>',
+    wood: '<g fill="currentColor"><circle cx="4.6" cy="11.2" r="3.3"/><circle cx="11.4" cy="11.2" r="3.3"/><circle cx="8" cy="5.2" r="3.3"/></g>',
+    stone: '<g fill="currentColor"><path d="M1.2 14.6 2.8 11.4h10.4l1.6 3.2z"/><path d="M2.8 10.2 4.4 7h7.2l1.6 3.2z"/><path d="M4.8 5.8 6.2 2.8h3.6l1.4 3z"/></g>',
+    meat: '<path d="M3.2 11.4C1.6 8.2 3.4 3.8 7.6 2.8c3.6-.8 7 1.2 6.6 4.8-.3 3-2.8 4.2-5.6 4.6L6.4 14.6 3.6 14z" fill="currentColor"/>',
     sp: '<path d="M2 6.5h12l-1.6 7.5H3.6z" fill="currentColor"/><path d="M4.4 6.5a3.6 3.6 0 0 1 7.2 0" fill="none" stroke="currentColor" stroke-width="1.4"/>',
     pop: '<g fill="currentColor"><circle cx="8" cy="4.2" r="2.7"/><path d="M2.8 15c0-3.6 2.3-6 5.2-6s5.2 2.4 5.2 6z"/></g>',
     army: '<path d="M2.5 14 11 5.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"/><path d="M14.6 1.4 13.7 6.9 9.1 2.3z" fill="currentColor"/>',
@@ -73,18 +76,21 @@ window.Art = (function () {
   (window.ShanhaiArtQueue || []).forEach(function (p) { preDefs += merge(p); }); window.ShanhaiArtQueue = [];
   try { if (localStorage.getItem('shanhai_art') === 'old') newArt = false; } catch (e) { /* 讀不到設定就用預設 */ }
   function decorCacheReset() { if (typeof decorCache !== 'undefined') { decorCache = {}; groundCache = {}; } }
-  var ICON_AS = { speed: 'speed', help: 'help', tier1: 'tier-1', tier2: 'tier-2', tier3: 'tier-3', heal: 'heal', power: 'power', build: 'build', march: 'march', alliance: 'alliance', trade: 'specialty', craft: 'craft', map: 'map', level: 'level', food: 'food', mat: 'material', pop: 'people', army: 'warrior', star: 'prosperity', shield: 'protect', fire: 'gather', book: 'quest', charge: 'charge', volley: 'volley', hold: 'regroup' };   // 遊戲裡的圖示名稱 → 素材的檔名
+  var ICON_AS = { speed: 'speed', help: 'help', tier1: 'tier-1', tier2: 'tier-2', tier3: 'tier-3', heal: 'heal', power: 'power', build: 'build', march: 'march', alliance: 'alliance', trade: 'specialty', craft: 'craft', map: 'map', level: 'level', food: 'food', mat: 'material', wood: 'wood', stone: 'stone', meat: 'meat', pop: 'people', army: 'warrior', star: 'prosperity', shield: 'protect', fire: 'gather', book: 'quest', charge: 'charge', volley: 'volley', hold: 'regroup' };   // 遊戲裡的圖示名稱 → 素材的檔名
   [['march', 'flag'], ['trade', 'sp'], ['craft', 'book']].forEach(function (p) { ICONS[p[0]] = ICONS[p[1]]; });   // 沒有素材時借用相近的圖示
   /* 地圖上的資源點用的圖示（24 格）：素材裡沒有竹子和石板，這兩個是程式畫的 */
   var ICON24 = {
     bamboo: '<g fill="currentColor"><rect x="5" y="3" width="3.2" height="18" rx="1.2"/><rect x="10.4" y="1.5" width="3.2" height="19.5" rx="1.2"/><rect x="15.8" y="4" width="3.2" height="17" rx="1.2"/></g><path d="M5 9h3.2M5 15h3.2M10.4 7h3.2M10.4 13.5h3.2M15.8 10h3.2M15.8 16h3.2" stroke="#14212A" stroke-width="1.2"/><path d="M13.6 5.5c3-2 5-2 6.5-1.5-1.4 1.6-3.6 2.2-6.5 1.5z" fill="currentColor"/>',
     stone: '<g fill="currentColor"><path d="M3 18.5 5 15h14l2 3.5z"/><path d="M4.5 13.5 6.5 10h11l2 3.5z"/><path d="M7 8.5 8.8 5h6.4l1.8 3.5z"/></g>',
+    // 布農的苧麻線：一束捻好的線（只畫線，不畫織紋）；阿美的陶器：日常用的陶甕，只有一條素面的帶子
+    thread: '<path d="M8.5 3.5c-2.6 3-2.6 14 0 17M12 3c-1.6 3.4-1.6 14.6 0 18M15.5 3.5c2.6 3 2.6 14 0 17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><rect x="6" y="9.6" width="12" height="3.6" rx="1.2" fill="currentColor"/>',
+    pottery: '<path d="M8.4 3h7.2v2.4c0 .8 1 1.5 2 2.5 1.7 1.7 2.6 3.9 2.6 6.3 0 4.4-3.7 6.8-8.2 6.8S3.8 18.6 3.8 14.2c0-2.4.9-4.6 2.6-6.3 1-1 2-1.7 2-2.5z" fill="currentColor"/><path d="M5.2 12.4h13.6" stroke="#F2EAD6" stroke-width="1.3" opacity=".7"/>',
     boar: '<g fill="currentColor"><path d="M4 15.5c0-4 3.4-7 8-7 3 0 5.2 1 6.6 2.8l2.4.4-.6 2.4-1.6.3c-.4 1.8-1.8 3.1-3.8 3.6v2h-2.2v-1.8h-4.6v1.8H6v-2.3c-1.2-.6-2-1.7-2-3.2z"/><path d="M8.5 8.8 10 5.5l1.6 3"/></g><circle cx="17.6" cy="12" r=".9" fill="#14212A"/><path d="M20.2 14.6l1.6 1" stroke="#F2EAD6" stroke-width="1.2" stroke-linecap="round"/>'
   };
   function iconBody(name) { return (AS && newArt && AS.icon[name]) || ICON24[name] || (AS && AS.icon[name]) || ''; }
-  var SP_ICON = { atayal: 'cloth', bunun: 'meat', amis: 'fish', paiwan: 'djulis', rukai: 'pigeonpea', pinuyumayan: 'embroidery', saisiyat: 'basketry', tsou: 'leather' }, spTribe = null;   // 特產的圖示：用自己族群的特產（苧麻布、山肉、漁獲、紅藜、樹豆、繡布）
+  var SP_ICON = { atayal: 'cloth', bunun: 'thread', amis: 'pottery', paiwan: 'djulis', rukai: 'pigeonpea', pinuyumayan: 'embroidery', saisiyat: 'basketry', tsou: 'leather' }, spTribe = null;   // 特產的圖示：用自己族群的特產（苧麻布、山肉、漁獲、紅藜、樹豆、繡布）
   function icon(name, cls) {
-    var n = newArt && (name === 'sp' && spTribe && AS.icon[SP_ICON[spTribe]] || ICON_AS[name] && AS.icon[ICON_AS[name]]);
+    var key = name === 'sp' && spTribe ? SP_ICON[spTribe] : ICON_AS[name], n = newArt && key && (AS.icon[key] || ICON24[key] || (key === 'wood' && AS.icon.material));   // 素材還沒有的（木頭先借「建材」的原木；石頭、苧麻線、陶器用程式畫的）
     if (n) return '<svg class="ic ' + (cls || 'ic-' + name) + '" viewBox="0 0 24 24" aria-hidden="true">' + n + '</svg>';
     return ICONS[name] ? '<svg class="ic ' + (cls || 'ic-' + name) + '" viewBox="0 0 16 16" aria-hidden="true">' + ICONS[name] + '</svg>' : '';
   }
@@ -207,10 +213,21 @@ window.Art = (function () {
       if (t.id === 'tsou') return hut + rack(k, 0.95, 0.3, function (x, y) {   // 鞣皮工寮：晾著素色的皮（不帶頭、沒有血）
         return '<path d="M' + f1(x - 5) + ' ' + f1(y) + 'q5 3 10 0l-1 8q2 4 -1 8q-3 -2 -6 0q-3 -4 -1 -8z" fill="#B48A5E" stroke="#7A5636" stroke-width=".8"/>';
       });
-      if (t.id === 'amis') return hut + rack(k, 0.95, 0.3, function (x, y) {      // 漁寮：曬魚
-        return '<path d="M' + f1(x) + ' ' + f1(y) + 'c5 4 5 11 0 16c-5-5-5-12 0-16z" fill="#8FB8C9"/><path d="M' + f1(x - 3) + ' ' + f1(y + 20) + 'l3-5 3 5z" fill="#8FB8C9"/>';
+      if (t.id === 'amis') {   // 製陶工寮：工寮旁邊擺著做好的陶鍋、陶甕（素面，只有一條帶子）
+        var pots = '';
+        [[0.55, 0.15, 1], [0.95, 0.55, 0.8], [0.6, 0.85, 0.9], [1.05, 0.05, 0.7]].forEach(function (c) {
+          var p0 = q(c[0], c[1]), r = 8 * c[2];
+          pots += '<ellipse cx="' + f1(p0[0]) + '" cy="' + f1(p0[1]) + '" rx="' + f1(r) + '" ry="' + f1(r * 0.35) + '" fill="#1F2A44" opacity=".25"/>' +
+            '<path d="M' + f1(p0[0] - r * 0.45) + ' ' + f1(p0[1] - r * 2.1) + 'h' + f1(r * 0.9) + 'v' + f1(r * 0.3) + 'c' + f1(r * 0.5) + ' ' + f1(r * 0.3) + ' ' + f1(r * 0.7) + ' ' + f1(r * 0.8) + ' ' + f1(r * 0.7) + ' ' + f1(r * 1.1) + 'c0 ' + f1(r * 0.6) + ' ' + f1(-r * 0.5) + ' ' + f1(r * 0.7) + ' ' + f1(-r * 1.15) + ' ' + f1(r * 0.7) + 'c' + f1(-r * 0.65) + ' 0 ' + f1(-r * 1.15) + ' ' + f1(-r * 0.1) + ' ' + f1(-r * 1.15) + ' ' + f1(-r * 0.7) + 'c0 ' + f1(-r * 0.3) + ' ' + f1(r * 0.2) + ' ' + f1(-r * 0.8) + ' ' + f1(r * 0.7) + ' ' + f1(-r * 1.1) + 'z" fill="#A65E3A" stroke="#6E3B22" stroke-width=".9"/>' +
+            '<path d="M' + f1(p0[0] - r * 0.85) + ' ' + f1(p0[1] - r * 0.95) + 'h' + f1(r * 1.7) + '" stroke="#E4C9A0" stroke-width="1.3" opacity=".8"/>';
+        });
+        return hut + pots;
+      }
+      return hut + rack(k, 0.95, 0.3, function (x, y, i) {   // 織麻工寮：曬著捻好的苧麻線（原色和染過的），不畫織紋
+        var c = i === 2 ? '#B5483A' : '#E8DDC0', e = '';
+        for (var j = -2; j <= 2; j++) e += '<path d="M' + f1(x + j * 1.3) + ' ' + f1(y) + 'q' + f1(j * 0.6) + ' 9 ' + f1(j * 0.2) + ' 18" stroke="' + c + '" stroke-width="1.3" fill="none" stroke-linecap="round"/>';
+        return e + '<rect x="' + f1(x - 3.5) + '" y="' + f1(y + 3) + '" width="7" height="2.4" rx="1" fill="#8A6A3A"/>';
       });
-      return hut + rack(k, 0.95, 0.3, function (x, y) { return '<rect x="' + f1(x - 3.5) + '" y="' + f1(y) + '" width="7" height="13" rx="3" fill="#A6583F"/>'; });   // 獵寮
     },
     storage: function (k, t) {
       if (t.id === 'bunun') {   // 小米倉傳統上在屋內，這裡畫成矮石屋，旁邊放一束小米
@@ -341,6 +358,7 @@ window.Art = (function () {
   function stage(type, level) { return level >= 21 ? '-lv21' : level >= 16 ? '-lv16' : level >= 11 ? '-lv11' : level >= 6 ? '-lv6' : ''; }
   function asset(t, type, level) {
     if (!newArt || !AS) return '';
+    if (type === 'special' && (t.id === 'amis' || t.id === 'bunun')) return '';   // 特產換成陶器、苧麻線了：舊的漁寮、獵寮圖不用，先用程式畫的。收到第六包（新的 amis-special、bunun-special）之後拿掉這一行
     var n = t.id + '-' + type + stage(type, level || 1);
     if (AS.building[n]) return n;
     n = t.id + '-' + type; return AS.building[n] ? n : '';

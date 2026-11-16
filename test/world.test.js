@@ -387,7 +387,9 @@ test('資源點：隨機長出來、種類照地形；派人去採，採滿就�
   const carry = raid.carry;
   assert.ok(carry > 0 && carry <= 14 * R.TUNE.gatherLoad);
   now = raid.arriveAt + 10; w.tick(now);
-  assert.ok(b.res.wood >= wood0 + carry - 1, '帶回來的木頭進倉庫'); assert.equal(b.stat.point >= 1, true, '算採集過一次');
+  const capB = R.derived(b, 1).cap;
+  assert.ok(b.res.wood >= Math.min(capB, wood0 + carry) - 1 && b.res.wood <= Math.max(capB, wood0) + 1, '帶回來的木頭進倉庫，放不下的不收');
+  if (wood0 + carry > capB + 1) assert.ok(b.reports.some(r => /倉庫滿了/.test(r.note || '')), '倉庫滿了有通知'); assert.equal(b.stat.point >= 1, true, '算採集過一次');
   assert.ok(!w.nodes[nd.id] || w.nodes[nd.id].amt < nd.max, '資源點扣掉了');
   // 叫回來：帶著已經採到的
   const nd2 = Object.values(w.nodes).filter(n => !n.g && n.lv >= 3)[0];
@@ -1503,4 +1505,18 @@ test('示範部落也會派族人去採木頭、石頭，才蓋得了房子', ()
   const bots = Object.values(w.villages);
   assert.ok(bots.some(v => v.res.stone !== 120 || v.res.wood !== 160), '示範部落的木頭、石頭有變化');
   check(w);
+});
+
+test('資源改版前的存檔：「採集」類的可調數值改用新的預設，其他後台調過的照舊', () => {
+  const R = World.rules, w = new World({ rng: seeded(103) });
+  w.join('a', { owner: 'A', name: '甲', tribe: 'atayal' }, 1e6);
+  const old = JSON.parse(JSON.stringify(w.toJSON()));
+  old.tune.gatherRate = 12; old.tune.gatherLoad = 45; old.tune.prod = 1.5; delete old.econRev;
+  const w2 = new World().load(old);
+  assert.equal(w2.tune.gatherRate, R.TUNE_DEF.find(d => d.k === 'gatherRate').def, '採集速度用新的預設');
+  assert.equal(w2.tune.gatherLoad, 60); assert.equal(w2.tune.prod, 1.5, '其他調過的數值照舊');
+  const w3 = new World().load(JSON.parse(JSON.stringify(w2.toJSON())));
+  w2.setTune({ gatherRate: 30 }); const w4 = new World().load(JSON.parse(JSON.stringify(w2.toJSON())));
+  assert.equal(w4.tune.gatherRate, 30, '改版之後在後台調的會留著'); assert.ok(w3);
+  new World();   // 換回預設的數值
 });

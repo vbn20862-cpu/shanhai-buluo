@@ -185,7 +185,7 @@
     { k: 'popBonus', g: '經濟', zh: '玩家最少的族群：產量加成', min: 0, max: 0.5, step: 0.01, def: 0.15 },
     { k: 'itemBonus', g: '經濟', zh: '每件器物的產量加成', min: 0, max: 0.3, step: 0.01, def: 0.08 },
     { k: 'blessMult', g: '經濟', zh: '共聚時的產量倍率', min: 1, max: 1.5, step: 0.01, def: 1.15 },
-    { k: 'gatherRate', g: '採集', zh: '每人每分鐘採集的量（節奏 1 時）', min: 1, max: 60, step: 1, def: 12 },
+    { k: 'gatherRate', g: '採集', zh: '每人每分鐘採集的量（節奏 1 時）', min: 1, max: 60, step: 1, def: 20, note: '資源改版後木頭、石頭、肉只能出去採，所以比原本的 12 快，大約和原本一位族人在採集場的產量一樣。' },
     { k: 'gatherLoad', g: '採集', zh: '每人背得動的量', min: 10, max: 300, step: 5, def: 60 },
     { k: 'nodeCount', g: '採集', zh: '地圖上的資源點數量', min: 20, max: 600, step: 10, def: 180, note: '少於這個數量時，每半分鐘（節奏 1 時）長出新的。' },
     { k: 'boarCount', g: '採集', zh: '地圖上的山豬群數量', min: 0, max: 200, step: 2, def: 24 },
@@ -276,7 +276,7 @@
   var FIGHT = { rounds: 8 };               // 對戰最多打幾回合（不含開場的遠射）
   var LOOT_FRAC = [0, 0.10, 0.25, 0.40];   // 險勝、獲勝、大勝時，帶走對方可被拿走物資的比例
   var GRADE = ['', '險勝', '獲勝', '大勝'];
-  var TUNE_REV = 2, MAP_REV = 2;   // MAP_REV：地圖的版本（2 是格子變細之後）                        // 對戰規則的版本。存檔比這個舊，對戰相關的可調數值就改用新的預設（舊規則調出來的數字不適用）
+  var TUNE_REV = 2, MAP_REV = 2, ECON_REV = 2;   // ECON_REV：經濟的版本（2 是資源改版之後）。存檔比這個舊，「採集」類的可調數值改用新的預設   // MAP_REV：地圖的版本（2 是格子變細之後）                        // 對戰規則的版本。存檔比這個舊，對戰相關的可調數值就改用新的預設（舊規則調出來的數字不適用）
   var BOT_NAMES = {
     atayal: ['霧林部落', '溪谷部落'], bunun: ['雲海部落', '楓林部落'],
     amis: ['浪花部落', '月桃部落'], paiwan: ['晨曦部落', '山風部落'],
@@ -379,6 +379,11 @@
   function all3(o) { return o.w + o.a + (o.u || 0); }
   function armyCap(v) { return sumLevels(v, 'barracks') * 6; }
   function armyTotal(v) { return all3(v.units) + all3(v.away) + v.train.length; }
+  /* 木頭、石頭、肉從最缺的排到最不缺的：照族群蓋房子用的木石比例，肉大約要木石的兩成 */
+  function lowRes(v) {
+    var sh = stoneShare(v.tribe), w = { wood: (v.res.wood || 0) / (1 - sh), stone: (v.res.stone || 0) / sh, meat: (v.res.meat || 0) / 0.2 };
+    return ['wood', 'stone', 'meat'].sort(function (a, b) { return w[a] - w[b]; });
+  }
   function swiftMul(v, uu) { var st = ustat(v.tribe); return st && st.trait === 'swift' && uu > 0 ? 1 - Math.min(TUNE.swiftMax, TUNE.swiftPct * uu) / 100 : 1; }   // 卑南的平原跑者：隊伍裡有他們，路程縮短
   function marchMax(v) { return 2 + (uniq(v) === 'range' ? 1 : 0); }   // 同時可以有幾支隊伍在外面（布農的石板豬圈多一支）
   function gatherRate(v, n, k) {   // n 個人每秒採多少（k：資源點的種類）
@@ -841,8 +846,7 @@
     if (mine.length >= marchMax(v) || mine.some(function (m) { return m.auto; })) return null;
     var need = Math.min(slots(v).food, this.foodNeed(v)), n = Math.min(AUTO_MAX, v.pop - (v.gp || 0) - need);
     if (n < 2) return null;
-    var sh = stoneShare(v.tribe), cap = caps(v).res, w = { wood: (v.res.wood || 0) / (1 - sh), stone: (v.res.stone || 0) / sh, meat: (v.res.meat || 0) / 0.4 };   // 數字越小越缺
-    var order = ['wood', 'stone', 'meat'].filter(function (k) { return (v.res[k] || 0) < cap * 0.95; }).sort(function (a, b) { return w[a] - w[b]; }), best = null;
+    var cap = caps(v).res, order = lowRes(v).filter(function (k) { return (v.res[k] || 0) < cap * 0.95; }), best = null;
     for (var oi = 0; oi < order.length && !best; oi++) {
       for (var nk in this.nodes) {
         var nd = this.nodes[nk], info = NODE[nd.k];
@@ -1634,7 +1638,14 @@
       ['w', 'a', 'u'].forEach(function (k) { var n = m[k] || 0; v.units[k] += n; v.away[k] = Math.max(0, v.away[k] - n); });
       if (m.p) { if (v.online || v.bot) this.tickVillage(v, now); v.gp = Math.max(0, (v.gp || 0) - m.p); if (v.auto) this.autoJobs(v); }   // 採集的族人回來了，回到部落裡工作
       if (m.kind === 'journey' && m.qkey === v.quest * 3 + (v.qs || 0)) v.qj = m.qkey;   // 出遠門回來了：這一關達成
-      if (m.loot) for (var k in m.loot) addRes(v, k, m.loot[k]);
+      if (m.loot && m.kind === 'gather') {   // 採集帶回來的：倉庫放不下的就沒辦法收（出征搶回來的、謝禮照舊全收）
+        var cap0 = caps(v).res, lost = [];
+        for (var gk in m.loot) {
+          var room = isRes(gk) ? Math.max(0, cap0 - (v.res[gk] || 0)) : m.loot[gk], put = Math.min(m.loot[gk], room);
+          addRes(v, gk, put); if (m.loot[gk] - put >= 1) lost.push(Math.floor(m.loot[gk] - put) + ' ' + resName(gk));
+        }
+        if (lost.length) this.pushReport(v, { t: now, role: 'atk', point: '倉庫', other: '', otherTribe: v.tribe, win: false, note: '倉庫滿了，採集隊帶回來的 ' + lost.join('、') + '放不下。升級倉庫或先把東西用掉。' });
+      } else if (m.loot) for (var k in m.loot) addRes(v, k, m.loot[k]);
       return false;
     }
     if (m.kind === 'journey') { m.phase = 'back'; m.departAt = now; m.arriveAt = now + m.travel; return true; }   // 走到了，回家
@@ -2095,7 +2106,7 @@
   };
   World.prototype.toJSON = function () {
     return { villages: this.villages, tokens: this.tokens, marches: this.marches, market: this.market, feed: this.feed, alliances: this.alliances,
-      stats: this.stats, rel: this.rel, nodes: this.nodes, stock: this.stock, seq: this.seq, tune: this.tune, tuneRev: TUNE_REV, mapRev: MAP_REV, adminLog: this.adminLog, lastTyphoon: this.lastTyphoon || 0, season: this.season || null, notice: this.notice || null };
+      stats: this.stats, rel: this.rel, nodes: this.nodes, stock: this.stock, seq: this.seq, tune: this.tune, tuneRev: TUNE_REV, econRev: ECON_REV, mapRev: MAP_REV, adminLog: this.adminLog, lastTyphoon: this.lastTyphoon || 0, season: this.season || null, notice: this.notice || null };
   };
   World.prototype.load = function (d) {
     if (!d || !d.villages) return this;
@@ -2105,6 +2116,9 @@
       if (stale) {   // 對戰規則改版過：對戰相關的數值是照舊規則調的，改用新的預設，其他的照舊
         saved = {};
         for (var tk0 in d.tune) { var td0 = TUNE_BY[tk0]; if (td0 && td0.g !== '對戰' && td0.g !== '獨特兵種與英雄' && !/^u(Atk|Hp)_/.test(tk0)) saved[tk0] = d.tune[tk0]; }
+      }
+      if ((d.econRev || 1) < ECON_REV) {   // 資源改版：採集變成木頭、石頭、肉的唯一來源，「採集」類的數值改用新的預設
+        var kept = {}; for (var tk1 in saved) { var td1 = TUNE_BY[tk1]; if (td1 && td1.g !== '採集') kept[tk1] = saved[tk1]; } saved = kept;
       }
       setTune(saved, this.tune); this.tuneV++;
     }
@@ -2184,7 +2198,7 @@
     autoBattle: autoBattle, power: power, odds: odds, ODDS: ODDS, simBattle: simBattle, simMatrix: simMatrix,
     HERO_MAX: HERO_MAX, HERO_REQ: HERO_REQ, heroBoost: heroBoost, heroCost: heroCost, heroTime: heroTime, heroAb: heroAb, heroRest: heroRest,
     DAILY: DAILY, DAILY_N: DAILY_N, DAILY_BONUS: DAILY_BONUS, dailyReward: dailyReward, SIDE_AT: SIDE_AT, SIDE_LV: SIDE_LV, sideNeed: sideNeed, sideReward: sideReward, sideOf: sideOf,
-    RES: RES, RES_ZH: RES_ZH, isRes: isRes, expand: expand, stoneShare: stoneShare, can: can, lack: lack,
+    RES: RES, RES_ZH: RES_ZH, isRes: isRes, expand: expand, stoneShare: stoneShare, can: can, lack: lack, lowRes: lowRes,
     swiftMul: swiftMul, defWall: defWall, loadPer: loadPer, TUNE_DEF: TUNE_DEF, tuneDefaults: tuneDefaults, setTune: setTune, paced: paced, trainTime: trainTime, marchSecs: marchSecs, shieldMs: shieldMs, OFFER_MS: OFFER_MS
   };
   Object.defineProperty(World.rules, 'TUNE', { get: function () { return TUNE; } });   // 目前生效的可調數值

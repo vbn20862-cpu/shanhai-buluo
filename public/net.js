@@ -54,7 +54,7 @@ window.Net = (function () {
   // 測試工具（只有單機試玩有）：無限資源就是每次都把倉庫補滿
   function fill() {
     var v = rich && localId && local.villages[localId]; if (!v) return;
-    var d = World.rules.derived(v, 1); v.res.food = d.cap; v.res.mat = d.cap;
+    var d = World.rules.derived(v, 1); World.rules.RES.forEach(function (k) { v.res[k] = d.cap; });
     Tribes.playable().forEach(function (t) { v.sp[t.id] = d.spCap; });   // 連別族的特產也補滿，才能測試部落中心升級
   }
 
@@ -171,7 +171,7 @@ window.Net = (function () {
         if (q) {
           if (q.type === 'land') { for (var i = 0; i < v.land.length && v.land.filter(Boolean).length < q.n; i++) v.land[i] = v.land[i] || 1; }
           else if (q.type === 'have') v.res.food = Math.max(v.res.food, q.n);
-          else if (q.type === 'mat') v.res.mat = Math.max(v.res.mat, q.n);
+          else if (World.rules.isRes(q.type)) v.res[q.type] = Math.max(v.res[q.type] || 0, q.n);
           else if (q.type === 'trade') v.stat.trade = Math.max(v.stat.trade, q.n);
           else if (q.type === 'units') v.units.w = Math.max(v.units.w, q.n - v.units.a - v.units.u);
           else if (q.type === 'journey') v.qj = v.quest * 3 + (v.qs || 0);
@@ -200,7 +200,7 @@ window.Net = (function () {
       else if (kind === 'pace') local.setTune({ pace: +on || 1 });   // 試試正式節奏的快慢
       else if (kind === 'bots') Object.keys(local.villages).forEach(function (id) {   // 讓示範部落有守軍，對戰才有東西可以打
         var o = local.villages[id]; if (!o.bot) return;
-        o.units.w += 3; o.units.a += 3; o.wall = Math.max(o.wall, 1); o.res.food = Math.max(o.res.food, 400); o.res.mat = Math.max(o.res.mat, 400);
+        o.units.w += 3; o.units.a += 3; o.wall = Math.max(o.wall, 1); World.rules.RES.forEach(function (k) { o.res[k] = Math.max(o.res[k] || 0, 400); });
       });
       fill(); local.tick(now); fill(); save(); fire('state', local.snapshot(localId, now));
     },
