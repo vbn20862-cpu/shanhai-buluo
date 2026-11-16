@@ -82,8 +82,9 @@ window.Art = (function () {
     boar: '<g fill="currentColor"><path d="M4 15.5c0-4 3.4-7 8-7 3 0 5.2 1 6.6 2.8l2.4.4-.6 2.4-1.6.3c-.4 1.8-1.8 3.1-3.8 3.6v2h-2.2v-1.8h-4.6v1.8H6v-2.3c-1.2-.6-2-1.7-2-3.2z"/><path d="M8.5 8.8 10 5.5l1.6 3"/></g><circle cx="17.6" cy="12" r=".9" fill="#14212A"/><path d="M20.2 14.6l1.6 1" stroke="#F2EAD6" stroke-width="1.2" stroke-linecap="round"/>'
   };
   function iconBody(name) { return (AS && newArt && AS.icon[name]) || ICON24[name] || (AS && AS.icon[name]) || ''; }
+  var SP_ICON = { atayal: 'cloth', bunun: 'meat', amis: 'fish', paiwan: 'djulis', rukai: 'pigeonpea', pinuyumayan: 'embroidery' }, spTribe = null;   // 特產的圖示：用自己族群的特產（苧麻布、山肉、漁獲、紅藜、樹豆、繡布）
   function icon(name, cls) {
-    var n = newArt && ICON_AS[name] && AS.icon[ICON_AS[name]];
+    var n = newArt && (name === 'sp' && spTribe && AS.icon[SP_ICON[spTribe]] || ICON_AS[name] && AS.icon[ICON_AS[name]]);
     if (n) return '<svg class="ic ' + (cls || 'ic-' + name) + '" viewBox="0 0 24 24" aria-hidden="true">' + n + '</svg>';
     return ICONS[name] ? '<svg class="ic ' + (cls || 'ic-' + name) + '" viewBox="0 0 16 16" aria-hidden="true">' + ICONS[name] + '</svg>' : '';
   }
@@ -932,7 +933,7 @@ window.Art = (function () {
     return s;
   }
 
-  return { need: need, ready: function (t) { return !AS || !!packs[t]; }, onLoad: function (fn) { onLoad.push(fn); }, icon: icon, iconBody: iconBody, scene: scene, battleShow: battleShow, building: function (type, t, level) { return bld(type, t.look, t, level); },
+  return { setTribe: function (id) { spTribe = SP_ICON[id] ? id : null; }, need: need, ready: function (t) { return !AS || !!packs[t]; }, onLoad: function (fn) { onLoad.push(fn); }, icon: icon, iconBody: iconBody, scene: scene, battleShow: battleShow, building: function (type, t, level) { return bld(type, t.look, t, level); },
     hasNewArt: function () { return !!AS; }, newArt: function () { return newArt; },
     storyScene: storyScene, setNewArt: function (on) { newArt = !!AS && !!on; try { localStorage.setItem('shanhai_art', newArt ? 'new' : 'old'); } catch (e) { /* 記不住就只在這次有效 */ } }, BW: BW, BH: BH, decor: decor, groundURL: groundURL, sitePos: sitePos, person: person, DEFS: DEFS, SW: SW, SH: SH,
     paintMap: paintMap, mapLabels: mapLabels, shade: shade };

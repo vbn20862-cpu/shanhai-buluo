@@ -186,7 +186,7 @@
       S.me = st.me; S.pubs = st.villages; S.marches = st.marches || [];
       S.season = st.season || null;
       S.rel = st.rel || []; S.nodes = st.nodes || []; S.stock = st.stock || {}; S.market = st.market || []; S.feed = st.feed || []; S.alliances = st.alliances || {};
-      if (st.me) Art.need([st.me.tribe]);   // 自己族群的美術素材
+      if (st.me) { Art.need([st.me.tribe]); Art.setTribe(st.me.tribe); }   // 自己族群的美術素材、特產圖示
       autoShow(st.me); raidAlert(st.me); flyGains(st.me); doneSound(st.me);
       render();
     });
