@@ -2,15 +2,17 @@ const test = require('node:test');
 const assert = require('node:assert');
 const World = require('../shared/world.js');
 
+const rich = (v, n) => Object.assign(v.res, { food: n, wood: n, stone: n, meat: n });   // 四種資源都給 n
 function seeded(seed) { let s = seed; return () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; }; }
 function check(w) {
   for (const id in w.villages) {
     const v = w.villages[id];
-    for (const k of ['food', 'mat']) assert.ok(v.res[k] >= 0 && Number.isFinite(v.res[k]), `${v.name} ${k}=${v.res[k]}`);
+    for (const k of ['food', 'wood', 'stone', 'meat']) assert.ok(v.res[k] >= 0 && Number.isFinite(v.res[k]), `${v.name} ${k}=${v.res[k]}`);
+    assert.equal(v.res.mat, undefined, '沒有舊的「建材」');
     for (const k in v.sp) assert.ok(v.sp[k] >= 0 && Number.isFinite(v.sp[k]));
     assert.ok(v.units.w >= 0 && v.units.a >= 0 && v.away.w >= 0 && v.away.a >= 0, 'units >= 0');
     assert.ok(v.pop <= World.rules.popCap(v), 'pop within cap');
-    assert.ok(v.jobs.food + v.jobs.mat + v.jobs.special <= v.pop, 'jobs within pop');
+    assert.ok(v.jobs.food + v.jobs.special + (v.gp || 0) <= v.pop, 'jobs within pop');
   }
 }
 
@@ -48,14 +50,15 @@ test('市集：掛單會先扣物資，成交雙方互換，取消會退回', ()
   const now = 1e6;
   const a = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'atayal' }, now).id];
   const b = w.villages[w.join('b', { owner: 'B', name: '乙', tribe: 'paiwan' }, now).id];
-  a.sp.atayal = 10; b.res.food = 200;
+  a.sp.atayal = 10; b.res.food = 200; const a0 = a.res.food;
   assert.ok(w.act(a.id, { type: 'offer', give: 'sp:atayal', giveN: 4, want: 'food', wantN: 50 }, now).ok);
   assert.equal(a.sp.atayal, 6);
   const id = w.market[0].id;
   assert.equal(w.act(a.id, { type: 'accept', id }, now).ok, false);
   assert.ok(w.act(b.id, { type: 'accept', id }, now).ok);
-  assert.equal(b.sp.atayal, 4); assert.equal(Math.round(b.res.food), 150); assert.equal(Math.round(a.res.food), 170);
-  assert.ok(w.act(a.id, { type: 'offer', give: 'sp:atayal', giveN: 2, want: 'mat', wantN: 30 }, now).ok);
+  assert.equal(b.sp.atayal, 4); assert.equal(Math.round(b.res.food), 150); assert.equal(Math.round(a.res.food), a0 + 50);
+  assert.equal(w.act(a.id, { type: 'offer', give: 'sp:atayal', giveN: 2, want: 'mat', wantN: 30 }, now).ok, false, '舊的「建材」不能再掛單');
+  assert.ok(w.act(a.id, { type: 'offer', give: 'sp:atayal', giveN: 2, want: 'stone', wantN: 30 }, now).ok);
   assert.ok(w.act(a.id, { type: 'cancel', id: w.market[0].id }, now).ok);
   assert.equal(a.sp.atayal, 6);
   assert.ok(w.act(a.id, { type: 'gift', to: b.id, key: 'sp:atayal', n: 1 }, now).ok);
@@ -83,14 +86,15 @@ test('部落中心升到三級要用別族的特產，材料不夠時不會白�
   const w = new World({ rng: seeded(13) });
   let now = 1e6;
   const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'paiwan' }, now).id];
-  v.tiles[0].level = 2; v.res.food = 1000; v.res.mat = 1000; v.sp.paiwan = 20; v.sp.amis = 5;
+  v.tiles[0].level = 2; Object.assign(v.res, { food: 1000, wood: 1000, stone: 1000 }); v.sp.paiwan = 20; v.sp.amis = 5;
   assert.equal(w.act(v.id, { type: 'upgrade', tile: 0 }, now).msg, '要先把小米田升到等級 2', '中心升級的前置條件');
   v.tiles[2].level = 2; delete v.sp.amis;
   assert.equal(w.act(v.id, { type: 'upgrade', tile: 0 }, now).ok, false, '只有自己的特產不夠');
-  v.sp.amis = 5; v.res.mat = 100;
-  assert.equal(w.act(v.id, { type: 'upgrade', tile: 0 }, now).ok, false);
-  assert.equal(v.sp.amis, 5, '失敗時特產要還在');
-  v.res.mat = 1000;
+  v.sp.amis = 5; v.res.stone = 100;
+  const r3 = w.act(v.id, { type: 'upgrade', tile: 0 }, now);
+  assert.equal(r3.ok, false); assert.match(r3.msg, /還差 \d+ 石頭/, '說出還差多少石頭：' + r3.msg);
+  assert.equal(v.sp.amis, 5, '失敗時特產要還在'); assert.equal(v.res.wood, 1000, '失敗時木頭也要還在');
+  v.res.stone = 1000;
   assert.ok(w.act(v.id, { type: 'upgrade', tile: 0 }, now).ok);
   assert.equal(v.sp.amis || 0, 0); assert.equal(v.sp.paiwan, 20);
 });
@@ -113,13 +117,13 @@ test('拓荒：只能從已開墾的地往外拓，完成後多一塊建地並�
   const ring1 = R.SITES.findIndex(s => s.ring === 1), ring2 = R.SITES.findIndex(s => s.ring === 2);
   assert.equal(w.act(v.id, { type: 'build', tile: ring1, type2: 'house' }, now).ok, false, '山林不能直接蓋');
   assert.equal(w.act(v.id, { type: 'clear', tile: ring2 }, now).ok, false, '不能跳過中間直接拓最外圈');
-  const mat0 = v.res.mat, food0 = v.res.food;
+  const wood0 = v.res.wood, food0 = v.res.food;
   assert.ok(w.act(v.id, { type: 'clear', tile: ring1 }, now).ok);
   assert.equal(Math.round(food0 - v.res.food), R.CLEAR[1].food);
   assert.equal(w.act(v.id, { type: 'clear', tile: ring1 }, now).ok, false, '同一塊地不能重複拓荒');
   for (let i = 0; i < 14; i++) { now += 1000; w.tick(now); }
   assert.equal(v.land[ring1], 1);
-  assert.ok(v.res.mat >= mat0 + R.CLEAR[1].gain);
+  assert.ok(v.res.wood >= wood0 + R.CLEAR[1].gain, '拓荒清出來的是木頭');
   assert.ok(w.act(v.id, { type: 'build', tile: ring1, type2: 'house' }, now).ok, '拓荒完就能蓋');
   const outer = R.SITES[ring1].near.find(j => R.SITES[j].ring === 2);
   assert.equal(w.act(v.id, { type: 'clear', tile: outer }, now).ok, false, '最外圈要部落中心等級 2');
@@ -130,10 +134,12 @@ test('掛機：採集重點、離線自動升級與離線報告', () => {
   let now = 1e6;
   const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'amis' }, now).id];
   w.setOnline(v.id, true, now);
-  assert.ok(w.act(v.id, { type: 'idle', focus: 'mat', upgrade: true }, now).ok);
-  assert.equal(v.jobs.mat, 2); assert.equal(v.jobs.food, 2, '重點排滿後，其餘的人照常分配');
+  v.tiles[1] = { type: 'special', level: 1 };   // 一開始沒有特產工坊，先蓋一間
+  w.act(v.id, { type: 'idle', focus: 'mat', upgrade: true }, now); assert.notEqual(v.idle.focus, 'mat', '部落裡不再生產建材');
+  assert.ok(w.act(v.id, { type: 'idle', focus: 'special', upgrade: true }, now).ok);
+  assert.equal(v.jobs.special, 2); assert.equal(v.jobs.food, 2, '重點排滿後，其餘的人照常分配');
   v.pop = 3; w.autoJobs(v);
-  assert.deepEqual([v.jobs.mat, v.jobs.food], [2, 1], '人手不夠時先顧重點');
+  assert.deepEqual([v.jobs.special, v.jobs.food], [2, 1], '人手不夠時先顧重點');
   v.pop = 4;
   w.setOnline(v.id, false, now);
   const before = { food: v.res.food, lv: v.tiles.filter(Boolean).reduce((s, b) => s + b.level, 0) };
@@ -142,7 +148,7 @@ test('掛機：採集重點、離線自動升級與離線報告', () => {
   assert.equal(v.last, 1e6, '離線的部落不會每秒計算');
   w.setOnline(v.id, true, now);
   assert.ok(v.report, '回來要有離線報告');
-  assert.ok(v.report.food > 0 || v.report.mat > 0);
+  assert.ok(v.report.food > 0 || v.report.sp > 0);
   assert.ok(v.report.ups.length > 0, '離線時有自動升級');
   assert.ok(v.tiles.filter(Boolean).reduce((s, b) => s + b.level, 0) > before.lv);
   assert.ok(v.res.food <= World.rules.derived(v, 1).cap + 1 && v.res.food >= 0);
@@ -214,14 +220,14 @@ test('對戰：打下沒有防守的部落，大勝、帶回物資、對方得�
   const a = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'bunun' }, now).id];
   const b = w.villages[w.join('b', { owner: 'B', name: '乙', tribe: 'amis' }, now).id];
   w.setOnline(a.id, true, now);
-  a.units.w = 6; a.units.a = 3; b.res.food = 500; b.res.mat = 500; b.sp.amis = 10;
+  a.units.w = 6; a.units.a = 3; Object.assign(b.res, { food: 500, wood: 500, stone: 500, meat: 200 }); b.sp.amis = 10;
   assert.equal(w.act(a.id, { type: 'attack', to: b.id, w: 6, a: 3 }, now).ok, false, '新手保護中不能被出征');
   b.newbieUntil = 0;
   assert.ok(w.act(a.id, { type: 'allyCreate', name: '山海盟' }, now).ok);
   assert.ok(w.act(b.id, { type: 'allyJoin', id: a.ally }, now).ok);
   assert.equal(w.act(a.id, { type: 'attack', to: b.id, w: 6, a: 3 }, now).ok, false, '同盟不能互打');
   assert.ok(w.act(b.id, { type: 'allyLeave' }, now).ok);
-  const food0 = a.res.food;
+  const food0 = a.res.food, wood0 = a.res.wood, meat0 = a.res.meat;
   assert.equal(w.pub(b, now).pw, 0, '沒有守軍，守備戰力是 0');
   assert.ok(w.act(a.id, { type: 'attack', to: b.id, w: 6, a: 3 }, now).ok);
   assert.equal(a.units.w, 0); assert.equal(a.away.w, 6);
@@ -234,6 +240,7 @@ test('對戰：打下沒有防守的部落，大勝、帶回物資、對方得�
   assert.deepEqual(rep.show.start.a, { w: 6, a: 3, u: 0 }); assert.equal(rep.show.aTribe, 'bunun'); assert.equal(rep.show.dName, '乙');
   assert.ok(rep.loot['sp:amis'] === 4, '大勝帶走四成特產');
   assert.ok(a.res.food > food0 + 100 && a.sp.amis === 4);
+  assert.ok(a.res.wood > wood0 + 50 && a.res.meat > meat0 + 10 && rep.loot.stone > 0, '木頭、石頭、肉也搶得到');
   assert.ok(b.shieldUntil > now && b.reports[0].win === false && b.reports[0].id === rep.id);
   assert.equal(w.stats['bunun>amis'].n, 1); assert.equal(w.stats['bunun>amis'].win, 1);
   assert.equal(w.act(a.id, { type: 'attack', to: b.id, w: 1, a: 0 }, now).ok, false, '保護時間內不能再出征');
@@ -295,7 +302,7 @@ test('掛機：離線時自動補訓守軍', () => {
   let now = 1e6;
   const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'paiwan' }, now).id];
   w.setOnline(v.id, true, now);
-  v.tiles[1] = { type: 'barracks', level: 1 }; v.res.food = 500; v.res.mat = 300;
+  v.tiles[1] = { type: 'barracks', level: 1 }; Object.assign(v.res, { food: 500, wood: 300, stone: 300, meat: 200 });
   assert.ok(w.act(v.id, { type: 'idle', train: true }, now).ok);
   w.setOnline(v.id, false, now); now += 20 * 60000; w.setOnline(v.id, true, now);
   assert.equal(v.units.w + v.units.a, R.armyCap(v), '補滿到上限');
@@ -326,7 +333,7 @@ test('族群關係：交易、送禮、結盟變好；出征變差；友好有�
   w.rel['amis|bunun'] = R.REL.hostile;      // 兩族變成敵對
   assert.ok(w.act(a.id, { type: 'offer', give: 'sp:bunun', giveN: 1, want: 'food', wantN: 10 }, now).ok);
   assert.equal(w.act(b.id, { type: 'accept', id: w.market[0].id }, now).ok, false, '敵對不能直接交易');
-  assert.ok(w.act(c.id, { type: 'offer', give: 'food', giveN: 10, want: 'mat', wantN: 10 }, now).ok);
+  assert.ok(w.act(c.id, { type: 'offer', give: 'food', giveN: 10, want: 'meat', wantN: 10 }, now).ok);
   // 出征讓關係變差
   w.rel = {}; b.newbieUntil = 0; a.units.w = 2;
   assert.ok(w.act(a.id, { type: 'attack', to: b.id, w: 2, a: 0 }, now).ok);
@@ -448,19 +455,20 @@ test('任務主線：五章依序完成，獎勵是器物、器物、獨特建�
   v.res.food = 320; assert.ok(fin().ok);      // 第二章：存糧
   v.stat.trade = 2; assert.ok(fin().ok);      // 第三章：交換
   assert.equal(v.quest, 3);
-  v.res.food = 500; v.res.mat = 500;
+  Object.assign(v.res, { food: 500, wood: 500, stone: 500, meat: 200 });
   assert.ok(w.act(v.id, { type: 'build', tile: 1, type2: 'unique' }, now).ok);
   assert.equal(w.act(v.id, { type: 'build', tile: 3, type2: 'unique' }, now).ok, false, '只能蓋一座');
   v.tiles[5] = { type: 'barracks', level: 2 };
   assert.equal(w.act(v.id, { type: 'train', u: 'u' }, now).ok, false, '第四章前不能訓練獨特兵種');
-  v.jobs = { food: 0, mat: 0, special: 0 }; v.auto = false;
-  assert.equal(R.derived(v, 1).rates.special, 0);
+  v.jobs = { food: 0, special: 0 }; v.auto = false;
+  assert.equal(R.derived(v, 1).rates.meat, 0);
   now = run(w, now, 40);
   assert.equal(v.tiles[1].level, 1);
-  assert.ok(Math.abs(R.derived(v, 1).rates.special - R.TUNE.pondSp / 60) < 1e-9 && R.derived(v, 1).rates.food >= R.TUNE.pondFood / 60, '阿美的獨特建築不用人手也有漁獲和糧食');
+  assert.ok(Math.abs(R.derived(v, 1).rates.meat - R.TUNE.pondMeat / 60) < 1e-9 && R.derived(v, 1).rates.food >= R.TUNE.pondFood / 60, '阿美的巴拉告不用人手也有魚（算肉）和小米');
+  assert.equal(R.derived(v, 1).rates.wood + R.derived(v, 1).rates.stone, 0, '木頭和石頭不在部落裡生產');
   assert.equal(w.act(v.id, { type: 'upgrade', tile: 1 }, now).ok, false, '獨特建築不用升級');
   v.units.w = 6; assert.ok(fin().ok);         // 第四章：6 名戰士
-  v.res.food = 500; v.res.mat = 500;
+  Object.assign(v.res, { food: 500, wood: 500, stone: 500, meat: 200 });
   assert.ok(w.act(v.id, { type: 'train', u: 'u' }, now).ok);
   now = run(w, now, 8); assert.equal(v.units.u, 1);
   assert.equal(w.act(v.id, { type: 'bless' }, now).ok, false, '主線沒完成不能舉行祭儀');
@@ -471,9 +479,12 @@ test('任務主線：五章依序完成，獎勵是器物、器物、獨特建�
   assert.equal(w.act(v.id, { type: 'bless' }, now).ok, false, '剛祝福過不能馬上再辦');
   now += R.BLESS.again + 1000; w.tick(now);
   assert.equal(v.blessed, false);
-  v.res.food = 300; v.jobs.mat = 1; const r1 = R.derived(v, 1).rates.mat;
+  v.res.food = 300; v.res.meat = 0;
+  assert.equal(w.act(v.id, { type: 'bless' }, now).ok, false, '共聚要小米和肉');
+  v.res.meat = 100; const g1 = R.gatherRate(v, 4, 'wood');
   assert.ok(w.act(v.id, { type: 'bless' }, now).ok);
-  assert.ok(Math.abs(R.derived(v, 1).rates.mat / r1 - R.TUNE.blessMult) < 1e-9); assert.equal(Math.round(v.res.food), 300 - R.BLESS.food);
+  assert.ok(Math.abs(R.gatherRate(v, 4, 'wood') / g1 - R.TUNE.blessMult) < 1e-9, '共聚之後出去採也比較快');
+  assert.equal(Math.round(v.res.food), 300 - R.BLESS.food); assert.equal(Math.round(v.res.meat), 100 - R.BLESS.meat);
   check(w);
 });
 
@@ -482,10 +493,10 @@ test('獨特建築的效果：望樓讓來襲變慢、芋頭窯保護量加倍�
   let now = 1e6;
   const mk = (tok, tribe) => { const v = w.villages[w.join(tok, { owner: tok, name: tok, tribe }, now).id]; v.newbieUntil = 0; return v; };
   const a = mk('a', 'bunun'), t1 = mk('b', 'atayal'), p = mk('c', 'paiwan');
-  const prot0 = R.derived(p, 1).protect, cap0 = R.derived(p, 1).cap, r0 = R.gatherRate(a, 4);
+  const prot0 = R.derived(p, 1).protect, cap0 = R.derived(p, 1).cap, r0 = R.gatherRate(a, 4, 'wood');
   [a, t1, p].forEach(v => { v.quest = 3; v.tiles[1] = { type: 'unique', level: 1 }; });
   assert.equal(R.derived(p, 1).protect, prot0 * 2); assert.equal(R.derived(p, 1).cap, cap0 + 300);
-  assert.equal(R.marchMax(a), 3); assert.ok(Math.abs(R.gatherRate(a, 4) - r0 * R.TUNE.rangeYield) < 1e-9);
+  assert.equal(R.marchMax(a), 3); assert.ok(Math.abs(R.gatherRate(a, 4, 'wood') - r0 * R.TUNE.rangeYield * (1 + R.TUNE.itemBonus)) < 1e-9, '石板豬圈（第二件器物也讓採集變快）');
   a.units.w = 4; p.units.w = 0;
   assert.ok(w.act(a.id, { type: 'attack', to: t1.id, w: 2, a: 0 }, now).ok);
   const toWatch = w.marches[0].travel; w.marches = []; a.units.w = 4; a.away.w = 0; a.cool = {};
@@ -493,7 +504,7 @@ test('獨特建築的效果：望樓讓來襲變慢、芋頭窯保護量加倍�
   assert.ok(Math.abs(toWatch - Math.min(60, 6 + 2.5 * d1) * 1500) < 1, '出征有望樓的部落，路上多花一半時間');
 });
 
-test('魯凱與卑南：山泉取水處省糧、刺竹林多建材又讓竹圍更強；斥候出征才加攻擊；跑者縮短路程；兩位英雄的時機', () => {
+test('魯凱與卑南：山泉取水處省糧、刺竹林到竹林採得快又讓竹圍更強；斥候出征才加攻擊；跑者縮短路程；兩位英雄的時機', () => {
   const w = new World({ rng: seeded(73) });
   let now = 1e6;
   const mk = (tok, tribe) => { const v = w.villages[w.join(tok, { owner: tok, name: tok, tribe }, now).id]; v.newbieUntil = 0; return v; };
@@ -501,11 +512,12 @@ test('魯凱與卑南：山泉取水處省糧、刺竹林多建材又讓竹圍�
   const Tribes = require('../shared/tribes.js'); assert.ok(Tribes.get('rukai').playable && Tribes.get('pinuyumayan').playable);
   const free = v => v.tiles.findIndex((x, i) => i > 0 && !x);
   [r, p].forEach(v => { v.quest = 3; v.tiles[free(v)] = { type: 'unique', level: 0 }; });
-  const eat0 = R.derived(r, 1).eat, mat0 = R.derived(p, 1).rates.mat;
+  const eat0 = R.derived(r, 1).eat, bam0 = R.gatherRate(p, 4, 'bamboo'), wood0 = R.gatherRate(p, 4, 'wood');
   [r, p].forEach(v => { v.tiles.forEach(x => { if (x && x.type === 'unique') x.level = 1; }); });
   assert.equal(R.derived(r, 1).uniq, 'spring'); assert.equal(R.derived(p, 1).uniq, 'grove');
   assert.ok(R.derived(r, 1).eat < eat0, '山泉取水處：族人吃得少一點');
-  assert.ok(Math.abs(R.derived(p, 1).rates.mat / mat0 - (1 + R.TUNE.groveMat / 100)) < 1e-9, '刺竹林：建材多');
+  assert.ok(Math.abs(R.gatherRate(p, 4, 'bamboo') / bam0 - (1 + R.TUNE.groveBamboo / 100)) < 1e-9, '刺竹林：到竹林採得快');
+  assert.equal(R.gatherRate(p, 4, 'wood'), wood0, '刺竹林：林地不受影響');
   assert.ok(R.defWall(2, 'grove') > R.wallMul(2) && R.defWall(0, 'grove') === 1, '竹圍的加成更多；沒有竹圍就沒有加成');
   // 山徑斥候：出征時攻擊比較高，守部落時一樣
   const atk = R.mkSide(0, 0, 4, 'rukai', false), def = R.mkSide(0, 0, 4, 'rukai', true);
@@ -580,7 +592,7 @@ test('遊戲節奏：產量變慢，建設、訓練、路程、保護變長；�
   w.setTune({ pace: 20 });
   assert.ok(Math.abs(R.derived(v, 1).rates.food * 20 - r1) < 1e-9, '產量是二十分之一');
   assert.equal(R.buildTime('house', 1), t1 * 20); assert.equal(R.trainTime('w'), tr1 * 20); assert.equal(R.marchSecs(4), m1 * 20); assert.equal(R.shieldMs(), s1 * 20); assert.equal(R.clearInfo(v, 7).time, c1 * 20);
-  v.res.mat = 200; assert.ok(w.act(v.id, { type: 'build', tile: 1, type2: 'house' }, now).ok);
+  v.res.wood = v.res.stone = 200; assert.ok(w.act(v.id, { type: 'build', tile: 1, type2: 'house' }, now).ok);
   assert.equal(v.queue[0].doneAt - now, t1 * 20 * 1000);
   const b = w.villages[w.join('b', { owner: 'B', name: '乙', tribe: 'amis' }, now).id];
   assert.equal(b.newbieUntil - now, 600000 * 20, '新部落的保護也跟著變長');
@@ -607,8 +619,8 @@ test('後台調整部落：物資加減不會超過倉庫、可以給保護，�
   const w = new World({ rng: seeded(87) });
   const now = 1e6;
   const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'paiwan' }, now).id], cap = R.derived(v, 1).cap, spCap = R.derived(v, 1).spCap;
-  assert.ok(w.adminAdjust(v.id, { food: 99999, mat: -50, sp: { atayal: 5, nobody: 9, paiwan: 9999 }, shieldMin: 30 }, now).ok);
-  assert.equal(v.res.food, cap); assert.equal(Math.round(v.res.mat), 70); assert.equal(v.sp.atayal, 5); assert.equal(v.sp.paiwan, spCap); assert.equal(v.sp.nobody, undefined);
+  assert.ok(w.adminAdjust(v.id, { food: 99999, stone: -50, wood: 10, meat: 5, mat: 999, sp: { atayal: 5, nobody: 9, paiwan: 9999 }, shieldMin: 30 }, now).ok);
+  assert.equal(v.res.food, cap); assert.equal(Math.round(v.res.stone), 70); assert.equal(Math.round(v.res.wood), 170); assert.equal(Math.round(v.res.meat), 65); assert.equal(v.res.mat, undefined, '舊的「建材」欄位不理會'); assert.equal(v.sp.atayal, 5); assert.equal(v.sp.paiwan, spCap); assert.equal(v.sp.nobody, undefined);
   assert.equal(v.shieldUntil, now + 30 * 60000);
   assert.ok(w.adminAdjust(v.id, { food: -99999, shieldMin: 0 }, now).ok); assert.equal(v.res.food, 0); assert.equal(v.shieldUntil, 0); assert.equal(v.newbieUntil, 0);
   assert.equal(w.adminAdjust(v.id, {}, now).ok, false); assert.equal(w.adminAdjust('x', { food: 1 }, now).ok, false);
@@ -662,7 +674,7 @@ test('玩家送來奇怪的名稱（__proto__、constructor、toString…）：�
   const w = new World({ rng: seeded(91) });
   const now = 1e6;
   const a = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'bunun' }, now).id], b = w.villages[w.join('b', { owner: 'B', name: '乙', tribe: 'amis' }, now).id];
-  a.newbieUntil = 0; b.newbieUntil = 0; a.tiles[3] = { type: 'barracks', level: 1 }; a.units.w = 4; a.res.food = 400; a.res.mat = 400; w.setOnline(a.id, true, now);
+  a.newbieUntil = 0; b.newbieUntil = 0; a.tiles[3] = { type: 'barracks', level: 1 }; a.units.w = 4; Object.assign(a.res, { food: 400, wood: 400, stone: 400, meat: 400 }); w.setOnline(a.id, true, now);
   const before = JSON.stringify(a);
   for (const x of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'prototype', 'valueOf']) {
     const acts = [{ type: x }, { type: 'attack', to: x, w: 1, a: 0 }, { type: 'gift', to: x, key: 'food', n: 5 }, { type: 'gift', to: b.id, key: 'sp:' + x, n: 5 }, { type: 'train', u: x },
@@ -688,12 +700,12 @@ test('玩家送來奇怪的名稱（__proto__、constructor、toString…）：�
 test('後台改名與移除部落：隊伍、資源點、掛單、聯盟一併處理，識別碼作廢', () => {
   const w = new World({ rng: seeded(93) });
   let now = 1e6;
-  const mk = (tok, name, tribe) => { const v = w.villages[w.join(tok, { owner: name, name: name, tribe }, now).id]; v.newbieUntil = 0; v.tiles[3] = { type: 'barracks', level: 1 }; v.units.w = 6; v.res.food = 400; v.res.mat = 400; w.setOnline(v.id, true, now); return v; };
+  const mk = (tok, name, tribe) => { const v = w.villages[w.join(tok, { owner: name, name: name, tribe }, now).id]; v.newbieUntil = 0; v.tiles[3] = { type: 'barracks', level: 1 }; v.units.w = 6; Object.assign(v.res, { food: 400, wood: 400, stone: 400, meat: 400 }); w.setOnline(v.id, true, now); return v; };
   const a = mk('tokA', '甲', 'bunun'), b = mk('tokB', '乙', 'amis'), c = mk('tokC', '丙', 'paiwan');
   assert.ok(w.adminRename(a.id, { name: '  新<名>字  ', owner: '阿明' }, now).ok); assert.equal(a.name, '新名字'); assert.equal(a.owner, '阿明');
   assert.equal(w.adminRename(a.id, { name: '新名字' }, now).ok, false, '沒有變就不算'); assert.equal(w.adminRename('nope', { name: 'x' }, now).ok, false);
   assert.ok(w.act(b.id, { type: 'allyCreate', name: '山海盟' }, now).ok); assert.ok(w.act(c.id, { type: 'allyJoin', id: b.ally }, now).ok);
-  assert.ok(w.act(b.id, { type: 'offer', give: 'food', giveN: 10, want: 'mat', wantN: 10 }, now).ok);
+  assert.ok(w.act(b.id, { type: 'offer', give: 'food', giveN: 10, want: 'wood', wantN: 10 }, now).ok);
   w.tick(now += 1000);
   const ns = Object.values(w.nodes);
   assert.ok(w.act(b.id, { type: 'gather', node: ns[0].id, w: 2, a: 0 }, now).ok);
@@ -771,15 +783,15 @@ test('族人與戰士吃糧食：吃光了不會餓死，只是不長人、工�
   v.tiles[2] = { type: 'farm', level: 5 }; v.tiles[4] = { type: 'house', level: 5 }; v.pop = 12; v.auto = true;
   w.tick(now += 1000);
   assert.ok(R.derived(v, 1).net > 0, '自動分工會先排夠人種田：淨收入 ' + R.derived(v, 1).net.toFixed(2) + '，分工 ' + JSON.stringify(v.jobs));
-  // 手動把人都調去採建材：糧食慢慢吃光
-  v.auto = false; v.jobs = { food: 0, mat: 2, special: 0 }; v.res.food = 30; v.res.mat = 0;
+  // 手動把人都調去做特產：小米慢慢吃光
+  v.tiles[1] = { type: 'special', level: 1 }; v.auto = false; v.jobs = { food: 0, special: 2 }; Object.assign(v.res, { food: 30, wood: 0, stone: 0, meat: 0 });
   const pop0 = v.pop; v.popAcc = 0;
   for (let i = 0; i < 120; i++) w.tick(now += 1000);
   assert.equal(v.res.food, 0); assert.equal(v.hungry, true); assert.equal(R.derived(v, 1).hungry, true);
   const popH = v.pop; for (let i = 0; i < 120; i++) w.tick(now += 1000);
   assert.ok(pop0 <= popH && v.pop === popH && v.hungry, '吃不飽就不長人'); assert.ok(v.units.w === 20 && v.pop > 0, '不會餓死，也不會離開');
-  const r = R.derived(v, 1).rates.mat, full = 2 * R.perWorker(v, 'mat', 1);
-  assert.ok(Math.abs(r - full * R.TUNE.hungryWork) < 1e-9, '建材的工作變慢');
+  const r = R.derived(v, 1).rates.special, full = 2 * R.perWorker(v, 'special', 1);
+  assert.ok(Math.abs(r - full * R.TUNE.hungryWork) < 1e-9, '特產的工作變慢');
   assert.equal(w.act(v.id, { type: 'train', u: 'w' }, now).ok, false, '吃不飽不能訓練');
   // 讓戰士回家：家裡有空房的變回族人
   assert.equal(w.act(v.id, { type: 'dismiss', u: 'w', n: 21 }, now).ok, false);
@@ -843,7 +855,7 @@ test('第二批的建築：靶場才能訓練弓手、工寮多一個工人、�
   let now = 1e6;
   const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'amis' }, now).id];
   w.setOnline(v.id, true, now);
-  v.res.food = 5000; v.res.mat = 5000; v.tiles[3] = { type: 'barracks', level: 3 };
+  Object.assign(v.res, { food: 5000, wood: 5000, stone: 5000, meat: 5000 }); v.tiles[3] = { type: 'barracks', level: 3 };
   assert.equal(R.limit('archery', 1, v), 0, '中心 2 級才能蓋靶場'); assert.equal(R.limit('archery', 2, v), 1); assert.equal(R.limit('guest', 7, v), 0); assert.equal(R.limit('taro', 9, v), 3);
   assert.equal(w.act(v.id, { type: 'train', u: 'a' }, now).msg, '要先蓋靶場才能訓練弓手');
   assert.ok(w.act(v.id, { type: 'train', u: 'w' }, now).ok, '勇士照樣在訓練場練');
@@ -866,7 +878,7 @@ test('技藝：技藝屋的等級決定上限，同時學一項，學會之後�
   const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'bunun' }, now).id];
   const t = w.villages[w.join('b', { owner: 'B', name: '乙', tribe: 'paiwan' }, now).id];
   w.setOnline(v.id, true, now); w.setOnline(t.id, true, now);
-  v.res.food = 9000; v.res.mat = 9000;
+  Object.assign(v.res, { food: 9000, wood: 9000, stone: 9000, meat: 9000 });
   assert.equal(w.act(v.id, { type: 'research', id: 'spear' }, now).msg, '要先蓋技藝屋');
   v.tiles[1] = { type: 'craft', level: 1 };
   assert.equal(R.techMax(v), 1); assert.equal(w.act(v.id, { type: 'research', id: 'toString' }, now).ok, false);
@@ -920,7 +932,7 @@ test('第三批：兵種升階、加速道具、聯盟互助、排行用的戰�
   assert.ok(wins >= 30, '第 3 階的 10 人通常打得贏第 1 階的 12 人：' + wins + '/40');
   // 加速道具：新部落有 3 個；用在工程上；用完就不能再用
   assert.equal(v.boosts, R.BOOST_START);
-  v.res.food = v.res.mat = 99999;
+  rich(v, 99999);
   v.tiles[0].level = 20;
   assert.ok(w.act(v.id, { type: 'upgrade', tile: 3 }, now).ok, '訓練場 17 → 18 級（時間夠長）');
   const q = v.queue[0], left0 = q.doneAt - now;
@@ -1001,7 +1013,7 @@ test('迎賓亭的盟友支援：派人駐守、一起守部落、分回剩下�
   const host = w.villages[w.join('s1', { owner: '甲', name: '主人', tribe: 'atayal' }, now).id];
   const fr = w.villages[w.join('s2', { owner: '乙', name: '盟友', tribe: 'bunun' }, now).id];
   const foe = w.villages[w.join('s3', { owner: '丙', name: '來犯', tribe: 'amis' }, now).id];
-  [host, fr, foe].forEach(x => { x.online = true; x.newbieUntil = 0; x.land = x.land.map(() => 1); x.tiles[0].level = 8; x.tiles[3] = { type: 'barracks', level: 8 }; x.res.food = x.res.mat = 50000; });
+  [host, fr, foe].forEach(x => { x.online = true; x.newbieUntil = 0; x.land = x.land.map(() => 1); x.tiles[0].level = 8; x.tiles[3] = { type: 'barracks', level: 8 }; rich(x, 50000); });
   fr.units = { w: 10, a: 6, u: 0 }; host.units = { w: 2, a: 0, u: 0 }; foe.units = { w: 20, a: 10, u: 0 };
   assert.equal(w.act(fr.id, { type: 'support', to: host.id, w: 4, a: 2 }, now).msg, '只能支援同一個聯盟的部落');
   w.act(host.id, { type: 'allyCreate', name: '同心' }, now); w.act(fr.id, { type: 'allyJoin', id: host.ally }, now);
@@ -1101,7 +1113,7 @@ test('賽季：做事累積季分、達到目標領獎勵、季末排名送加�
   w.tick(now += 1000);
   assert.equal(w.season.n, 1); assert.equal(w.season.end - w.season.start, w.ms(R.TUNE.seasonDays * 864e5 / 20));
   // 升級建築：升到幾級加幾分
-  a.res.food = a.res.mat = 99999; a.tiles[0].level = 3;
+  rich(a, 99999); a.tiles[0].level = 3;
   assert.ok(w.act(a.id, { type: 'upgrade', tile: 4 }, now).ok);
   const s0 = a.spts || 0; now = a.queue[0].doneAt + 1; w.tick(now);
   assert.equal(a.spts, s0 + 2, '家屋升到 2 級：+2');
@@ -1139,7 +1151,7 @@ test('神話故事關卡：每章 3 關、故事分三段揭開（不新增文�
   const v = w.villages[w.join('qs1', { owner: '甲', name: '甲部落', tribe: 'atayal' }, now).id]; v.online = true;
   let p = w.questProgress(v);
   assert.deepEqual([p.i, p.s, p.type], [0, 0, 'build']); assert.ok(/升到 2 級/.test(p.text));
-  v.res.food = v.res.mat = 99999; v.tiles[0].level = 3;
+  rich(v, 99999); v.tiles[0].level = 3;
   v.tiles[2].level = 2; const f0 = v.res.food;
   assert.ok(w.act(v.id, { type: 'quest' }, now).ok); assert.equal(v.qs, 1); assert.equal(v.res.food, f0 + R.stageReward(v).food, '前兩關有小獎勵');
   v.tiles[4].level = 2; assert.ok(w.act(v.id, { type: 'quest' }, now).ok); assert.equal(v.qs, 2);
@@ -1227,7 +1239,7 @@ test('今天的小目標：做不到的不出、事情做完才加進度、各�
   const again = JSON.stringify(v.daily); v.daily = null; w.rollDaily(v, now); assert.equal(JSON.stringify(v.daily), again, '同一天的題目固定');
   // 強制成固定的 4 件，方便測
   v.daily.list = ['build', 'train', 'trade', 'gift'].map(k => ({ k, n: R.DAILY[k].n, cur: 0, got: false }));
-  v.res.food = v.res.mat = 5000;
+  rich(v, 5000);
   for (let i = 0; i < 5; i++) assert.ok(w.act(v.id, { type: 'train', u: 'w' }, now).ok);
   const s1 = w.snapshot(v.id, now).me.daily; now += 1000; w.tickVillage(v, now);
   assert.deepEqual(w.snapshot(v.id, now).me.daily, s1, '沒做完事情時，每日任務的資料不會每秒變動');
@@ -1277,9 +1289,9 @@ test('族人的請託：中心 3、6、9 級各出現一件；交出物資、建
   let o = R.sideOf(v); assert.equal(o.i, 0); assert.equal(o.need, R.sideNeed(0, Tribes.get('atayal').side[0].goal));
   v.res.food = o.need - 1;
   assert.equal(w.act(v.id, { type: 'side' }, now).ok, false, '小米不夠');
-  v.res.food = o.need + 100; const m0 = v.res.mat, b0 = v.boosts;
+  v.res.food = o.need + 100; const m0 = v.res.wood + v.res.stone, b0 = v.boosts;
   assert.ok(w.act(v.id, { type: 'side' }, now).ok);
-  assert.equal(Math.round(v.res.food), 100 + R.sideReward(0).food, '交出小米，拿到謝禮'); assert.equal(Math.round(v.res.mat - m0), R.sideReward(0).mat); assert.equal(v.boosts - b0, 1);
+  assert.equal(Math.round(v.res.food), 100 + R.sideReward(0).food, '交出小米，拿到謝禮'); assert.equal(Math.round(v.res.wood + v.res.stone - m0), R.sideReward(0).mat, '謝禮的「建材」照族群分成木頭和石頭'); assert.equal(v.boosts - b0, 1);
   assert.equal(R.sideOf(v), null, '下一件要中心 6 級');
   v.tiles[0].level = 6; o = R.sideOf(v); assert.equal(o.i, 1); assert.equal(o.need, R.SIDE_LV[1]);
   v.tiles[7] = { type: 'storage', level: 4 }; assert.equal(R.sideOf(v).can, false);
@@ -1293,7 +1305,7 @@ test('族人的請託：中心 3、6、9 級各出現一件；交出物資、建
   assert.equal(R.sideOf(a).can, false);
   w.tick(now);
   const veg = Object.values(w.nodes).find(n => n.k === 'forage' && !n.g) || Object.values(w.nodes).find(n => n.k === 'forage');
-  const notVeg = Object.values(w.nodes).find(n => R.NODE[n.k].res === 'food' && n.k !== 'forage' && !n.g);
+  const notVeg = Object.values(w.nodes).find(n => n.k !== 'forage' && !R.NODE[n.k].ev && !n.g);
   assert.ok(w.act(a.id, { type: 'gather', node: notVeg.id, w: 3, a: 0 }, now).ok);
   assert.ok(w.act(a.id, { type: 'gather', node: veg.id, w: 3, a: 0 }, now).ok);
   for (let k = 0; k < 400 && w.marches.some(m => m.from === a.id); k++) { now += 20000; w.tick(now); }
@@ -1308,7 +1320,7 @@ test('英雄升級：完成主線才能升、要中心等級與物資、倒數�
   const v = w.villages[w.join('a', { owner: 'A', name: '甲', tribe: 'bunun' }, now).id]; v.newbieUntil = 0;
   assert.equal(v.heroLv, 1);
   assert.equal(w.act(v.id, { type: 'heroUp' }, now).ok, false, '還沒有英雄');
-  v.quest = R.QUESTS.length; v.tiles[0].level = 5; v.res.food = v.res.mat = 1e5; v.sp.bunun = 500; v.tiles[7] = { type: 'storage', level: 20 };
+  v.quest = R.QUESTS.length; v.tiles[0].level = 5; rich(v, 1e5); v.sp.bunun = 500; v.tiles[7] = { type: 'storage', level: 20 };
   assert.match(w.act(v.id, { type: 'heroUp' }, now).msg, /6 級/, '2 級要中心 6 級');
   v.tiles[0].level = 6;
   const c = R.heroCost(2), f0 = v.res.food, sp0 = v.sp.bunun;
@@ -1379,4 +1391,49 @@ test('公告：純文字、最多 200 字、到期自動消失、可以撤下；
   assert.ok(w.clearNotice(now).ok); assert.equal(w.noticeNow(now), null); assert.equal(w.clearNotice(now).ok, false);
   const old = w.toJSON(); delete old.notice; const w3 = new World(); w3.load(old); assert.equal(w3.notice, null, '舊存檔沒有公告');
   assert.ok(w.adminLog.some(x => /發公告/.test(x.text)) && w.adminLog.some(x => /撤下公告/.test(x.text)), '操作紀錄有記');
+});
+
+test('資源改版：小米在部落裡種，木頭、石頭、肉要到野地採；花費照族群分木石；舊存檔的建材會拆開', () => {
+  const R = World.rules, Tribes = require('../shared/tribes.js'), w = new World({ rng: seeded(91) });
+  let now = 1e6;
+  assert.deepEqual(R.RES, ['food', 'wood', 'stone', 'meat']);
+  assert.deepEqual([R.NODE.wood.res, R.NODE.bamboo.res, R.NODE.stone.res, R.NODE.hunt.res, R.NODE.fish.res, R.NODE.forage.res], ['wood', 'wood', 'stone', 'meat', 'meat', 'food']);
+  // 建材：石板屋的族群石頭用得多，竹木、茅草屋的族群木頭用得多
+  assert.deepEqual(R.expand({ mat: 100 }, 'paiwan'), { food: 0, wood: 40, stone: 60, meat: 0 });
+  assert.deepEqual(R.expand({ mat: 100 }, 'atayal'), { food: 0, wood: 70, stone: 30, meat: 0 });
+  assert.deepEqual(R.expand({ food: 5, mat: 10, meat: 2 }, 'bunun'), { food: 5, wood: 5, stone: 5, meat: 2 });
+  const p = w.villages[w.join('p', { owner: 'P', name: '石', tribe: 'paiwan' }, now).id], t = w.villages[w.join('t', { owner: 'T', name: '竹', tribe: 'atayal' }, now).id];
+  [p, t].forEach(v => { v.online = true; assert.equal(v.res.mat, undefined); assert.ok(v.res.wood > 0 && v.res.stone > 0 && v.res.meat > 0, '開局送一些木頭、石頭和肉'); });
+  const spend = v => { const b = { ...v.res }; assert.ok(w.act(v.id, { type: 'build', tile: 1, type2: 'house' }, now).ok); return { wood: b.wood - v.res.wood, stone: b.stone - v.res.stone }; };
+  const sp = spend(p), st = spend(t);
+  assert.ok(sp.stone > sp.wood && st.wood > st.stone, '排灣蓋家屋石頭用得多、泰雅木頭用得多：' + JSON.stringify([sp, st]));
+  // 族群特長：排灣到岩場採得快、賽夏到林地採得快
+  const s = w.villages[w.join('s', { owner: 'S', name: '籃', tribe: 'saisiyat' }, now).id];
+  assert.ok(R.gatherRate(p, 4, 'stone') > R.gatherRate(p, 4, 'wood') && R.gatherRate(s, 4, 'wood') > R.gatherRate(s, 4, 'stone'));
+  assert.equal(Tribes.get('amis').sp.zh, '陶器'); assert.equal(Tribes.get('bunun').sp.zh, '苧麻線');
+  // 不夠的時候說出還差什麼
+  t.res.meat = 0; t.tiles[3] = { type: 'barracks', level: 1 };
+  const tr = w.act(t.id, { type: 'train', u: 'w' }, now);
+  assert.equal(tr.ok, false); assert.match(tr.msg, /肉/, '訓練勇士要肉：' + tr.msg);
+  t.res.meat = 50; assert.ok(w.act(t.id, { type: 'train', u: 'w' }, now).ok); assert.equal(t.res.meat, 40);
+  // 部落裡不生產木頭和石頭
+  const r0 = { ...t.res }; for (let i = 0; i < 30; i++) { now += 1000; w.tick(now); }
+  assert.ok(t.res.food > r0.food - 1 && t.res.stone === r0.stone && t.res.wood <= r0.wood + 1e-9);
+  // 療養要吃肉：肉不夠就先等著
+  t.tiles[5] = { type: 'heal', level: 2 }; t.land[5] = 1; t.hurt = { w: 2, a: 0, u: 0 }; t.res.meat = 0;
+  for (let i = 0; i < 300; i++) { now += 1000; w.tick(now); }
+  assert.equal(t.hurt.w, 2, '沒有肉就不會歸隊');
+  t.res.meat = 100; for (let i = 0; i < 300 && t.hurt.w > 0; i++) { now += 1000; w.tick(now); }
+  assert.equal(t.hurt.w, 0); assert.equal(t.res.meat, 100 - 2 * R.TUNE.healMeat);
+  // 舊存檔：建材拆成木頭和石頭、採建材的人改去種田、市集上的建材變成木頭、肉補一些
+  const old = JSON.parse(JSON.stringify(w.toJSON())), ov = old.villages[p.id];
+  ov.res = { food: 100, mat: 200 }; ov.jobs = { food: 1, mat: 2, special: 0 }; delete ov.gp; ov.idle.focus = 'mat';
+  old.market = [{ id: 'o1', from: p.id, give: 'mat', giveN: 30, want: 'food', wantN: 10, t: now }];
+  const w2 = new World().load(old), nv = w2.villages[p.id];
+  assert.equal(nv.res.mat, undefined); assert.equal(nv.res.food, 100);
+  assert.deepEqual([nv.res.wood, nv.res.stone], [80, 120], '排灣的建材六成算石頭');
+  assert.ok(nv.res.meat > 0, '肉補一些');
+  assert.equal(nv.jobs.mat, undefined); assert.equal(nv.jobs.food, 3); assert.equal(nv.gp, 0); assert.equal(nv.idle.focus, 'even');
+  assert.equal(w2.market[0].give, 'wood');
+  check(w2);
 });
