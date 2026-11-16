@@ -837,6 +837,14 @@
   var SEASON_GOAL = [100, 250, 500, 800, 1200], SEASON_BOOST = [1, 1, 2, 2, 3], SEASON_TOP = [5, 3, 2];
   function seasonReward(v, i) { var f = r5(60 * eq(centerLevel(v)) * (i + 1) * TUNE.cost); return { food: f, mat: f, boost: SEASON_BOOST[i] }; }
   function addPts(v, n) { if (v && n > 0) v.spts = (v.spts || 0) + Math.round(n); }
+  /* 聯盟共同目標：每一季每個聯盟三個目標，全聯盟一起累積；達成後，達成前就已經是成員的每個部落各領一份獎勵。目標的量跟著人數長 */
+  var ALLY_GOAL = [
+    { k: 'gather', per: 1500, zh: '一起採集：從野地帶回的資源', unit: '份' },
+    { k: 'wild', per: 3, zh: '一起照顧野地：趕走山豬群、修好搶修點', unit: '次' },
+    { k: 'help', per: 8, zh: '互相幫忙：幫盟友縮短工程', unit: '次' }
+  ];
+  function allyGoalN(al, i) { return ALLY_GOAL[i].per * Math.max(2, al.members.length); }
+  function allyReward(v, i) { var f = r5(50 * eq(centerLevel(v)) * TUNE.cost); return { food: f, mat: f, boost: i === 2 ? 2 : 1 }; }
   var BOOST_START = 3, BOOST_DEV = 1, BOOST_QUEST = 2;   // 加速道具：新部落送 3 個；部落發展每一步送 1 個、神話主線每一章送 2 個（不賣）
   function devReward(d) {   // 獎勵：升級類的給那一級花費的三成，其他給固定的量
     if (d.k === 'units') return { food: 120, mat: 0 };
@@ -1228,6 +1236,17 @@
       v.res.food += o.rw.food; v.res.mat += o.rw.mat; if (o.rw.sp) addRes(v, 'sp:' + v.tribe, o.rw.sp); v.boosts = (v.boosts || 0) + (o.rw.boost || 0);
       return { ok: true, msg: '「' + CHORES[o.k] + '」做完了，領到獎勵' };
     },
+    allyClaim: function (v, a) {   // 領聯盟共同目標的獎勵
+      var al = v.ally && this.alliances[v.ally], i = int(a.i);
+      if (!al) return { ok: false, msg: '你不在聯盟裡' };
+      if (i < 0 || i >= ALLY_GOAL.length) return { ok: false, msg: '沒有這個目標' };
+      this.allyState(al);
+      if (!al.done[i]) return { ok: false, msg: '聯盟還沒完成這個目標' };
+      if (al.got[i].indexOf(v.id) >= 0) return { ok: false, msg: '已經領過了' };
+      if ((v.allyAt || 0) > al.done[i]) return { ok: false, msg: '目標達成之後才加入的，這一次不能領' };
+      var rw = allyReward(v, i); v.res.food += rw.food; v.res.mat += rw.mat; v.boosts = (v.boosts || 0) + rw.boost; al.got[i].push(v.id);
+      return { ok: true, msg: '領到聯盟目標的獎勵' };
+    },
     seasonClaim: function (v, a) {   // 領這一季的目標獎勵
       var i = int(a.i);
       if (i < 0 || i >= SEASON_GOAL.length) return { ok: false, msg: '沒有這個目標' };
@@ -1256,7 +1275,7 @@
       if (name.length < 2) return { ok: false, msg: '聯盟名稱至少兩個字' };
       for (var k in this.alliances) if (this.alliances[k].name === name) return { ok: false, msg: '已經有同名的聯盟' };
       var al = { id: this.id('a'), name: name, leader: v.id, members: [v.id] };
-      this.alliances[al.id] = al; v.ally = al.id;
+      this.alliances[al.id] = al; v.ally = al.id; v.allyAt = now;
       this.log('「' + v.name + '」發起了聯盟「' + name + '」。', now, 'ally');
       return { ok: true, msg: '聯盟成立了' };
     },
@@ -1267,7 +1286,7 @@
       if (al.members.length >= 20) return { ok: false, msg: '這個聯盟滿了' };
       var self = this, seen = {};
       al.members.forEach(function (m) { var o = self.villages[m]; if (o && !seen[o.tribe]) { seen[o.tribe] = 1; self.relAdd(v.tribe, o.tribe, REL.ally * relMul(v)); } });   // 和不同族的部落結盟，兩族關係變好
-      al.members.push(v.id); v.ally = al.id;
+      al.members.push(v.id); v.ally = al.id; v.allyAt = now;
       this.log('「' + v.name + '」加入了聯盟「' + al.name + '」。', now, 'ally');
       return { ok: true, msg: '加入了' + al.name };
     },
@@ -1300,10 +1319,36 @@
       o.queue.forEach(function (q) {
         if (!q.ask || q.hn >= q.hmax || q.doneAt <= now || (q.hby || []).indexOf(v.id) >= 0) return;
         var cut = Math.max(self.ms(TUNE.helpMin * 3000), (q.doneAt - now) * TUNE.helpPct / 100);
-        q.doneAt = Math.max(now, q.doneAt - cut); q.hn++; (q.hby = q.hby || []).push(v.id); n++; addPts(v, 2);
+        q.doneAt = Math.max(now, q.doneAt - cut); q.hn++; (q.hby = q.hby || []).push(v.id); n++; addPts(v, 2); self.allyAdd(v, 'help', 1, now);
       });
     });
     return n;
+  };
+  /* 聯盟這一季的目標進度（換季了就重新開始） */
+  World.prototype.allyState = function (al) {
+    var n = this.season ? this.season.n : 1;
+    if (al.sn !== n || !al.prog) { al.sn = n; al.prog = { gather: 0, wild: 0, help: 0 }; al.contrib = dict(); al.done = [0, 0, 0]; al.got = [[], [], []]; }
+    return al;
+  };
+  World.prototype.allyAdd = function (v, k, n, now) {
+    var al = v && v.ally && this.alliances[v.ally], self = this; if (!al || !(n > 0)) return;
+    this.allyState(al);
+    al.prog[k] = (al.prog[k] || 0) + n;
+    var c = al.contrib[v.id] = al.contrib[v.id] || { gather: 0, wild: 0, help: 0 }; c[k] += n;
+    ALLY_GOAL.forEach(function (g, i) {
+      if (al.done[i] || al.prog[g.k] < allyGoalN(al, i)) return;
+      al.done[i] = now;
+      al.members.forEach(function (mid) { var o = self.villages[mid]; if (o) self.pushReport(o, { t: now, role: 'atk', point: '聯盟目標', other: '', otherTribe: o.tribe, win: true, note: '聯盟「' + al.name + '」一起完成了「' + g.zh.split('：')[0] + '」，到聯盟視窗領獎勵（換季前要領）。' }); });
+    });
+  };
+  /* 給某個成員看的聯盟目標 */
+  World.prototype.allyGoals = function (v) {
+    var al = v.ally && this.alliances[v.ally], self = this; if (!al) return null;
+    this.allyState(al);
+    return { sn: al.sn, goals: ALLY_GOAL.map(function (g, i) {
+      var n = allyGoalN(al, i), got = al.got[i].indexOf(v.id) >= 0, done = !!al.done[i];
+      return { k: g.k, zh: g.zh, unit: g.unit, n: n, cur: Math.min(n, Math.floor(al.prog[g.k] || 0)), done: done, got: got, can: done && !got && (v.allyAt || 0) <= al.done[i], late: done && !got && (v.allyAt || 0) > al.done[i], reward: allyReward(v, i) };
+    }), top: al.members.map(function (mid) { var o = self.villages[mid], c = al.contrib[mid] || { gather: 0, wild: 0, help: 0 }; return { name: o ? o.name : '', tribe: o ? o.tribe : '', gather: Math.floor(c.gather), wild: c.wild, help: c.help }; }) };
   };
   /* 盟友有哪些工程在等人幫忙（v 還沒幫過的） */
   World.prototype.helpsFor = function (v, now) {
@@ -1434,7 +1479,7 @@
     if (nd && nd.amt < 1) { delete this.nodes[nd.id]; this.nodesV++; }
     var k = nd ? NODE[nd.k].res : (m.res || 'food'); m.res = k;
     if (m.carry > 0) { m.loot = {}; m.loot[k] = m.carry; }
-    if (v && m.carry > 0) addPts(v, 5);
+    if (v && m.carry > 0) { addPts(v, 5); this.allyAdd(v, 'gather', m.carry, now); }
     if (v && m.carry > 0 && !early) {
       v.stat.point++;
       this.pushReport(v, { t: now, role: 'atk', point: nd ? NODE[nd.k].zh : '資源點', other: '', otherTribe: v.tribe, win: true, note: '採集完成，帶著 ' + m.carry + ' ' + resName(k) + '回部落。' });
@@ -1490,7 +1535,7 @@
     var care = hospitalize(v, { w: m.w - r.left.w, a: m.a - r.left.a, u: (m.u || 0) - r.left.u });
     ['w', 'a', 'u'].forEach(function (k) { v.away[k] = Math.max(0, v.away[k] - ((m[k] || 0) - r.left[k])); m[k] = r.left[k]; });
     var rw = null;
-    addPts(v, r.win ? 8 * nd.lv : 2);
+    addPts(v, r.win ? 8 * nd.lv : 2); if (r.win) this.allyAdd(v, 'wild', 1, now);
     if (r.win) { rw = wildReward('boar', nd.lv); delete this.nodes[nd.id]; v.stat.point++; v.boosts = (v.boosts || 0) + rw.boost; m.loot = { food: rw.food, mat: rw.mat }; }
     else nd.bn = Math.max(1, r.home.w);
     this.nodesV++;
@@ -1507,7 +1552,7 @@
     if (m.phase === 'gather') {   // 修好了
       var lv = nd ? nd.lv : 1, rw = wildReward('repair', lv), hx = nd && this.map.byId[nd.hex], ht = hx && hx.tribe;
       if (nd) { delete this.nodes[nd.id]; this.nodesV++; }
-      v.stat.point++; v.boosts = (v.boosts || 0) + rw.boost; m.loot = { food: rw.food, mat: rw.mat }; addPts(v, 8 * lv);
+      v.stat.point++; v.boosts = (v.boosts || 0) + rw.boost; m.loot = { food: rw.food, mat: rw.mat }; addPts(v, 8 * lv); this.allyAdd(v, 'wild', 1, now);
       if (ht && ht !== v.tribe && Tribes.get(ht) && Tribes.get(ht).playable) this.relAdd(v.tribe, ht, REL.gift);   // 幫別族的區域搶修：兩族的關係變好
       this.pushReport(v, { t: now, role: 'atk', point: '颱風後搶修', ev: 'repair', other: '', otherTribe: v.tribe, win: true,
         note: '修好了' + (nd ? REPAIR_WHAT[nd.what || 0] : '') + '，帶回謝禮：' + rw.food + ' ' + resName('food') + '、' + rw.mat + ' ' + resName('mat') + (rw.boost ? '，另外得到 ' + rw.boost + ' 個加速' : '') + '。' + (ht && ht !== v.tribe ? '這裡是' + Tribes.get(ht).zh + '的區域，兩族的關係變好了。' : '') });
@@ -1721,6 +1766,7 @@
     me.dq = this.devProgress(v); delete me.devCur;
     me.queue.forEach(function (q) { delete q.hby; });   // 誰幫過忙不用傳
     me.helps = this.helpsFor(v, now);
+    me.ag = this.allyGoals(v);   // 聯盟這一季的共同目標
     var al = {};
     for (var k in this.alliances) al[k] = { id: k, name: this.alliances[k].name, leader: this.alliances[k].leader, n: this.alliances[k].members.length };
     return {
@@ -1778,7 +1824,7 @@
     }
     this.adminLog = d.adminLog || [];
     this.villages = dict(d.villages); this.tokens = dict(d.tokens); this.marches = d.marches || []; this.market = d.market || [];
-    this.feed = d.feed || []; this.alliances = dict(d.alliances); this.seq = d.seq || 1; this.lastTyphoon = d.lastTyphoon || 0; this.season = d.season || null;   // 改版前的存檔沒有賽季：下一次推進時開始第 1 季
+    this.feed = d.feed || []; this.alliances = dict(d.alliances); for (var ak in this.alliances) if (this.alliances[ak].contrib) this.alliances[ak].contrib = dict(this.alliances[ak].contrib); this.seq = d.seq || 1; this.lastTyphoon = d.lastTyphoon || 0; this.season = d.season || null;   // 改版前的存檔沒有賽季：下一次推進時開始第 1 季
     this.stats = dict(d.stats); this.rel = dict(d.rel); this.nodes = (d.mapRev || 1) < MAP_REV ? dict() : dict(d.nodes); this.nodesV++; this.stock = dict(d.stock);
     for (var sk0 in this.stock) this.stock[sk0] = dict(this.stock[sk0]);
     for (var id in this.villages) {
@@ -1834,7 +1880,7 @@
     SITES: SITES, CLEAR: CLEAR, clearInfo: clearInfo, TILE_N: TILE_N, CENTER_TILE: CENTER_TILE, TYPES: TYPES, MAX_LEVEL: MAX_LEVEL, UNIT: UNIT,
     CENTER_UP: CENTER_UP, BUILDERS: BUILDERS, FOREIGN_SP: FOREIGN_SP, cost: cost, buildTime: buildTime, limit: limit, count: count,
     resName: resName, derived: derived, eatRate: eatRate, perWorker: perWorker, TECH: TECH, TECH_MAX: TECH_MAX, UNLOCK: UNLOCK, techCost: techCost, techTime: techTime, techMax: techMax, battleMod: battleMod, buildMul: buildMul, marchMul: marchMul, healCap: healCap, bl: bl, eq: eq, centerUp: centerUp, centerReq: centerReq, reqLeft: reqLeft, maxLevelOf: maxLevelOf, wallMul: wallMul, villagePower: villagePower, DEV_START: DEV_START, popCap: popCap, LOOT_FRAC: LOOT_FRAC, GRADE: GRADE, FIGHT: FIGHT,
-    armyCap: armyCap, mkSide: mkSide, supportCap: supportCap, QSTAGE: QSTAGE, storySegs: storySegs, stageReward: stageReward, SEASON_GOAL: SEASON_GOAL, SEASON_TOP: SEASON_TOP, seasonReward: seasonReward, CHORES: CHORES, CHORE_MIN: CHORE_MIN, CHORE_EVERY: CHORE_EVERY, choreSlots: choreSlots, choreOffers: choreOffers, choreReward: choreReward, TIER: TIER, tiers: tiers, tierMul: tierMul, helpMax: helpMax, BOOST_START: BOOST_START, BOOST_DEV: BOOST_DEV, BOOST_QUEST: BOOST_QUEST, QUESTS: QUESTS, UNIT_U: UNIT_U, BLESS: BLESS, HERO_REST: HERO_REST, marchMax: marchMax, gatherRate: gatherRate, REL: REL, NODE: NODE, NODE_AMT: NODE_AMT, BOAR_N: BOAR_N, boarSide: boarSide, boarPower: boarPower, wildReward: wildReward, REPAIR_WHAT: REPAIR_WHAT, repairRate: repairRate, SETTLE: SETTLE,
+    armyCap: armyCap, mkSide: mkSide, supportCap: supportCap, ALLY_GOAL: ALLY_GOAL, allyReward: allyReward, QSTAGE: QSTAGE, storySegs: storySegs, stageReward: stageReward, SEASON_GOAL: SEASON_GOAL, SEASON_TOP: SEASON_TOP, seasonReward: seasonReward, CHORES: CHORES, CHORE_MIN: CHORE_MIN, CHORE_EVERY: CHORE_EVERY, choreSlots: choreSlots, choreOffers: choreOffers, choreReward: choreReward, TIER: TIER, tiers: tiers, tierMul: tierMul, helpMax: helpMax, BOOST_START: BOOST_START, BOOST_DEV: BOOST_DEV, BOOST_QUEST: BOOST_QUEST, QUESTS: QUESTS, UNIT_U: UNIT_U, BLESS: BLESS, HERO_REST: HERO_REST, marchMax: marchMax, gatherRate: gatherRate, REL: REL, NODE: NODE, NODE_AMT: NODE_AMT, BOAR_N: BOAR_N, boarSide: boarSide, boarPower: boarPower, wildReward: wildReward, REPAIR_WHAT: REPAIR_WHAT, repairRate: repairRate, SETTLE: SETTLE,
     autoBattle: autoBattle, power: power, odds: odds, ODDS: ODDS, simBattle: simBattle, simMatrix: simMatrix,
     TUNE_DEF: TUNE_DEF, tuneDefaults: tuneDefaults, setTune: setTune, paced: paced, trainTime: trainTime, marchSecs: marchSecs, shieldMs: shieldMs, OFFER_MS: OFFER_MS
   };

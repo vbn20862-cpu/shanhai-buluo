@@ -579,3 +579,8 @@ p { margin: 4px 0; }
 .shout rect { fill: rgba(42, 28, 16, .94); }
 #feedbar { max-width: min(340px, calc(100% - 470px)); }
 #feedbar button { padding: 5px 12px; }
+.agoal { padding: 4px 0 6px; border-top: 1px dashed var(--line); }
+.agoal:first-of-type { border-top: 0; }
+.agoal .goal b:first-child { color: var(--rim2); font-weight: 700; }
+.agoal .act { margin-top: 2px; justify-content: space-between; }
+.agot { font-style: normal; font-size: 12px; color: var(--good); }

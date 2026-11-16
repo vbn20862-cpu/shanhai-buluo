@@ -189,6 +189,10 @@ window.Net = (function () {
       else if (kind === 'guests' && v.ally) {   // 聯盟裡的示範部落派人來支援你
         local.alliances[v.ally].members.forEach(function (id) { var o = local.villages[id]; if (!o || !o.bot) return; o.units.w = Math.max(o.units.w, 4); o.units.a = Math.max(o.units.a, 3); local.act(o.id, { type: 'support', to: localId, w: 3, a: 2 }, now); });
       }
+      else if (kind === 'agoal' && v.ally) {   // 聯盟目標的進度直接補到達成（試領獎勵用）
+        var al2 = local.alliances[v.ally]; local.allyState(al2);
+        World.rules.ALLY_GOAL.forEach(function (g) { local.allyAdd(v, g.k, Math.max(0, g.per * Math.max(2, al2.members.length) - (al2.prog[g.k] || 0)), now); });
+      }
       else if (kind === 'help') for (var hk = 1; hk <= 30; hk++) local.helpAll({ id: 'test-ally-' + hk }, { members: [localId] }, now);   // 假裝有很多位盟友各按一下，幫到上限
       else if (kind === 'pace') local.setTune({ pace: +on || 1 });   // 試試正式節奏的快慢
       else if (kind === 'bots') Object.keys(local.villages).forEach(function (id) {   // 讓示範部落有守軍，對戰才有東西可以打

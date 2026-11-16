@@ -335,6 +335,8 @@
     else h += '<div class="trk"><button class="tt" data-act="tab" data-tab="quest"><span class="th">' + Art.icon('fire') + esc(t.bless.zh) + '</span>' + (me.blessUntil > Date.now() ? '同心中，還有 <b data-until="' + me.blessUntil + '"></b>' : me.blessNext > Date.now() ? '下次可以舉辦：<b data-until="' + me.blessNext + '"></b>' : '可以舉辦了') + '</button></div>';
     var rows = [], idle = me.d.builders - me.queue.length;   // 進行中的事：閒著的工人排第一（提醒去升級），其次是工程、隊伍、訓練、技藝、療養
     if (idle > 0) rows.push('<div class="q idle">' + Art.icon('build') + '<span>' + (idle > 1 ? idle + ' 位工人閒著' : '工人閒著') + '，點建築升級</span></div>');   // 閒著的工人合成一行
+    var agi = me.ag ? me.ag.goals.map(function (x) { return x.can; }).indexOf(true) : -1;
+    if (agi >= 0) rows.push('<button class="q help" data-act="ally-claim" data-i="' + agi + '">' + Art.icon('alliance') + '<span>聯盟目標達成</span><b>領取</b></button>');
     var sgi = seasonReady(me);
     if (sgi >= 0) rows.push('<button class="q help" data-act="season-claim" data-i="' + sgi + '">' + Art.icon('star') + '<span>本季第 ' + (sgi + 1) + ' 個目標達成</span><b>領取</b></button>');
     if (me.chores && R.bl(me, 'plaza')) {   // 定時任務：做完的可以領；沒在做的話提醒可以選一件
@@ -369,7 +371,7 @@
     var unseen = me.reports.some(function (r) { return !r.seen; }), cur = drawer();
     var b = function (tab, ic, label, dot) { return '<button class="db" data-act="tab" data-tab="' + tab + '" aria-pressed="' + (cur === tab) + '"><span>' + Art.icon(ic) + (dot ? '<i class="rdot"></i>' : '') + '</span>' + label + '</button>'; };
     var map = scene() === 'map';
-    setHTML(el.dock, b('tribe', 'pop', '族人', me.d.hungry) + b('army', 'army', '軍事') + b('social', 'alliance', '聯盟', me.helps && me.helps.length) + b('trade', 'trade', '交易') + b('reports', 'book', '戰報', unseen) + b('codex', 'craft', '圖鑑') +
+    setHTML(el.dock, b('tribe', 'pop', '族人', me.d.hungry) + b('army', 'army', '軍事') + b('social', 'alliance', '聯盟', (me.helps && me.helps.length) || (me.ag && me.ag.goals.some(function (x) { return x.can; }))) + b('trade', 'trade', '交易') + b('reports', 'book', '戰報', unseen) + b('codex', 'craft', '圖鑑') +
       (Net.testing() ? b('test', 'star', '測試') : '') +
       '<button class="db big" data-act="tab" data-tab="' + (map ? 'build' : 'map') + '"><span>' + (map ? '<svg viewBox="-80 -140 160 180" class="bico">' + Art.building('center', myTribe(), me.d.center) + '</svg>' : Art.icon('map')) + '</span>' + (map ? '回部落' : '大地圖') + '</button>');
   }
@@ -1052,6 +1054,22 @@
     });
     return h + '<p class="muted">升階之後，部落裡所有這種兵一起變強，對戰時的樣子也會換。</p></section>';
   }
+  /* 聯盟共同目標：三個目標的進度、領獎勵、每個成員的貢獻 */
+  function allyGoalCard(me) {
+    var g = me.ag, t = myTribe(); if (!g) return '';
+    var h = '<section class="card season"><h3>' + Art.icon('alliance') + '聯盟共同目標<span class="lv">第 ' + g.sn + ' 季' + (S.season ? ' · 還有 <b data-until="' + S.season.end + '" data-coarse="1"></b>' : '') + '</span></h3>';
+    g.goals.forEach(function (x, i) {
+      var nm = x.zh.split('：');
+      h += '<div class="agoal"><div class="goal"><span><b>' + nm[0] + '</b>：' + nm[1] + '</span><b>' + x.cur + ' / ' + x.n + ' ' + x.unit + '</b></div><div class="bar"><i style="width:' + Math.round(100 * x.cur / x.n) + '%"></i></div>' +
+        '<div class="act"><span class="gain">' + Art.icon('food') + x.reward.food + ' ' + t.res.food + '　' + Art.icon('mat') + x.reward.mat + ' ' + t.res.mat + '　' + Art.icon('speed') + '加速 ' + x.reward.boost + '</span>' +
+        (x.got ? '<em class="agot">已領</em>' : x.can ? '<button class="btn sm" data-act="ally-claim" data-i="' + i + '">領取</button>' : x.late ? '<em class="agot">達成後才加入，下一季再領</em>' : '') + '</div></div>';
+    });
+    h += '<p class="label">成員的貢獻（採集 · 照顧野地 · 幫忙）</p>';
+    g.top.slice().sort(function (a, b) { return (b.gather / 500 + b.wild * 3 + b.help) - (a.gather / 500 + a.wild * 3 + a.help); }).forEach(function (x) {
+      var xt = Tribes.get(x.tribe); h += '<div class="qrow"><span><i class="dot" style="background:' + (xt ? xt.color : '#888') + '"></i> ' + esc(x.name) + '</span><b>' + x.gather + ' 份 · ' + x.wild + ' 次 · ' + x.help + ' 次</b></div>';
+    });
+    return h + '<p class="muted">目標的量跟著聯盟人數長。達成之前就加入的成員，每人各領一份；換季時重新開始，記得在換季前領。</p></section>';
+  }
   /* 賽季：這一季的季分、五個目標（領獎勵）、還有多久換季、怎麼拿季分 */
   function seasonReady(me) { for (var i = 0; i < R.SEASON_GOAL.length; i++) if ((me.spts || 0) >= R.SEASON_GOAL[i] && (me.sgot || []).indexOf(i) < 0) return i; return -1; }
   function seasonCard(me) {
@@ -1115,6 +1133,7 @@
       '<button class="btn sm" data-act="t-bots">讓示範部落有守軍和物資（各加 6 人）</button>' +
       '<button class="btn sm" data-act="t-allybot"' + (me.ally ? '' : ' disabled') + '>找一個示範部落加入你的聯盟（要先有聯盟）</button>' +
       '<button class="btn sm" data-act="t-guests"' + (me.ally && R.bl(me, 'guest') ? '' : ' disabled') + '>聯盟裡的示範部落派人來支援（要有迎賓亭）</button>' +
+      '<button class="btn sm" data-act="t-agoal"' + (me.ally ? '' : ' disabled') + '>聯盟目標的進度補滿（要先有聯盟）</button>' +
       '<button class="btn sm" data-act="t-help"' + (me.queue.some(function (q) { return q.ask && q.hn < q.hmax; }) ? '' : ' disabled') + '>盟友都來幫忙（要先在工程上按「求助」）</button>' +
       '<button class="btn sm" data-act="t-quest"' + (me.qp ? '' : ' disabled') + '>' + (me.qp ? '任務第 ' + (me.qp.i + 1) + ' 章直接完成' : '任務都完成了') + '</button>' +
       '<button class="btn sm" data-act="t-rest"' + (me.heroRest > Date.now() || me.blessNext > Date.now() ? '' : ' disabled') + '>英雄和共聚不用等</button></div></section>' +
@@ -1149,7 +1168,7 @@
       Object.keys(S.alliances).forEach(function (k) { var x = S.alliances[k]; h += '<div class="vrow"><div><b>' + esc(x.name) + '</b><span class="muted">' + x.n + ' 個部落</span></div><button class="btn sm ghost" data-act="ally-join" data-id="' + k + '">加入</button></div>'; });
     }
     h += '</section>';
-    if (part === 'social') out = h; h = '';
+    if (part === 'social') out = h + allyGoalCard(me); h = '';
     // 市集
     h += '<section class="card"><h3>市集<span class="lv">' + S.market.length + ' 筆</span></h3><div class="splist">' + spList(me) + '</div>';
     if (!S.market.length) h += '<p class="muted">目前沒有人掛單。可以自己掛一筆，或到地圖上的中立聚落換特產。</p>';
@@ -1389,7 +1408,7 @@
     var foc = document.activeElement;   // 按了按鈕就離開輸入框，面板才會照新的狀態重畫（手機上按鈕不一定會搶走焦點）
     if (foc && foc !== b && /^(INPUT|SELECT)$/.test(foc.tagName) && foc.type !== 'checkbox') foc.blur();
     var a = b.getAttribute('data-act'), me = S.me, tile = +b.getAttribute('data-tile');
-    if (me && /^(dev|quest|chore-done|season-claim)$/.test(a)) {   // 領獎勵：記下按鈕的位置和現在的物資，等新的狀態來了，把多出來的東西從按鈕往上飄
+    if (me && /^(dev|quest|chore-done|season-claim|ally-claim)$/.test(a)) {   // 領獎勵：記下按鈕的位置和現在的物資，等新的狀態來了，把多出來的東西從按鈕往上飄
       var br = b.getBoundingClientRect();
       S.fly = { x: br.left + br.width / 2, y: br.top, t: Date.now(), food: me.res.food, mat: me.res.mat, sp: me.sp[me.tribe] || 0, boosts: me.boosts || 0 };
     }
@@ -1426,11 +1445,13 @@
     else if (a === 'chore') act({ type: 'chore', id: b.getAttribute('data-id') || '' });
     else if (a === 'chore-done') act({ type: 'choreDone', id: b.getAttribute('data-id') || '' });
     else if (a === 't-help') { Net.test('help'); toast('盟友都來幫忙了'); }
+    else if (a === 't-agoal') { Net.test('agoal'); toast('聯盟目標都達成了'); }
     else if (a === 't-allybot') { Net.test('allybot'); toast('有一個示範部落加入了聯盟'); }
     else if (a === 't-guests') { Net.test('guests'); toast('盟友派人出發了'); }
     else if (a === 'rank-by') { S.rankBy = b.getAttribute('data-v'); render(); }
     else if (a === 'rank-kind') { S.rankKind = b.getAttribute('data-v'); render(); }
     else if (a === 'season-claim') act({ type: 'seasonClaim', i: +b.getAttribute('data-i') });
+    else if (a === 'ally-claim') act({ type: 'allyClaim', i: +b.getAttribute('data-i') });
     else if (a === 'rank-go') {   // 排行裡的部落：到地圖上看
       var rv = S.pubs.filter(function (x) { return x.id === b.getAttribute('data-id'); })[0];
       if (rv) { S.view = 'map'; S.tab = 'map'; S.node = null; S.zone = rv.hex; render(); MV.focus(rv.pos[0], rv.pos[1], Math.max(MV.k, 4.5)); render(); }

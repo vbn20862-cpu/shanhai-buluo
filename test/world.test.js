@@ -1131,3 +1131,45 @@ test('神話故事關卡：每章 3 關、故事分三段揭開（不新增文�
   assert.ok(bot.qs === 2 || bot.quest > 1);
   check(w);
 });
+
+test('聯盟共同目標：一起採集、照顧野地、互相幫忙；達成後成員各領一次；達成後才加入的不能領；換季重新開始', () => {
+  const w = new World({ speed: 1, rng: seeded(91) }), R = World.rules;
+  let now = 1e6;
+  const a = w.villages[w.join('ag1', { owner: '甲', name: '甲部落', tribe: 'atayal' }, now).id];
+  const b = w.villages[w.join('ag2', { owner: '乙', name: '乙部落', tribe: 'amis' }, now).id];
+  const c = w.villages[w.join('ag3', { owner: '丙', name: '丙部落', tribe: 'bunun' }, now).id];
+  [a, b, c].forEach(x => { x.online = true; });
+  w.tick(now += 1000);
+  assert.equal(w.snapshot(a.id, now).me.ag, null, '沒有聯盟就沒有');
+  assert.ok(w.act(a.id, { type: 'allyCreate', name: '同行' }, now).ok); assert.ok(w.act(b.id, { type: 'allyJoin', id: a.ally }, now).ok);
+  let g = w.snapshot(a.id, now).me.ag;
+  assert.equal(g.goals.length, 3); assert.equal(g.goals[1].n, R.ALLY_GOAL[1].per * 2, '兩個人：目標是每人份的兩倍');
+  assert.equal(w.act(a.id, { type: 'allyClaim', i: 1 }, now).msg, '聯盟還沒完成這個目標');
+  // 照顧野地：甲趕走 4 群山豬、乙修好 2 處
+  for (let i = 0; i < 4; i++) w.allyAdd(a, 'wild', 1, now);
+  w.allyAdd(b, 'wild', 1, now += 1000); w.allyAdd(b, 'wild', 1, now += 1000);
+  g = w.snapshot(a.id, now).me.ag; assert.ok(g.goals[1].done && g.goals[1].can);
+  assert.ok(b.reports.some(r => /一起完成了/.test(r.note || '')), '成員都收到通知');
+  // 目標達成之後才加入的丙不能領
+  now += 1000; assert.ok(w.act(c.id, { type: 'allyJoin', id: a.ally }, now).ok);
+  assert.equal(w.act(c.id, { type: 'allyClaim', i: 1 }, now).msg, '目標達成之後才加入的，這一次不能領');
+  assert.ok(w.snapshot(c.id, now).me.ag.goals[1].late);
+  const b0 = a.boosts; assert.ok(w.act(a.id, { type: 'allyClaim', i: 1 }, now).ok); assert.equal(a.boosts, b0 + R.allyReward(a, 1).boost);
+  assert.equal(w.act(a.id, { type: 'allyClaim', i: 1 }, now).msg, '已經領過了');
+  assert.ok(w.act(b.id, { type: 'allyClaim', i: 1 }, now).ok, '乙也能領');
+  assert.equal(w.act(a.id, { type: 'allyClaim', i: 'x' }, now).ok, false);
+  // 真的採集回來也會算
+  const g0 = w.alliances[a.ally].prog.gather;
+  a.units = { w: 5, a: 0, u: 0 }; const nd = Object.values(w.nodes).find(n => !R.NODE[n.k].ev);
+  assert.ok(w.act(a.id, { type: 'gather', node: nd.id, w: 5, a: 0 }, now).ok);
+  while (w.marches.some(m => m.from === a.id)) { now += 1000; w.tick(now); }
+  assert.ok(w.alliances[a.ally].prog.gather > g0, '採集帶回的資源算進聯盟目標');
+  assert.ok(w.snapshot(a.id, now).me.ag.top.find(x => x.name === '甲部落').gather > 0, '列出每個成員的貢獻');
+  // 換季：重新開始
+  now = w.season.end + 1; w.tick(now);
+  g = w.snapshot(a.id, now).me.ag; assert.equal(g.sn, 2); assert.ok(!g.goals[1].done && g.goals[1].cur === 0);
+  // 存檔讀回來
+  const w2 = new World().load(JSON.parse(JSON.stringify(w.toJSON())));
+  assert.equal(w2.snapshot(a.id, now).me.ag.sn, 2);
+  check(w);
+});
